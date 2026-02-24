@@ -8,6 +8,8 @@ from models.schemas import (
     FullAnalysisResult
 )
 from auth.auth import verify_google_token, create_access_token, get_current_user
+from datetime import datetime, timezone
+import pytz
 from services import scraper, kg_generator, topical_generator, comparator
 from utils.storage import database_store
 from utils.progress_tracker import progress_tracker
@@ -563,13 +565,26 @@ async def get_history(
     """Get user's analysis history"""
     analyses = database_store.get_user_analyses(db, current_user.email)
     
+    # Bangkok timezone
+    bangkok_tz = pytz.timezone('Asia/Bangkok')
+    
+    # Convert UTC timestamps to Bangkok time
+    def convert_to_bangkok(utc_dt):
+        if utc_dt.tzinfo is None:
+            # If naive datetime, assume it's UTC
+            utc_dt = pytz.utc.localize(utc_dt)
+        # Convert to Bangkok time
+        bangkok_dt = utc_dt.astimezone(bangkok_tz)
+        # Return ISO format string
+        return bangkok_dt.isoformat()
+    
     # Return summary info only
     return {
         "analyses": [
             {
                 "analysis_id": a['analysis_id'],
                 "urls": a['urls'],
-                "created_at": a['created_at'],
+                "created_at": convert_to_bangkok(a['created_at']),
                 "status": a['status']
             }
             for a in analyses
