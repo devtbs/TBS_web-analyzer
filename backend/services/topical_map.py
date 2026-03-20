@@ -447,6 +447,18 @@ CRITICAL INSTRUCTIONS:
             
             try:
                 result = await ai_service.extract_json(prompt, system_prompt, use_deepseek=True)
+                if not isinstance(result, dict):
+                    if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+                        result = result[0]
+                    else:
+                        raise ValueError("Could not extract valid JSON: Expected a JSON object but got a list.")
+                
+                # Robust dictionary unwrapper: If the AI nested everything under a single root key (e.g., {"topical_map": {...}})
+                if isinstance(result, dict) and len(result) == 1 and isinstance(list(result.values())[0], dict):
+                    inner = list(result.values())[0]
+                    # verify it actually contains our keys
+                    if any(k in inner for k in ['business_description', 'key_topics', 'taxonomy', 'content_strategy', 'semantic_relationships']):
+                        result = inner
             except ValueError as e:
                 # If JSON parsing fails, try with a simplified prompt
                 error_msg = str(e)
@@ -517,6 +529,16 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                         "You are a business analyst. Return ONLY valid JSON without markdown formatting.",
                         use_deepseek=True
                     )
+                    if not isinstance(result, dict):
+                        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+                            result = result[0]
+                        else:
+                            raise ValueError("Could not extract valid JSON: Expected a JSON object but got a list.")
+                    
+                    if isinstance(result, dict) and len(result) == 1 and isinstance(list(result.values())[0], dict):
+                        inner = list(result.values())[0]
+                        if any(k in inner for k in ['business_description', 'key_topics', 'taxonomy', 'content_strategy', 'semantic_relationships']):
+                            result = inner
                     print(f"✅ Simplified analysis succeeded")
                 else:
                     raise

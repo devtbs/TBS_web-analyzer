@@ -129,16 +129,7 @@ class AIService:
             except json.JSONDecodeError as e:
                 print(f"JSON parse error in generic block: {str(e)}, trying cleanup...")
         
-        # Strategy 3: Find JSON array with regex (for article lists)
-        array_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', response, re.DOTALL)
-        if array_match:
-            json_str = array_match.group()
-            try:
-                return self._parse_json_with_repair(json_str)
-            except json.JSONDecodeError as e:
-                print(f"JSON parse error in array match: {str(e)}, trying repair...")
-        
-        # Strategy 4: Find JSON object with regex
+        # Strategy 3: Find JSON object with regex
         json_match = re.search(r'\{[\s\S]*\}', response, re.DOTALL)
         if json_match:
             json_str = json_match.group()
@@ -146,6 +137,15 @@ class AIService:
                 return self._parse_json_with_repair(json_str)
             except json.JSONDecodeError as e:
                 print(f"JSON parse error in regex match: {str(e)}, trying cleanup...")
+                
+        # Strategy 4: Find JSON array with regex (for article lists)
+        array_match = re.search(r'\[\s*\{[\s\S]*\}\s*\]', response, re.DOTALL)
+        if array_match:
+            json_str = array_match.group()
+            try:
+                return self._parse_json_with_repair(json_str)
+            except json.JSONDecodeError as e:
+                print(f"JSON parse error in array match: {str(e)}, trying repair...")
         
         # Strategy 5: Try parsing the entire response
         try:
