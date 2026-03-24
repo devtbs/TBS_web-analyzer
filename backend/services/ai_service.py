@@ -41,7 +41,8 @@ class AIService:
                 model="llama-3.3-70b-versatile",  # Fast and capable model
                 messages=messages,
                 temperature=0.7,
-                max_tokens=6000  # Groq's safe limit (max ~8000)
+                max_tokens=6000,  # Groq's safe limit (max ~8000)
+                response_format={"type": "json_object"} if "json" in (system_prompt or "").lower() or "json" in prompt.lower() else None
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -67,7 +68,8 @@ class AIService:
                 model="deepseek-chat",  # Main model
                 messages=messages,
                 temperature=0.7,
-                max_tokens=safe_max_tokens
+                max_tokens=safe_max_tokens,
+                response_format={"type": "json_object"} if "json" in (system_prompt or "").lower() or "json" in prompt.lower() else None
             )
             return response.choices[0].message.content
         except Exception as e:

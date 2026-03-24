@@ -12,8 +12,10 @@ import {
     SparklesIcon,
     Squares2X2Icon,
     TableCellsIcon,
-    WrenchScrewdriverIcon
+    WrenchScrewdriverIcon,
+    ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
+import { toPng } from 'html-to-image';
 
 const TopicalMap = ({ topicalMaps }) => {
     const [activeIndex, setActiveIndex] = useState(0);
@@ -51,34 +53,120 @@ const TopicalMap = ({ topicalMaps }) => {
         }));
     };
 
-    const SectionHeader = ({ title, color, icon: Icon, section, count }) => (
+    const exportToPNG = async (elementId, filename) => {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        try {
+            // Filter function to remove the export buttons entirely from the final shot
+            const filter = (node) => {
+                if (node?.hasAttribute && node.hasAttribute('data-html2canvas-ignore')) {
+                    return false;
+                }
+                return true;
+            };
+
+            // html-to-image is significantly better at native Flexbox/Absolute positioning
+            const dataUrl = await toPng(element, {
+                quality: 1.0,
+                pixelRatio: 2, // High resolution output
+                backgroundColor: '#ffffff',
+                filter: filter,
+                style: {
+                    margin: '0', 
+                    transform: 'none'
+                }
+            });
+            
+            const link = document.createElement('a');
+            link.download = `${filename}.png`;
+            link.href = dataUrl;
+            link.click();
+        } catch (err) {
+            console.error('Failed to export PNG', err);
+        }
+    };
+
+    const SectionHeader = ({ title, color, icon: Icon, section, count, elementId }) => (
         <div
-            className={`flex items-center justify-between p-4 bg-gradient-to-r ${color} cursor-pointer hover:opacity-90 transition-opacity`}
-            onClick={() => section && toggleSection(section)}
+            className={`flex items-center justify-between p-4 bg-gradient-to-r ${color} transition-opacity`}
         >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 cursor-pointer" onClick={() => section && toggleSection(section)}>
                 {Icon && <Icon className="w-5 h-5 text-white" />}
                 <h2 className="text-lg font-bold text-white">{title}</h2>
                 {count !== undefined && (
-                    <span className="px-2 py-1 bg-white/20 rounded text-white text-sm font-medium">
+                    <span className="px-2.5 py-1 bg-white/20 rounded-md text-white text-sm font-semibold">
                         {count}
                     </span>
                 )}
             </div>
-            {section && (
-                expandedSections[section] ?
-                    <ChevronUpIcon className="w-5 h-5 text-white" /> :
-                    <ChevronDownIcon className="w-5 h-5 text-white" />
-            )}
+            <div className="flex items-center gap-2" data-html2canvas-ignore="true">
+                {elementId && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            
+                            if (section && !expandedSections[section]) {
+                                setExpandedSections(prev => ({ ...prev, [section]: true }));
+                                setTimeout(() => {
+                                    exportToPNG(elementId, `${title.replace(/\s+/g, '-').toLowerCase()}-export`);
+                                }, 500);
+                            } else {
+                                exportToPNG(elementId, `${title.replace(/\s+/g, '-').toLowerCase()}-export`);
+                            }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors text-white text-sm font-medium"
+                        title="Export to PNG"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        PNG
+                    </button>
+                )}
+                {section && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleSection(section);
+                        }}
+                        className="p-1.5 hover:bg-white/20 rounded-md transition-colors text-white"
+                    >
+                        {expandedSections[section] ?
+                            <ChevronUpIcon className="w-5 h-5" /> :
+                            <ChevronDownIcon className="w-5 h-5" />
+                        }
+                    </button>
+                )}
+            </div>
         </div>
     );
 
+    const exportAllToPNG = () => {
+        // Automatically expand all collapsed sections first for a complete client export
+        setExpandedSections({
+            semantic: true,
+            audience: true,
+            content: true,
+            queries: true,
+            competitive: true,
+            articles: true,
+            seo: true,
+            taxonomy: true,
+            ontology: true,
+            tools: true
+        });
+
+        // Give React a tiny moment (500ms) to finish the expand DOM animations
+        setTimeout(() => {
+            exportToPNG('export-full-topical-map', `${activeMap.central_entity?.replace(/\s+/g, '-').toLowerCase() || 'full'}-topical-map-complete`);
+        }, 500);
+    };
+
     return (
-        <div className="space-y-6">
-            {/* URL Selector */}
-            {topicalMaps.length > 1 && (
+        <div className="space-y-6" id="export-full-topical-map">
+            {/* URL Selector & Global Export */}
+            <div className="flex items-center justify-between gap-4 flex-wrap" data-html2canvas-ignore="true">
                 <div className="flex gap-2 flex-wrap">
-                    {topicalMaps.map((map, index) => {
+                    {topicalMaps.length > 1 && topicalMaps.map((map, index) => {
                         const domain = new URL(map.url).hostname.replace('www.', '');
                         return (
                             <button
@@ -95,7 +183,15 @@ const TopicalMap = ({ topicalMaps }) => {
                         );
                     })}
                 </div>
-            )}
+                
+                <button
+                    onClick={exportAllToPNG}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium shadow-md shadow-blue-500/20 transition-all ml-auto ml-auto"
+                >
+                    <ArrowDownTrayIcon className="w-5 h-5" />
+                    Export Full Map Data
+                </button>
+            </div>
 
             {/* Header Info */}
             <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
@@ -124,8 +220,8 @@ const TopicalMap = ({ topicalMaps }) => {
             </div>
 
             {/* Business Overview - Two Column */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <SectionHeader title="Business Overview" color="from-slate-600 to-slate-700" icon={GlobeAltIcon} />
+            <div id="export-business-overview" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <SectionHeader title="Business Overview" color="from-slate-600 to-slate-700" icon={GlobeAltIcon} elementId="export-business-overview" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-slate-200">
                     <div className="bg-white p-4">
                         <h4 className="text-xs font-semibold text-slate-500 mb-2">BUSINESS MODEL</h4>
@@ -162,12 +258,13 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Semantic Analysis */}
             {activeMap.semantic_relationships && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-semantic-analysis" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Semantic Analysis"
                         color="from-indigo-600 to-indigo-700"
                         icon={SparklesIcon}
                         section="semantic"
+                        elementId="export-semantic-analysis"
                     />
                     {expandedSections.semantic && (
                         <div className="p-4">
@@ -235,12 +332,13 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Content Strategy */}
             {activeMap.content_strategy && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-content-strategy" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Content Strategy"
                         color="from-teal-600 to-teal-700"
                         icon={LightBulbIcon}
                         section="content"
+                        elementId="export-content-strategy"
                     />
                     {expandedSections.content && (
                         <div className="p-4">
@@ -288,13 +386,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Taxonomy Structure */}
             {activeMap.taxonomy && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-taxonomy-structure" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Taxonomy"
                         color="from-indigo-600 to-indigo-700"
                         icon={Squares2X2Icon}
                         section="taxonomy"
                         count={activeMap.taxonomy.length}
+                        elementId="export-taxonomy-structure"
                     />
                     {expandedSections.taxonomy && (
                         <div className="p-4">
@@ -334,13 +433,13 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Taxonomy Visualization */}
             {activeMap.taxonomy && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-600 to-indigo-700">
-                        <div className="flex items-center gap-3">
-                            <Squares2X2Icon className="w-5 h-5 text-white" />
-                            <h3 className="text-lg font-semibold text-white">Taxonomy Visualization</h3>
-                        </div>
-                    </div>
+                <div id="export-taxonomy-visualization" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                    <SectionHeader
+                        title="Taxonomy Visualization"
+                        color="from-indigo-600 to-indigo-700"
+                        icon={Squares2X2Icon}
+                        elementId="export-taxonomy-visualization"
+                    />
                     <div className="p-6 bg-slate-50">
                         <div className="overflow-x-auto">
                             <div className="inline-block min-w-full">
@@ -431,13 +530,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Ontology Relationships */}
             {activeMap.ontology && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-ontology-relationships" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Ontology"
                         color="from-purple-600 to-purple-700"
                         icon={TableCellsIcon}
                         section="ontology"
                         count={activeMap.ontology.length}
+                        elementId="export-ontology-relationships"
                     />
                     {expandedSections.ontology && (
                         <div className="p-4">
@@ -486,13 +586,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Audience Segments */}
             {activeMap.audience_segments && activeMap.audience_segments.length > 0 && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-audience-segments" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Audience Segments"
                         color="from-purple-600 to-purple-700"
                         icon={UserGroupIcon}
                         section="audience"
                         count={activeMap.audience_segments.length}
+                        elementId="export-audience-segments"
                     />
                     {expandedSections.audience && (
                         <div className="p-4">
@@ -544,13 +645,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Tools & Platforms */}
             {activeMap.technology_stack && activeMap.technology_stack.length > 0 && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-tools-platforms" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Tools & Platforms"
                         color="from-blue-600 to-blue-700"
                         icon={WrenchScrewdriverIcon}
                         section="tools"
                         count={activeMap.technology_stack.length}
+                        elementId="export-tools-platforms"
                     />
                     {expandedSections.tools && (
                         <div className="p-4">
@@ -571,12 +673,13 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Query Research */}
             {activeMap.query_templates && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-query-research" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Query Research"
                         color="from-purple-600 to-purple-700"
                         icon={MagnifyingGlassIcon}
                         section="queries"
+                        elementId="export-query-research"
                     />
                     {expandedSections.queries && (
                         <div className="p-4 space-y-3">
@@ -616,13 +719,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Competitive Analysis */}
             {activeMap.competitive_analysis && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-competitive-analysis" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Competitive Analysis"
                         color="from-orange-600 to-orange-700"
                         icon={TrophyIcon}
                         section="competitive"
                         count={activeMap.competitive_analysis.top_competitors?.length}
+                        elementId="export-competitive-analysis"
                     />
                     {expandedSections.competitive && (
                         <div className="p-4">
@@ -658,13 +762,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* Content Plan */}
             {activeMap.content_articles && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-content-plan" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Content Plan"
                         color="from-blue-600 to-blue-700"
                         icon={DocumentTextIcon}
                         section="articles"
                         count={activeMap.content_articles.length}
+                        elementId="export-content-plan"
                     />
                     {expandedSections.articles && (
                         <div className="p-4">
@@ -729,12 +834,13 @@ const TopicalMap = ({ topicalMaps }) => {
 
             {/* SEO Optimization */}
             {activeMap.seo_optimization && (
-                <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <div id="export-seo-optimization" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="SEO Optimization"
                         color="from-green-600 to-green-700"
                         icon={ChartBarIcon}
                         section="seo"
+                        elementId="export-seo-optimization"
                     />
                     {expandedSections.seo && (
                         <div className="p-4">

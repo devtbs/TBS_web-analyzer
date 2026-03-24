@@ -216,7 +216,7 @@ Provide 8-15 example queries per category:
 
 PART 6: CONTENT PLAN GENERATION
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Create 30-50 article ideas with:
+Create 20-30 highly strategic article ideas with:
 • Title: Specific, SEO-optimized article title
 • Section: "Core" (revenue-focused) or "Outer" (authority-building)
 • Article Type: "informative", "service_page", "listicle", "tool_page"

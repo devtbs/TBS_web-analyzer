@@ -1,20 +1,46 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import Button from '../ui/Button';
-import Card from '../ui/Card';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-    MagnifyingGlassIcon,
     CheckCircleIcon,
     XCircleIcon,
     ArrowPathIcon,
     LinkIcon,
     ShieldCheckIcon,
-    DocumentMagnifyingGlassIcon
+    MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
+import { CheckCircleIcon as SolidCheckCircle } from '@heroicons/react/24/solid';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+/* ─── Small helpers ───────────────────────────────────────────────── */
+const getDomain = (url) => {
+    try { return new URL(url).hostname.replace('www.', ''); }
+    catch { return url; }
+};
+
+const getFaviconUrl = (url) => {
+    try { return `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(url)}`; }
+    catch { return null; }
+};
+
+/* ─── Skeleton ────────────────────────────────────────────────────── */
+const Skeleton = () => (
+    <div className="space-y-4 animate-pulse">
+        <div className="h-14 bg-slate-100 rounded-xl w-full" />
+        {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4 py-4 border-b border-slate-100">
+                <div className="w-10 h-10 bg-slate-100 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                    <div className="h-4 bg-slate-100 rounded w-48" />
+                </div>
+                <div className="h-8 w-28 bg-slate-100 rounded-lg" />
+            </div>
+        ))}
+    </div>
+);
+
+/* ─── Main ────────────────────────────────────────────────────────── */
 const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const navigate = useNavigate();
     const [isConnected, setIsConnected] = useState(false);
@@ -22,93 +48,52 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const [isFetching, setIsFetching] = useState(false);
     const [isCheckingStatus, setIsCheckingStatus] = useState(true);
     const [properties, setProperties] = useState([]);
-    const [gscToken, setGscToken] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
 
-    // Load Google Identity Services script
+    /* Load Google Identity Services */
     useEffect(() => {
-        // Check if script is already loaded
-        if (window.google?.accounts?.oauth2) {
-            setIsGoogleLoaded(true);
-            return;
-        }
-
-        // Load the script
+        if (window.google?.accounts?.oauth2) { setIsGoogleLoaded(true); return; }
         const script = document.createElement('script');
         script.src = 'https://accounts.google.com/gsi/client';
         script.async = true;
         script.defer = true;
-        script.onload = () => {
-            setIsGoogleLoaded(true);
-        };
-        script.onerror = () => {
-            console.error('Failed to load Google Identity Services');
-            toast.error('Failed to load Google services');
-        };
+        script.onload = () => setIsGoogleLoaded(true);
+        script.onerror = () => toast.error('Failed to load Google services');
         document.body.appendChild(script);
-
         return () => {
-            // Cleanup
-            const existingScript = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-            if (existingScript && existingScript.parentNode) {
-                existingScript.parentNode.removeChild(existingScript);
-            }
+            const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+            if (existing?.parentNode) existing.parentNode.removeChild(existing);
         };
     }, []);
 
-    // Check if already connected on mount
+    /* Check connection on mount */
     useEffect(() => {
-        const accessToken = localStorage.getItem('access_token');
-
-        if (accessToken) {
-            // Check GSC connection status from backend
-            checkGSCStatus();
-        }
+        if (localStorage.getItem('access_token')) checkGSCStatus();
     }, []);
 
-    // Monitor for user logout/login - clear GSC state when access token is removed
+    /* monitor logout */
     useEffect(() => {
-        const checkAuthStatus = () => {
-            const accessToken = localStorage.getItem('access_token');
-            const gscToken = localStorage.getItem('gsc_token');
-
-            // If GSC is connected but user logged out, disconnect GSC
-            if (gscToken && !accessToken && isConnected) {
-                console.log('User logged out, clearing GSC connection');
+        const check = () => {
+            if (localStorage.getItem('gsc_token') && !localStorage.getItem('access_token') && isConnected) {
                 setIsConnected(false);
-                setGscToken(null);
                 setProperties([]);
                 onPropertySelect([]);
             }
         };
-
-        // Check immediately
-        checkAuthStatus();
-
-        // Set up interval to check periodically
-        const interval = setInterval(checkAuthStatus, 1000);
-
-        return () => clearInterval(interval);
+        check();
+        const id = setInterval(check, 1000);
+        return () => clearInterval(id);
     }, [isConnected, onPropertySelect]);
 
     const checkGSCStatus = async () => {
         setIsCheckingStatus(true);
         try {
             const authToken = localStorage.getItem('access_token');
-            const response = await axios.get('/auth/gsc/properties', {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-
-            if (response.data.properties) {
-                setIsConnected(true);
-                setProperties(response.data.properties);
-            }
-        } catch (error) {
-            // Not connected or error - that's okay
-            if (error.response?.status !== 404) {
-                console.error('Error checking GSC status:', error);
-            }
+            const res = await axios.get('/auth/gsc/properties', { headers: { Authorization: `Bearer ${authToken}` } });
+            if (res.data.properties) { setIsConnected(true); setProperties(res.data.properties); }
+        } catch (err) {
+            if (err.response?.status !== 404) console.error('GSC status error:', err);
         } finally {
             setIsCheckingStatus(false);
         }
@@ -116,107 +101,63 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
 
     const handleGoogleConnect = async () => {
         if (!isGoogleLoaded || !window.google?.accounts?.oauth2) {
-            toast.error('Google services not loaded yet. Please try again in a moment.');
-            return;
+            toast.error('Google services not loaded yet. Please try again.'); return;
         }
-
         setIsConnecting(true);
-
         try {
-            // Initialize Google OAuth with Search Console scope
             const client = window.google.accounts.oauth2.initTokenClient({
                 client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
                 scope: 'https://www.googleapis.com/auth/webmasters.readonly',
                 callback: async (response) => {
                     if (response.access_token) {
-                        const token = response.access_token;
-
-                        // Connect to backend - token is stored in database
                         try {
                             const authToken = localStorage.getItem('access_token');
                             await axios.post('/auth/gsc/connect',
-                                { gsc_token: token },
+                                { gsc_token: response.access_token },
                                 { headers: { Authorization: `Bearer ${authToken}` } }
                             );
-
                             setIsConnected(true);
-                            toast.success('Successfully connected to Google Search Console!');
-
-                            // Fetch properties from backend
+                            toast.success('Connected to Google Search Console!');
                             await fetchProperties();
-                        } catch (error) {
-                            console.error('Connection error:', error);
-                            toast.error('Failed to connect to Search Console');
-                        }
+                        } catch { toast.error('Failed to connect to Search Console'); }
                     }
                     setIsConnecting(false);
                 },
             });
-
             client.requestAccessToken();
-        } catch (error) {
-            console.error('OAuth error:', error);
-            toast.error('Failed to initialize Google connection');
-            setIsConnecting(false);
-        }
+        } catch { toast.error('Failed to initialize Google connection'); setIsConnecting(false); }
     };
 
     const fetchProperties = async () => {
         setIsFetching(true);
         try {
             const authToken = localStorage.getItem('access_token');
-            const response = await axios.get('/auth/gsc/properties', {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-
-            console.log('GSC Properties Response:', response.data);
-            setProperties(response.data.properties || []);
-
-            if (!response.data.properties || response.data.properties.length === 0) {
-                toast('No Search Console properties found. Make sure you have websites added to your Google Search Console account.', {
-                    duration: 6000
-                });
-            }
-        } catch (error) {
-            console.error('Fetch properties error:', error);
-            const errorMsg = error.response?.data?.detail || 'Failed to fetch properties';
-            toast.error(errorMsg);
+            const res = await axios.get('/auth/gsc/properties', { headers: { Authorization: `Bearer ${authToken}` } });
+            setProperties(res.data.properties || []);
+            if (!res.data.properties?.length) toast('No Search Console properties found.', { duration: 6000 });
+        } catch (err) {
+            toast.error(err.response?.data?.detail || 'Failed to fetch properties');
             setIsConnected(false);
-        } finally {
-            setIsFetching(false);
-        }
+        } finally { setIsFetching(false); }
     };
 
     const handleDisconnect = async () => {
         try {
             const authToken = localStorage.getItem('access_token');
-            await axios.post('/auth/gsc/disconnect', {}, {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
-
+            await axios.post('/auth/gsc/disconnect', {}, { headers: { Authorization: `Bearer ${authToken}` } });
             setIsConnected(false);
-            setGscToken(null);
             setProperties([]);
             onPropertySelect([]);
-            toast.success('Disconnected from Google Search Console');
-        } catch (error) {
-            console.error('Disconnect error:', error);
-            toast.error('Failed to disconnect');
-        }
+            toast.success('Disconnected from Search Console');
+        } catch { toast.error('Failed to disconnect'); }
     };
 
     const handlePropertyToggle = (property) => {
-        const isSelected = selectedProperties.some(p => p.url === property.url);
-
-        if (isSelected) {
-            // Deselect
+        const selected = selectedProperties.some(p => p.url === property.url);
+        if (selected) {
             onPropertySelect(selectedProperties.filter(p => p.url !== property.url));
         } else {
-            // Check limit before selecting
-            if (selectedProperties.length >= 5) {
-                toast.error('Maximum 5 properties can be selected');
-                return;
-            }
+            if (selectedProperties.length >= 5) { toast.error('Maximum 5 properties'); return; }
             onPropertySelect([...selectedProperties, property]);
         }
     };
@@ -226,206 +167,155 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         navigate(`/select-pages?property=${encodeURIComponent(property.url)}`);
     };
 
-    const filteredProperties = properties.filter(prop =>
-        prop.url.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filtered = properties.filter(p => p.url.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    // Show loading state while checking connection
-    if (isCheckingStatus) {
-        return (
-            <Card className="border-2 border-slate-200">
-                <div className="p-8 space-y-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-slate-200 rounded-xl animate-pulse"></div>
-                        <div className="flex-1 space-y-2">
-                            <div className="h-5 bg-slate-200 rounded animate-pulse w-48"></div>
-                            <div className="h-4 bg-slate-200 rounded animate-pulse w-32"></div>
-                        </div>
-                    </div>
-                    <div className="h-12 bg-slate-200 rounded-xl animate-pulse"></div>
-                </div>
-            </Card>
-        );
-    }
+    /* ── Loading ── */
+    if (isCheckingStatus) return <Skeleton />;
 
+    /* ── Not connected ── */
     if (!isConnected) {
         return (
-            <Card className="border-2 border-dashed border-primary-300 bg-gradient-to-br from-primary-50 to-purple-50">
-                <div className="text-center py-12 px-6">
-                    <div className="w-20 h-20 bg-gradient-to-br from-primary-500 to-purple-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-                        <ShieldCheckIcon className="w-10 h-10 text-white" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-slate-900 mb-3">
-                        Connect Google Search Console
-                    </h3>
-                    <p className="text-slate-600 mb-8 max-w-md mx-auto">
-                        Connect your Google Search Console account to select properties instead of manually entering URLs
-                    </p>
-                    <Button
-                        variant="primary"
-                        size="lg"
-                        onClick={handleGoogleConnect}
-                        isLoading={isConnecting || !isGoogleLoaded}
-                        disabled={isConnecting || !isGoogleLoaded}
-                        className="bg-gradient-to-r from-primary-600 to-purple-600 hover:from-primary-700 hover:to-purple-700 shadow-xl"
-                    >
-                        <LinkIcon className="w-5 h-5 mr-2" />
-                        {!isGoogleLoaded ? 'Loading...' : isConnecting ? 'Connecting...' : 'Connect Search Console'}
-                    </Button>
+            <motion.div
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center py-6 px-6 text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50"
+            >
+                <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-purple-300/40">
+                    <ShieldCheckIcon className="w-7 h-7 text-white" />
                 </div>
-            </Card>
+                <h3 className="text-xl font-bold text-slate-800 mb-3">Connect Google Search Console</h3>
+                <p className="text-base text-slate-500 mb-8 max-w-sm">
+                    Connect your GSC account to select properties and pages for analysis
+                </p>
+                <button
+                    onClick={handleGoogleConnect}
+                    disabled={isConnecting || !isGoogleLoaded}
+                    className={`flex items-center gap-2.5 px-8 py-3.5 rounded-xl text-white text-base font-bold transition-all
+                        ${isConnecting || !isGoogleLoaded
+                            ? 'bg-slate-300 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-violet-600 to-purple-600 shadow-md shadow-purple-300/40 hover:shadow-lg hover:shadow-purple-400/40'
+                        }`}
+                >
+                    <LinkIcon className="w-4 h-4" />
+                    {!isGoogleLoaded ? 'Loading...' : isConnecting ? 'Connecting...' : 'Connect Search Console'}
+                </button>
+            </motion.div>
         );
     }
 
+    /* ── Connected ── */
     return (
-        <Card className="border-2 border-primary-200">
-            <div className="p-6 space-y-6">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
-                            <CheckCircleIcon className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                            <h3 className="text-xl font-bold text-slate-900">Search Console Connected</h3>
-                            <p className="text-sm text-slate-500">{properties.length} properties available</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => fetchProperties()}
-                            disabled={isFetching}
-                        >
-                            <ArrowPathIcon className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDisconnect}
-                        >
-                            Disconnect
-                        </Button>
-                    </div>
+        <div className="w-full">
+            {/* Connection status bar */}
+            <div className="flex items-center justify-between px-6 py-5 bg-slate-50/80 border border-slate-100 rounded-2xl mb-6 sm:mb-8">
+                <div className="flex items-center gap-3">
+                    <SolidCheckCircle className="w-7 h-7 text-emerald-500" />
+                    <span className="text-base font-bold text-slate-800">Search Console Connected</span>
                 </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => fetchProperties()}
+                        disabled={isFetching}
+                        className="p-2.5 rounded-xl text-slate-400 hover:bg-white hover:text-slate-600 hover:shadow-sm transition-all"
+                        title="Refresh"
+                    >
+                        <ArrowPathIcon className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
+                        onClick={handleDisconnect}
+                        className="px-5 py-2 text-sm font-bold text-slate-600 border border-slate-200 rounded-xl bg-white hover:bg-slate-50 hover:text-slate-800 transition-all shadow-sm"
+                    >
+                        Disconnect
+                    </button>
+                </div>
+            </div>
 
-                {/* Search */}
-                <div className="relative">
-                    <MagnifyingGlassIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            {/* Search conditionally */}
+            {properties.length > 5 && (
+                <div className="relative mb-4">
+                    <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                     <input
                         type="text"
                         placeholder="Search properties..."
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-xl focus:border-primary-500 focus:outline-none transition-all"
+                        onChange={e => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-violet-400 transition-all bg-slate-50"
                     />
                 </div>
+            )}
 
-                {/* Properties List */}
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {isFetching ? (
-                        <div className="text-center py-8">
-                            <ArrowPathIcon className="w-8 h-8 text-primary-600 animate-spin mx-auto mb-2" />
-                            <p className="text-slate-600">Loading properties...</p>
-                        </div>
-                    ) : filteredProperties.length === 0 ? (
-                        <div className="text-center py-8">
-                            <XCircleIcon className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                            <p className="text-slate-600">No properties found</p>
-                        </div>
-                    ) : (
-                        <>
-                            {filteredProperties.map((property) => {
+            {/* Properties list */}
+            <div className="flex flex-col">
+                {isFetching ? (
+                    <Skeleton />
+                ) : filtered.length === 0 ? (
+                    <div className="flex flex-col items-center py-8 text-center bg-slate-50 rounded-xl border border-slate-100">
+                        <XCircleIcon className="w-10 h-10 text-slate-300 mb-2" />
+                        <p className="text-sm text-slate-500">No properties found</p>
+                    </div>
+                ) : (
+                    <div className="border-t border-slate-100/80 max-h-[400px] overflow-y-auto pr-1">
+                        <AnimatePresence>
+                            {filtered.map((property, idx) => {
                                 const isSelected = selectedProperties.some(p => p.url === property.url);
+                                const domain = getDomain(property.url);
+                                const faviconUrl = getFaviconUrl(property.url);
+                                const permLabel = property.permission_level?.replace(/_/g, ' ');
 
                                 return (
-                                    <div
+                                    <motion.div
                                         key={property.url}
+                                        initial={{ opacity: 0, y: 5 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: idx * 0.05 }}
                                         onClick={() => handlePropertyToggle(property)}
-                                        className={`
-                                            p-4 rounded-xl border-2 cursor-pointer transition-all
-                                            ${isSelected
-                                                ? 'border-primary-500 bg-primary-50'
-                                                : 'border-slate-200 hover:border-primary-300 hover:bg-slate-50'
-                                            }
-                                        `}
+                                        className={`flex flex-col sm:flex-row sm:items-center justify-between py-5 border-b border-slate-100/80 cursor-pointer transition-all duration-200 gap-4 group px-3
+                                            ${isSelected ? 'bg-violet-50/40 rounded-xl' : 'hover:bg-slate-50 rounded-xl'}`}
                                     >
-                                        <div className="flex items-center justify-between gap-3">
-                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                <div className={`
-                                                    w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
-                                                    ${isSelected
-                                                        ? 'bg-primary-500'
-                                                        : 'bg-slate-200'
-                                                    }
-                                                `}>
-                                                    {isSelected ? (
-                                                        <CheckCircleIcon className="w-6 h-6 text-white" />
-                                                    ) : (
-                                                        <LinkIcon className="w-5 h-5 text-slate-600" />
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="font-medium text-slate-900 truncate">
-                                                            {property.url}
-                                                        </p>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                navigator.clipboard.writeText(property.url);
-                                                                toast.success('URL copied to clipboard!');
-                                                            }}
-                                                            className="p-1 hover:bg-slate-200 rounded transition-colors flex-shrink-0"
-                                                            title="Copy URL"
-                                                        >
-                                                            <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                    <p className="text-xs text-slate-500 capitalize">
-                                                        {property.permission_level?.replace('_', ' ')}
-                                                    </p>
+                                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                                            {/* Favicon / Icon */}
+                                            <div className="w-12 h-12 rounded-xl bg-violet-50 flex flex-shrink-0 items-center justify-center">
+                                                {faviconUrl ? (
+                                                    <img src={faviconUrl} alt={domain} className="w-6 h-6 object-contain opacity-90"
+                                                        onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'block'; }}
+                                                    />
+                                                ) : null}
+                                                <LinkIcon className={`w-6 h-6 text-violet-400 ${faviconUrl ? 'hidden' : ''}`} />
+                                            </div>
+
+                                            {/* Domain & Permission */}
+                                            <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-center">
+                                                <p className="text-base font-bold text-slate-800 truncate">{domain}</p>
+                                                <p className="text-sm font-medium text-slate-500 capitalize hidden sm:block truncate">{permLabel}</p>
+                                                
+                                                <div className="hidden lg:flex items-center gap-2 text-emerald-500 font-bold text-sm">
+                                                    <SolidCheckCircle className="w-5 h-5" />
+                                                    <span>Connected</span>
                                                 </div>
                                             </div>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={(e) => handleSelectPages(property, e)}
-                                                className="flex-shrink-0"
-                                            >
-                                                <DocumentMagnifyingGlassIcon className="w-4 h-4 mr-1" />
-                                                Select Pages
-                                            </Button>
                                         </div>
-                                    </div>
+
+                                        {/* Actions */}
+                                        <div className="flex items-center justify-end gap-4 flex-shrink-0">
+                                            <div className="mr-3 h-5 w-5">
+                                                {isSelected && <CheckCircleIcon className="w-6 h-6 text-violet-600 animate-pulse" />}
+                                            </div>
+                                            <button
+                                                onClick={e => handleSelectPages(property, e)}
+                                                className="px-5 py-2 text-sm font-bold border border-violet-400/80 text-violet-600 rounded-xl bg-white hover:bg-violet-50 hover:text-violet-700 transition-colors shadow-sm"
+                                            >
+                                                Select Pages
+                                            </button>
+                                        </div>
+                                    </motion.div>
                                 );
                             })}
-                        </>
-                    )}
-                </div>
-
-                {/* Selected Count */}
-                {selectedProperties.length > 0 && (
-                    <div className="pt-4 border-t-2 border-slate-200">
-                        <div className="flex items-center justify-between">
-                            <p className="text-sm text-slate-600">
-                                <span className="font-bold text-primary-600">{selectedProperties.length}/5</span> properties selected
-                            </p>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => onPropertySelect([])}
-                            >
-                                Clear All
-                            </Button>
-                        </div>
+                        </AnimatePresence>
                     </div>
                 )}
             </div>
-        </Card>
+
+        </div>
     );
 };
 

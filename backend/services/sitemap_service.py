@@ -39,8 +39,29 @@ class SitemapService:
         parsed = urlparse(base_url)
         base = f"{parsed.scheme}://{parsed.netloc}"
         
+        # 1. Try to find sitemaps dynamically from robots.txt first
+        robots_url = urljoin(base, '/robots.txt')
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, verify=False, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}) as client:
+                robots_response = await client.get(robots_url)
+                if robots_response.status_code == 200:
+                    lines = robots_response.text.splitlines()
+                    for line in lines:
+                        if line.strip().lower().startswith('sitemap:'):
+                            sitemap_url = line.split(':', 1)[1].strip()
+                            # Ensure we don't duplicate it and it gets prioritized
+                            if sitemap_url not in [urljoin(base, loc) for loc in sitemap_locations]:
+                                sitemap_locations.insert(0, sitemap_url) # Prioritize author's explicit sitemap
+        except Exception as e:
+            logger.warning(f"Failed to fetch robots.txt for {base}: {str(e)}")
+            
         for location in sitemap_locations:
-            sitemap_url = urljoin(base, location)
+            # If the location is already a full URL (from robots.txt)
+            if location.startswith('http'):
+                sitemap_url = location
+            else:
+                sitemap_url = urljoin(base, location)
+                
             urls = await self._parse_sitemap(sitemap_url)
             
             if urls:
@@ -61,10 +82,17 @@ class SitemapService:
         """Parse a sitemap XML file"""
         try:
             # Disable SSL verification to handle sites with certificate issues
+            # Add a common browser user-agent to bypass basic bot protections and WAFs
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
             async with httpx.AsyncClient(
                 timeout=self.timeout, 
                 follow_redirects=True,
-                verify=False  # Bypass SSL verification
+                verify=False,  # Bypass SSL verification
+                headers=headers
             ) as client:
                 response = await client.get(sitemap_url)
                     

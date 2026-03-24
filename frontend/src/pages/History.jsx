@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import Card from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Badge from '../components/ui/Badge';
+import { motion, AnimatePresence } from 'framer-motion';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import {
     ClockIcon,
     GlobeAltIcon,
     ChartBarIcon,
-    CheckCircleIcon,
-    ExclamationCircleIcon,
     ArrowRightIcon,
-    TrashIcon
+    TrashIcon,
+    CheckCircleIcon,
+    SparklesIcon
 } from '@heroicons/react/24/outline';
+import { CheckCircleIcon as SolidCheckCircle } from '@heroicons/react/24/solid';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
@@ -49,7 +47,6 @@ const History = () => {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success('Analysis deleted successfully');
-            // Refresh the list
             fetchHistory();
         } catch (error) {
             console.error('Failed to delete analysis:', error);
@@ -69,216 +66,192 @@ const History = () => {
         }).format(date);
     };
 
-    const getStatusBadge = (status) => {
-        switch (status) {
-            case 'completed':
-                return (
-                    <Badge color="green" className="flex items-center gap-1">
-                        <CheckCircleIcon className="w-4 h-4" />
-                        Completed
-                    </Badge>
-                );
-            case 'processing':
-                return (
-                    <Badge color="blue" className="flex items-center gap-1">
-                        <ClockIcon className="w-4 h-4 animate-spin" />
-                        Processing
-                    </Badge>
-                );
-            case 'failed':
-                return (
-                    <Badge color="red" className="flex items-center gap-1">
-                        <ExclamationCircleIcon className="w-4 h-4" />
-                        Failed
-                    </Badge>
-                );
-            default:
-                return <Badge color="gray">{status}</Badge>;
-        }
-    };
-
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-slate-600 font-medium text-lg">Loading analysis history...</p>
+            <div className="flex-1 w-full flex items-center justify-center min-h-[calc(100vh-160px)]" style={{ background: '#f5f4fa' }}>
+                <div className="flex flex-col items-center">
+                    <SparklesIcon className="w-10 h-10 text-violet-500 animate-spin mb-4" />
+                    <p className="text-slate-500 font-bold text-base">Loading history...</p>
                 </div>
             </div>
         );
     }
 
+    const completedCount = analyses.filter(a => a.status === 'completed').length;
+    const urlsCount = analyses.reduce((sum, a) => sum + (a.urls?.length || 0), 0);
+
     return (
-        <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                {/* Header */}
+        <div className="flex-1 w-full min-h-[calc(100vh-160px)] py-8 sm:py-12 px-4 sm:px-8" style={{ background: '#f5f4fa' }}>
+            <div className="max-w-[1024px] mx-auto w-full">
+                
+                {/* ── Header ── */}
                 <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-12"
+                    transition={{ duration: 0.3 }}
+                    className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-10"
                 >
-                    <div className="flex items-center justify-between mb-6">
-                        <div>
-                            <h1 className="text-4xl font-bold mb-2">
-                                <span className="bg-gradient-to-r from-primary-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                                    Analysis History
-                                </span>
-                            </h1>
-                            <p className="text-xl text-slate-600">
-                                View and manage your past website analyses
-                            </p>
+                    <div>
+                        <h1 className="text-3xl font-bold text-slate-800 mb-2">Analysis History</h1>
+                        <p className="text-base font-medium text-slate-500">View and manage your past website analyses</p>
+                    </div>
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        className="px-6 py-3 rounded-full text-white font-bold text-sm transition-all duration-300 shadow-lg flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 hover:shadow-purple-500/40 hover:-translate-y-0.5"
+                    >
+                        <ChartBarIcon className="w-5 h-5" />
+                        New Analysis
+                    </button>
+                </motion.div>
+
+                {/* ── Stats Row ── */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                    className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10"
+                >
+                    <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.03)] border border-slate-100 flex items-center gap-5">
+                        <div className="w-14 h-14 bg-violet-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <ChartBarIcon className="w-7 h-7 text-violet-600" />
                         </div>
-                        <Button
-                            onClick={() => navigate('/dashboard')}
-                            className="bg-gradient-to-r from-primary-600 to-purple-600"
-                        >
-                            <ChartBarIcon className="w-5 h-5 mr-2" />
-                            New Analysis
-                        </Button>
+                        <div>
+                            <div className="text-3xl font-bold text-slate-800">{analyses.length}</div>
+                            <div className="text-sm font-bold text-slate-500">Total Analyses</div>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.03)] border border-slate-100 flex items-center gap-5">
+                        <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <SolidCheckCircle className="w-7 h-7 text-emerald-500" />
+                        </div>
+                        <div>
+                            <div className="text-3xl font-bold text-slate-800">{completedCount}</div>
+                            <div className="text-sm font-bold text-slate-500">Completed</div>
+                        </div>
                     </div>
 
-                    {/* Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
-                                    <ChartBarIcon className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <div className="text-2xl font-bold text-blue-900">{analyses.length}</div>
-                                    <div className="text-sm text-blue-700">Total Analyses</div>
-                                </div>
-                            </div>
-                        </Card>
-                        <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
-                                    <CheckCircleIcon className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <div className="text-2xl font-bold text-green-900">
-                                        {analyses.filter(a => a.status === 'completed').length}
-                                    </div>
-                                    <div className="text-sm text-green-700">Completed</div>
-                                </div>
-                            </div>
-                        </Card>
-                        <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
-                                    <GlobeAltIcon className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <div className="text-2xl font-bold text-purple-900">
-                                        {analyses.reduce((sum, a) => sum + a.urls.length, 0)}
-                                    </div>
-                                    <div className="text-sm text-purple-700">URLs Analyzed</div>
-                                </div>
-                            </div>
-                        </Card>
+                    <div className="bg-white rounded-[24px] p-6 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.03)] border border-slate-100 flex items-center gap-5">
+                        <div className="w-14 h-14 bg-fuchsia-50 rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <GlobeAltIcon className="w-7 h-7 text-fuchsia-600" />
+                        </div>
+                        <div>
+                            <div className="text-3xl font-bold text-slate-800">{urlsCount}</div>
+                            <div className="text-sm font-bold text-slate-500">URLs Analyzed</div>
+                        </div>
                     </div>
                 </motion.div>
 
-                {/* Analysis List */}
+                {/* ── Analysis List ── */}
                 {analyses.length === 0 ? (
-                    <Card className="text-center py-16">
-                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <ClockIcon className="w-10 h-10 text-slate-400" />
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="bg-white rounded-[32px] p-12 text-center shadow-[0_20px_50px_-15px_rgba(0,0,0,0.05)] border border-slate-100"
+                    >
+                        <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                            <ClockIcon className="w-10 h-10 text-slate-300" />
                         </div>
-                        <h3 className="text-xl font-semibold mb-2 text-slate-900">No analyses yet</h3>
-                        <p className="text-slate-600 mb-6">Start your first website analysis to see results here</p>
-                        <Button onClick={() => navigate('/dashboard')}>
+                        <h3 className="text-xl font-bold text-slate-800 mb-2">No analyses yet</h3>
+                        <p className="text-base text-slate-500 mb-8">Start your first website analysis to see results here</p>
+                        <button
+                            onClick={() => navigate('/dashboard')}
+                            className="px-8 py-3.5 rounded-full text-white font-bold text-base transition-all duration-300 shadow-xl bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 hover:shadow-purple-500/40 hover:-translate-y-0.5"
+                        >
                             Start Analyzing
-                        </Button>
-                    </Card>
+                        </button>
+                    </motion.div>
                 ) : (
-                    <div className="space-y-4">
-                        {analyses.map((analysis, index) => (
-                            <motion.div
-                                key={analysis.analysis_id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: index * 0.05 }}
-                            >
-                                <Card className="hover:shadow-xl transition-all duration-300 border-2 border-slate-200 hover:border-primary-300">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-3">
-                                                <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-purple-500 rounded-lg flex items-center justify-center">
-                                                    <GlobeAltIcon className="w-6 h-6 text-white" />
-                                                </div>
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-semibold text-slate-900">
-                                                            {analysis.urls.length} Website{analysis.urls.length > 1 ? 's' : ''}
-                                                        </span>
-                                                        {getStatusBadge(analysis.status)}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 text-sm text-slate-500">
-                                                        <ClockIcon className="w-4 h-4" />
-                                                        {formatDate(analysis.created_at)}
-                                                    </div>
-                                                </div>
+                    <div className="space-y-5">
+                        <AnimatePresence>
+                            {analyses.map((analysis, index) => (
+                                <motion.div
+                                    key={analysis.analysis_id}
+                                    initial={{ opacity: 0, y: 15 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.2 } }}
+                                    transition={{ delay: index * 0.05 }}
+                                    className="bg-white rounded-[24px] p-6 sm:p-8 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.03)] border border-slate-100 hover:shadow-[0_20px_40px_-15px_rgba(139,92,246,0.15)] transition-shadow duration-300 flex flex-col sm:flex-row gap-6 justify-between items-start sm:items-center group"
+                                >
+                                    {/* Left Side: Info */}
+                                    <div className="flex-1 min-w-0 flex items-start sm:items-center gap-5">
+                                        <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-fuchsia-500 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-md shadow-purple-200">
+                                            <GlobeAltIcon className="w-7 h-7 text-white" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                                                <h3 className="text-lg font-bold text-slate-800">
+                                                    {analysis.urls?.length || 0} Website{(analysis.urls?.length || 0) !== 1 ? 's' : ''}
+                                                </h3>
+                                                {analysis.status === 'completed' && (
+                                                    <span className="px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold flex items-center gap-1.5 border border-emerald-100">
+                                                        <SolidCheckCircle className="w-3.5 h-3.5" />
+                                                        Completed
+                                                    </span>
+                                                )}
+                                                {analysis.status === 'processing' && (
+                                                    <span className="px-3 py-1 bg-violet-50 text-violet-600 rounded-full text-xs font-bold flex items-center gap-1.5 border border-violet-100">
+                                                        <SparklesIcon className="w-3.5 h-3.5 animate-spin" />
+                                                        Processing
+                                                    </span>
+                                                )}
+                                                {analysis.status === 'failed' && (
+                                                    <span className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs font-bold flex items-center gap-1.5 border border-red-100">
+                                                        Failed
+                                                    </span>
+                                                )}
                                             </div>
-
-                                            {/* URLs */}
-                                            <div className="space-y-2 ml-13 pl-1 max-w-2xl">
-                                                {analysis.urls.map((url, urlIndex) => (
-                                                    <div
-                                                        key={urlIndex}
-                                                        className="text-sm flex items-start gap-2 group"
-                                                    >
-                                                        <div className="w-1.5 h-1.5 bg-primary-400 rounded-full flex-shrink-0 mt-1.5"></div>
-                                                        <a
-                                                            href={url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-primary-600 hover:text-primary-700 hover:underline transition-colors break-all line-clamp-2"
-                                                            title={url}
-                                                        >
-                                                            {url}
-                                                        </a>
+                                            <div className="flex items-center gap-2 text-sm font-medium text-slate-400 mb-3">
+                                                <ClockIcon className="w-4 h-4" />
+                                                {formatDate(analysis.created_at)}
+                                            </div>
+                                            <div className="flex flex-col gap-1.5">
+                                                {analysis.urls?.slice(0, 3).map((url, urlIndex) => (
+                                                    <div key={urlIndex} className="flex items-center gap-2 text-sm">
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-violet-300 flex-shrink-0"></div>
+                                                        <span className="text-slate-500 truncate" title={url}>{url}</span>
                                                     </div>
                                                 ))}
+                                                {(analysis.urls?.length || 0) > 3 && (
+                                                    <div className="text-xs font-bold text-violet-400 pl-3.5">
+                                                        + {analysis.urls.length - 3} more URLs
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-
-                                        {/* Actions */}
-                                        <div className="flex items-center gap-2 ml-4">
-                                            {analysis.status === 'completed' && (
-                                                <Button
-                                                    onClick={() => navigate(`/results/${analysis.analysis_id}`)}
-                                                    variant="primary"
-                                                >
-                                                    View Results
-                                                    <ArrowRightIcon className="w-4 h-4 ml-2" />
-                                                </Button>
-                                            )}
-                                            {analysis.status === 'processing' && (
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={() => navigate(`/results/${analysis.analysis_id}`)}
-                                                >
-                                                    Check Status
-                                                </Button>
-                                            )}
-                                            <Button
-                                                variant="outline"
-                                                onClick={() => setDeleteDialog({ isOpen: true, analysisId: analysis.analysis_id })}
-                                                className="text-red-600 hover:text-red-700 hover:border-red-300 hover:bg-red-50"
-                                            >
-                                                <TrashIcon className="w-4 h-4" />
-                                            </Button>
-                                        </div>
                                     </div>
-                                </Card>
-                            </motion.div>
-                        ))}
+
+                                    {/* Right Side: Actions */}
+                                    <div className="flex items-center gap-3 w-full sm:w-auto pt-4 sm:pt-0 border-t border-slate-100 sm:border-0 justify-end">
+                                        {(analysis.status === 'completed' || analysis.status === 'processing') && (
+                                            <button
+                                                onClick={() => navigate(`/results/${analysis.analysis_id}`)}
+                                                className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm flex items-center gap-2
+                                                    ${analysis.status === 'completed' 
+                                                        ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white hover:shadow-md hover:shadow-purple-500/30' 
+                                                        : 'bg-white border border-violet-200 text-violet-600 hover:bg-violet-50'
+                                                    }`}
+                                            >
+                                                {analysis.status === 'completed' ? 'View Results' : 'Check Status'}
+                                                {analysis.status === 'completed' && <ArrowRightIcon className="w-4 h-4" />}
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setDeleteDialog({ isOpen: true, analysisId: analysis.analysis_id })}
+                                            className="p-2.5 rounded-xl text-slate-400 bg-white border border-slate-200 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all shadow-sm"
+                                            title="Delete Analysis"
+                                        >
+                                            <TrashIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
                     </div>
                 )}
             </div>
 
-            {/* Delete Confirmation Dialog */}
+            {/* Delete Dialog */}
             <ConfirmDialog
                 isOpen={deleteDialog.isOpen}
                 onClose={() => setDeleteDialog({ isOpen: false, analysisId: null })}
