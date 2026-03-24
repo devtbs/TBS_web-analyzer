@@ -269,8 +269,10 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ delay: idx * 0.05 }}
                                         onClick={() => handlePropertyToggle(property)}
-                                        className={`flex flex-col sm:flex-row sm:items-center justify-between py-5 border-b border-slate-100/80 cursor-pointer transition-all duration-200 gap-4 group px-3
-                                            ${isSelected ? 'bg-violet-50/40 rounded-xl' : 'hover:bg-slate-50 rounded-xl'}`}
+                                        className={`flex flex-col sm:flex-row sm:items-center justify-between py-4 mb-3 border cursor-pointer transition-all duration-300 gap-4 group px-5 rounded-2xl
+                                            ${isSelected 
+                                                ? 'bg-violet-100 border-violet-400 shadow-md ring-1 ring-violet-500/30' 
+                                                : 'bg-white border-slate-200 shadow-sm hover:border-violet-300 hover:shadow-md hover:bg-violet-50/50 hover:-translate-y-1'}`}
                                     >
                                         <div className="flex items-center gap-4 flex-1 min-w-0">
                                             {/* Favicon / Icon */}
