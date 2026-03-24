@@ -16,6 +16,7 @@ import {
     ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { toPng } from 'html-to-image';
+import { jsPDF } from 'jspdf';
 
 const TopicalMap = ({ topicalMaps }) => {
     const [activeIndex, setActiveIndex] = useState(0);
@@ -66,7 +67,6 @@ const TopicalMap = ({ topicalMaps }) => {
                 return true;
             };
 
-            // html-to-image is significantly better at native Flexbox/Absolute positioning
             const dataUrl = await toPng(element, {
                 quality: 1.0,
                 pixelRatio: 2, // High resolution output
@@ -84,6 +84,49 @@ const TopicalMap = ({ topicalMaps }) => {
             link.click();
         } catch (err) {
             console.error('Failed to export PNG', err);
+        }
+    };
+
+    const exportToPDF = async (elementId, filename) => {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        try {
+            const filter = (node) => {
+                if (node?.hasAttribute && node.hasAttribute('data-html2canvas-ignore')) {
+                    return false;
+                }
+                return true;
+            };
+
+            const dataUrl = await toPng(element, {
+                quality: 1.0,
+                pixelRatio: 2, 
+                backgroundColor: '#ffffff',
+                filter: filter,
+                style: {
+                    margin: '0', 
+                    transform: 'none'
+                }
+            });
+            
+            // Standard A4 width is 210mm
+            const pdfWidth = 210;
+            // Calculate height proportionately based on DOM element aspect ratio
+            const pdfHeight = (element.offsetHeight * pdfWidth) / element.offsetWidth;
+            
+            // Create a custom-sized PDF that acts as a continuous digital presentation board
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: [pdfWidth, pdfHeight]
+            });
+            
+            pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.save(`${filename}.pdf`);
+            
+        } catch (err) {
+            console.error('Failed to export PDF', err);
         }
     };
 
@@ -140,7 +183,7 @@ const TopicalMap = ({ topicalMaps }) => {
         </div>
     );
 
-    const exportAllToPNG = () => {
+    const exportAllToPDF = () => {
         // Automatically expand all collapsed sections first for a complete client export
         setExpandedSections({
             semantic: true,
@@ -157,14 +200,14 @@ const TopicalMap = ({ topicalMaps }) => {
 
         // Give React a tiny moment (500ms) to finish the expand DOM animations
         setTimeout(() => {
-            exportToPNG('export-full-topical-map', `${activeMap.central_entity?.replace(/\s+/g, '-').toLowerCase() || 'full'}-topical-map-complete`);
+            exportToPDF('export-full-topical-map', `${activeMap.central_entity?.replace(/\s+/g, '-').toLowerCase() || 'full'}-topical-map-complete`);
         }, 500);
     };
 
     return (
         <div className="space-y-6" id="export-full-topical-map">
             {/* URL Selector & Global Export */}
-            <div className="flex items-center justify-between gap-4 flex-wrap" data-html2canvas-ignore="true">
+            <div className="flex items-center justify-between w-full gap-4 flex-wrap mb-2" data-html2canvas-ignore="true">
                 <div className="flex gap-2 flex-wrap">
                     {topicalMaps.length > 1 && topicalMaps.map((map, index) => {
                         const domain = new URL(map.url).hostname.replace('www.', '');
@@ -185,11 +228,11 @@ const TopicalMap = ({ topicalMaps }) => {
                 </div>
                 
                 <button
-                    onClick={exportAllToPNG}
+                    onClick={exportAllToPDF}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium shadow-md shadow-blue-500/20 transition-all ml-auto ml-auto"
                 >
-                    <ArrowDownTrayIcon className="w-5 h-5" />
-                    Export Full Map Data
+                    <DocumentTextIcon className="w-5 h-5" />
+                    Export Map to PDF
                 </button>
             </div>
 
