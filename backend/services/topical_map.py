@@ -604,15 +604,10 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                     
                     # Second pass: remove nodes and update parent references
                     for node in taxonomy:
-                        # Skip nodes marked for removal
                         if node.name in nodes_to_remove:
                             continue
-                        
-                        # Remove references to deleted nodes from children arrays
                         if node.children:
                             node.children = [child for child in node.children if child not in nodes_to_remove]
-                        
-                        # Only keep nodes that aren't marked for removal
                         validated_taxonomy.append(node)
                     
                     taxonomy = validated_taxonomy if validated_taxonomy else None
@@ -627,105 +622,45 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                 ontology = [OntologyRelation(**relation) for relation in result['ontology']]
 
             
-            # Hybrid competitor detection: AI generates smart queries + SERP gets real results
+            # Competitor detection: AI is the source of truth for competitors.
+            # SERP is only used to enrich PAA questions and related searches.
+            # Rationale: SERP returns sites that *rank* for broad keywords (e.g. g2.com, gartner.com),
+            # not actual business competitors. The AI correctly identifies real rivals
+            # (e.g. bing.com / ecosia.com for google.com) based on semantic understanding.
             if competitive_analysis:
-                print(f"🔍 Finding competitors using AI analysis + SERP API...")
+                print(f"✅ Using AI-identified competitors: {', '.join(competitive_analysis.top_competitors[:5])}")
                 
-                # Step 1: Use AI to generate smart search queries based on scraped content
-                query_generation_prompt = f"""Based on this business analysis, generate 3-5 highly specific Google search queries that would find direct competitors.
-
-Business Information:
-- Domain: {content_data.get('domain')}
-- Business Model: {result.get('business_model', '')}
-- Central Entity: {result.get('central_entity', '')}
-- Services/Products: {', '.join(result.get('key_topics', [])[:5])}
-- Target Audience: {', '.join(result.get('target_audiences', [])[:3])}
-- Business Description: {result.get('business_description', '')[:500]}
-
-Site Content Themes:
-{', '.join(content_data.get('existing_content_themes', [])[:10])}
-
-Instructions:
-1. Create 3-5 search queries that would find direct competitors on Google
-2. Be specific about the industry, services, and location (if applicable)
-3. Use terms like "best", "top", "agency", "company", "services" to find business websites
-4. Example good queries: "custom tailoring bangkok", "bespoke suits thailand", "luxury tailors asia"
-5. Example bad queries: "tailoring" (too generic), "suits" (too broad)
-
-Return ONLY a JSON array of search queries:
-["query 1", "query 2", "query 3"]
-"""
-
                 try:
                     from .serp_service import serp_service
                     
-                    # Generate smart search queries using AI
-                    queries_result = await ai_service.extract_json(
-                        query_generation_prompt,
-                        "You are a search query expert. Return only valid JSON array of search queries.",
-                        use_deepseek=True
-                    )
+                    # Use key topics as search queries to fetch PAA + related searches from SERP
+                    # (we do NOT use these results to overwrite competitors)
+                    serp_queries = result.get('key_topics', [])[:3]
+                    if not serp_queries:
+                        serp_queries = [result.get('central_entity', domain)]
                     
-                    # Extract queries
-                    if isinstance(queries_result, list):
-                        search_queries = queries_result[:5]
-                    elif isinstance(queries_result, dict) and 'queries' in queries_result:
-                        search_queries = queries_result['queries'][:5]
-                    else:
-                        # Fallback to basic queries
-                        search_queries = [
-                            f"{result.get('business_model', '')} {result.get('central_entity', '')}",
-                            f"{result.get('key_topics', [''])[0]} services"
-                        ]
+                    print(f"  📊 Fetching SERP enrichment (PAA/related searches) for: {serp_queries}")
+                    serp_insights = await serp_service.get_serp_insights(serp_queries, domain)
                     
-                    print(f"  📊 AI-generated search queries: {search_queries}")
-                    
-                    # Step 2: Use SERP API to get real competitors from Google
-                    serp_insights = await serp_service.get_serp_insights(search_queries, domain)
-                    
-                    # Extract competitor domains
-                    serp_competitors = [c['domain'] for c in serp_insights['top_competitors'] if isinstance(c, dict)]
-                    
-                    # Step 3: Filter out generic/irrelevant domains
-                    generic_domains = [
-                        'linkedin', 'facebook', 'twitter', 'instagram', 'youtube',
-                        'wikipedia', 'reddit', 'medium', 'quora', 'pinterest',
-                        'yelp', 'tripadvisor', 'yellowpages', 'mapquest', 'google',
-                        'hubspot', 'amazonaws', 'cloudfront', 'foursquare', 'booking.com'
-                    ]
-                    
-                    real_competitors = [
-                        c for c in serp_competitors 
-                        if c != domain and not any(generic in c.lower() for generic in generic_domains)
-                    ][:15]
-                    
-                    if real_competitors:
-                        print(f"✅ Found {len(real_competitors)} real competitors from SERP: {', '.join(real_competitors[:3])}...")
-                        competitive_analysis.top_competitors = real_competitors
-                        
-                        # Add SERP insights (People Also Ask, Related Searches)
-                        if serp_insights.get('people_also_ask'):
-                            competitive_analysis.serp_insights.extend([
-                                f"PAA: {q}" for q in serp_insights['people_also_ask'][:10]
-                            ])
-                        
-                        if serp_insights.get('related_searches'):
-                            competitive_analysis.serp_insights.extend([
-                                f"Related: {s}" for s in serp_insights['related_searches'][:5]
-                            ])
-                        
-                        # Add competitor insights
-                        competitive_analysis.content_approaches.extend([
-                            f"Top ranking competitors: {', '.join(real_competitors[:3])}",
-                            "Analyze competitor content strategies for these domains"
+                    # Only use SERP data to enrich PAA questions and related searches
+                    if serp_insights.get('people_also_ask'):
+                        competitive_analysis.serp_insights.extend([
+                            f"PAA: {q}" for q in serp_insights['people_also_ask'][:10]
                         ])
-                    else:
-                        print(f"⚠️ No specific competitors found from SERP, keeping AI suggestions")
-                        # Keep original AI competitors from main analysis
+                        print(f"  ✅ Added {len(serp_insights['people_also_ask'][:10])} PAA questions from SERP")
+                    
+                    if serp_insights.get('related_searches'):
+                        competitive_analysis.serp_insights.extend([
+                            f"Related: {s}" for s in serp_insights['related_searches'][:5]
+                        ])
+                        print(f"  ✅ Added {len(serp_insights['related_searches'][:5])} related searches from SERP")
+                    
+                    # NOTE: We intentionally do NOT overwrite competitive_analysis.top_competitors here.
+                    # The AI already identified the correct direct competitors in the main analysis prompt.
                     
                 except Exception as e:
-                    print(f"⚠️ Error in hybrid competitor analysis: {str(e)}")
-                    # Keep original AI competitors from main analysis
+                    print(f"⚠️ Error fetching SERP enrichment (PAA/related): {str(e)}")
+                    # Competitors from AI are already set — no fallback needed
                     pass
 
             

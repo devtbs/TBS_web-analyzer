@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ProgressModal from '../components/ui/ProgressModal';
@@ -20,6 +20,20 @@ const Dashboard = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [analysisId, setAnalysisId] = useState(null);
     const [useGSC, setUseGSC] = useState(true);
+    const [tabLoading, setTabLoading] = useState(false);
+    const tabTimerRef = useRef(null);
+
+    const switchTab = useCallback((toGSC) => {
+        if (toGSC === useGSC) return;
+        setTabLoading(true);
+        clearTimeout(tabTimerRef.current);
+        tabTimerRef.current = setTimeout(() => {
+            setUseGSC(toGSC);
+            setTabLoading(false);
+        }, 150);
+    }, [useGSC]);
+
+    useEffect(() => () => clearTimeout(tabTimerRef.current), []);
     const [selectedProperties, setSelectedProperties] = useState([]);
 
     const [selectedPages, setSelectedPages] = useState(() => {
@@ -128,7 +142,8 @@ const Dashboard = () => {
                                     style={{ left: useGSC ? '6px' : 'calc(50%)' }}
                                 />
                                 <button
-                                    onClick={() => setUseGSC(true)}
+                                    onClick={() => switchTab(true)}
+                                    disabled={tabLoading}
                                     className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-base font-bold relative z-10 transition-colors duration-200 
                                         ${useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
@@ -136,7 +151,8 @@ const Dashboard = () => {
                                     {useGSC && <div className="ml-3 w-5 h-5 bg-white rounded-full shadow-sm" />}
                                 </button>
                                 <button
-                                    onClick={() => setUseGSC(false)}
+                                    onClick={() => switchTab(false)}
+                                    disabled={tabLoading}
                                     className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-base font-bold relative z-10 transition-colors duration-200 
                                         ${!useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
@@ -147,7 +163,22 @@ const Dashboard = () => {
                         </div>
 
                         {/* ── Content ── */}
-                        <div className="min-h-[140px]">
+                        <div className="min-h-[140px] relative">
+                            {/* ── Tab Loading Overlay ── */}
+                            {tabLoading && (
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[2px] rounded-2xl"
+                                >
+                                    <div className="flex flex-col items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full border-[3px] border-violet-200 border-t-violet-600 animate-spin" />
+                                        <span className="text-sm font-semibold text-slate-400 tracking-wide">Switching...</span>
+                                    </div>
+                                </motion.div>
+                            )}
+
                             {useGSC ? (
                                 <GSCPropertySelector
                                     selectedProperties={selectedProperties}

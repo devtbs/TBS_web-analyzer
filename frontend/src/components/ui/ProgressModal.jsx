@@ -7,7 +7,8 @@ import {
     ArrowsRightLeftIcon,
     CheckIcon,
     XMarkIcon,
-    ClockIcon
+    ClockIcon,
+    SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 const ProgressModal = ({ analysisId, onComplete, onError }) => {
@@ -24,7 +25,6 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
 
     useEffect(() => {
         if (!analysisId) return;
-
         const token = localStorage.getItem('access_token');
         const eventSource = new EventSource(
             `/api/progress/${analysisId}?token=${encodeURIComponent(token)}`
@@ -33,17 +33,13 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
         eventSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                console.log('Progress update:', data);
-
                 setProgress(data);
 
-                // Calculate estimated time remaining
                 if (data.current_step > 0 && data.current_step < data.total_steps) {
-                    const elapsed = (Date.now() - startTime) / 1000; // seconds
+                    const elapsed = (Date.now() - startTime) / 1000;
                     const avgTimePerStep = elapsed / data.current_step;
                     const remainingSteps = data.total_steps - data.current_step;
-                    const estimated = Math.ceil(avgTimePerStep * remainingSteps);
-                    setEstimatedTime(estimated);
+                    setEstimatedTime(Math.ceil(avgTimePerStep * remainingSteps));
                 }
 
                 if (data.status === 'complete') {
@@ -70,255 +66,325 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
             eventSource.close();
         };
 
-        return () => {
-            eventSource.close();
-        };
+        return () => eventSource.close();
     }, [analysisId, onComplete, onError, startTime]);
 
     const steps = [
-        {
-            id: 1,
-            label: 'Scraping',
-            icon: GlobeAltIcon,
-            description: 'Extracting website content'
-        },
-        {
-            id: 2,
-            label: 'Knowledge Graph',
-            icon: ChartBarIcon,
-            description: 'Building entity relationships'
-        },
-        {
-            id: 3,
-            label: 'Topical Maps',
-            icon: DocumentTextIcon,
-            description: 'Creating content strategy'
-        },
-        {
-            id: 4,
-            label: 'Comparison',
-            icon: ArrowsRightLeftIcon,
-            description: 'Analyzing competitors'
-        },
-        {
-            id: 5,
-            label: 'Finalizing',
-            icon: CheckIcon,
-            description: 'Saving results'
-        }
+        { id: 1, label: 'Scraping',       icon: GlobeAltIcon,        description: 'Extracting website content' },
+        { id: 2, label: 'Knowledge Graph', icon: ChartBarIcon,         description: 'Building entity relationships' },
+        { id: 3, label: 'Topical Maps',    icon: DocumentTextIcon,     description: 'Creating content strategy' },
+        { id: 4, label: 'Comparison',      icon: ArrowsRightLeftIcon,  description: 'Analyzing competitors' },
+        { id: 5, label: 'Finalizing',      icon: CheckIcon,            description: 'Saving results' },
     ];
 
     const formatTime = (seconds) => {
         if (!seconds) return '';
-        if (seconds < 60) return `${seconds}s`;
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}m ${secs}s`;
+        if (seconds < 60) return `~${seconds}s`;
+        return `~${Math.floor(seconds / 60)}m ${seconds % 60}s`;
     };
 
     if (!isVisible) return null;
 
     const isComplete = progress.status === 'complete';
-    const isFailed = progress.status === 'failed';
+    const isFailed   = progress.status === 'failed';
+
+    /* ── colour tokens ── */
+    const accent   = isComplete ? '#10b981' : isFailed ? '#ef4444' : '#8b5cf6';
+    const accentEnd = isComplete ? '#059669' : isFailed ? '#dc2626' : '#a855f7';
 
     return (
         <AnimatePresence>
+            {/* ── Backdrop ── */}
             <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-50 flex items-center justify-center p-4"
+                className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style={{ background: 'rgba(8,8,20,0.80)', backdropFilter: 'blur(18px)' }}
             >
+                {/* Decorative glow blobs */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div style={{
+                        position: 'absolute', top: '20%', left: '30%',
+                        width: 500, height: 500, borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)',
+                        filter: 'blur(40px)',
+                    }} />
+                    <div style={{
+                        position: 'absolute', bottom: '15%', right: '25%',
+                        width: 400, height: 400, borderRadius: '50%',
+                        background: 'radial-gradient(circle, rgba(168,85,247,0.12) 0%, transparent 70%)',
+                        filter: 'blur(40px)',
+                    }} />
+                </div>
+
+                {/* ── Card ── */}
                 <motion.div
-                    initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                    initial={{ scale: 0.94, opacity: 0, y: 24 }}
                     animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.95, opacity: 0, y: 20 }}
-                    transition={{ type: 'spring', duration: 0.5, bounce: 0.3 }}
-                    className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
+                    exit={{ scale: 0.94, opacity: 0, y: 24 }}
+                    transition={{ type: 'spring', duration: 0.55, bounce: 0.25 }}
+                    style={{
+                        background: 'rgba(15,15,30,0.85)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        backdropFilter: 'blur(24px)',
+                        boxShadow: `0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06)`,
+                    }}
+                    className="relative w-full max-w-[440px] rounded-3xl overflow-hidden"
                 >
-                    {/* Header */}
-                    <div className="px-6 pt-6 pb-4 border-b border-slate-100">
-                        <div className="flex items-start justify-between mb-2">
-                            <div className="flex-1">
-                                <h3 className="text-xl font-semibold text-slate-900 mb-1">
-                                    {isComplete ? 'Analysis Complete' : isFailed ? 'Analysis Failed' : 'Processing Analysis'}
+
+                    {/* ── Top gradient bar ── */}
+                    <div style={{
+                        height: 3,
+                        background: `linear-gradient(90deg, ${accent}, ${accentEnd}, #ec4899)`,
+                        opacity: 0.9,
+                    }} />
+
+                    {/* ── Header ── */}
+                    <div className="px-7 pt-7 pb-5">
+                        <div className="flex items-center gap-3 mb-1">
+                            <motion.div
+                                animate={!isComplete && !isFailed ? { rotate: [0, 15, -15, 0] } : {}}
+                                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                                style={{
+                                    width: 38, height: 38, borderRadius: 12,
+                                    background: `linear-gradient(135deg, ${accent}33, ${accentEnd}22)`,
+                                    border: `1px solid ${accent}44`,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0,
+                                }}
+                            >
+                                {isComplete ? (
+                                    <CheckIcon style={{ width: 20, height: 20, color: accent }} />
+                                ) : isFailed ? (
+                                    <XMarkIcon style={{ width: 20, height: 20, color: accent }} />
+                                ) : (
+                                    <SparklesIcon style={{ width: 20, height: 20, color: accent }} />
+                                )}
+                            </motion.div>
+                            <div>
+                                <h3 style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', lineHeight: 1.2, letterSpacing: '-0.3px' }}>
+                                    {isComplete ? 'Analysis Complete' : isFailed ? 'Analysis Failed' : 'AI Processing'}
                                 </h3>
-                                <p className="text-sm text-slate-600">
-                                    {progress.message}
-                                </p>
                             </div>
-                            {isComplete && (
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ type: 'spring', delay: 0.2 }}
-                                    className="flex-shrink-0 w-10 h-10 bg-green-100 rounded-full flex items-center justify-center"
-                                >
-                                    <CheckIcon className="w-6 h-6 text-green-600" />
-                                </motion.div>
-                            )}
-                            {isFailed && (
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ type: 'spring', delay: 0.2 }}
-                                    className="flex-shrink-0 w-10 h-10 bg-red-100 rounded-full flex items-center justify-center"
-                                >
-                                    <XMarkIcon className="w-6 h-6 text-red-600" />
-                                </motion.div>
-                            )}
                         </div>
 
-                        {/* Time Estimate */}
+                        <p style={{ fontSize: 13.5, color: '#94a3b8', marginTop: 10, lineHeight: 1.5 }}>
+                            {progress.message}
+                        </p>
+
+                        {/* Time estimate pill */}
                         {!isComplete && !isFailed && estimatedTime && (
                             <motion.div
-                                initial={{ opacity: 0, y: -10 }}
+                                initial={{ opacity: 0, y: -6 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="flex items-center gap-2 mt-3 text-xs text-slate-500"
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    marginTop: 12, padding: '4px 10px', borderRadius: 999,
+                                    background: 'rgba(255,255,255,0.05)',
+                                    border: '1px solid rgba(255,255,255,0.08)',
+                                }}
                             >
-                                <ClockIcon className="w-4 h-4" />
-                                <span>Estimated time remaining: ~{formatTime(estimatedTime)}</span>
+                                <ClockIcon style={{ width: 13, height: 13, color: '#64748b' }} />
+                                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+                                    {formatTime(estimatedTime)} remaining
+                                </span>
                             </motion.div>
                         )}
                     </div>
 
-                    {/* Progress Bar */}
-                    <div className="px-6 py-5 bg-slate-50">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-semibold text-slate-700">Progress</span>
-                            <span className="text-sm font-bold text-blue-600">{progress.percentage}%</span>
+                    {/* ── Progress bar ── */}
+                    <div className="px-7 pb-5">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <span style={{ fontSize: 11.5, fontWeight: 600, color: '#475569', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Progress</span>
+                            <motion.span
+                                key={progress.percentage}
+                                initial={{ opacity: 0, y: -4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                style={{ fontSize: 13, fontWeight: 700, color: accent }}
+                            >
+                                {progress.percentage}%
+                            </motion.span>
                         </div>
-                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden relative">
+                        <div style={{ height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 999, overflow: 'hidden', position: 'relative' }}>
                             <motion.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${progress.percentage}%` }}
-                                transition={{ duration: 0.5, ease: 'easeOut' }}
-                                className={`h-full rounded-full relative ${isComplete ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
-                                        isFailed ? 'bg-gradient-to-r from-red-500 to-rose-500' :
-                                            'bg-gradient-to-r from-blue-500 to-indigo-500'
-                                    }`}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
+                                style={{
+                                    height: '100%', borderRadius: 999, position: 'relative',
+                                    background: `linear-gradient(90deg, ${accent}, ${accentEnd})`,
+                                    boxShadow: `0 0 12px ${accent}88`,
+                                }}
                             >
-                                {/* Shimmer effect */}
                                 {!isComplete && !isFailed && (
                                     <motion.div
-                                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+                                        style={{
+                                            position: 'absolute', inset: 0,
+                                            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent)',
+                                        }}
                                         animate={{ x: ['-100%', '200%'] }}
-                                        transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                                        transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
                                     />
                                 )}
                             </motion.div>
                         </div>
                     </div>
 
-                    {/* Steps */}
-                    <div className="px-6 py-5 space-y-3 max-h-80 overflow-y-auto">
-                        {steps.map((step, index) => {
-                            const Icon = step.icon;
-                            const isActive = step.id === progress.current_step;
-                            const isStepComplete = step.id < progress.current_step || isComplete;
-                            const isStepFailed = isFailed && step.id === progress.current_step;
+                    {/* ── Divider ── */}
+                    <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', marginInline: 28 }} />
 
-                            return (
-                                <motion.div
-                                    key={step.id}
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    transition={{ delay: index * 0.08, type: 'spring', stiffness: 200 }}
-                                    className="flex items-start gap-3"
-                                >
-                                    {/* Step Indicator */}
-                                    <div className="relative flex-shrink-0 pt-0.5">
-                                        <motion.div
-                                            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${isStepComplete ? 'bg-green-500 shadow-lg shadow-green-500/30' :
-                                                    isActive ? 'bg-blue-600 shadow-lg shadow-blue-600/30' :
-                                                        isStepFailed ? 'bg-red-500 shadow-lg shadow-red-500/30' :
-                                                            'bg-slate-200'
-                                                }`}
-                                            animate={isActive && !isStepFailed ? {
-                                                scale: [1, 1.05, 1],
-                                            } : {}}
-                                            transition={{ duration: 2, repeat: Infinity }}
-                                        >
-                                            {isStepComplete ? (
-                                                <CheckIcon className="w-5 h-5 text-white" />
-                                            ) : isStepFailed ? (
-                                                <XMarkIcon className="w-5 h-5 text-white" />
-                                            ) : (
-                                                <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                                            )}
-                                        </motion.div>
-                                        {isActive && !isStepFailed && (
+                    {/* ── Steps ── */}
+                    <div style={{ padding: '20px 28px 24px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            {steps.map((step, index) => {
+                                const Icon = step.icon;
+                                const isActive      = step.id === progress.current_step;
+                                const isStepDone    = step.id < progress.current_step || isComplete;
+                                const isStepFailed  = isFailed && step.id === progress.current_step;
+                                const isPending     = !isActive && !isStepDone && !isStepFailed;
+
+                                const stepAccent = isStepFailed ? '#ef4444' : isStepDone ? '#10b981' : '#8b5cf6';
+
+                                return (
+                                    <motion.div
+                                        key={step.id}
+                                        initial={{ opacity: 0, x: -16 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: index * 0.06, type: 'spring', stiffness: 260 }}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 14,
+                                            padding: '10px 12px',
+                                            borderRadius: 14,
+                                            background: isActive ? 'rgba(139,92,246,0.08)' : 'transparent',
+                                            border: isActive ? '1px solid rgba(139,92,246,0.18)' : '1px solid transparent',
+                                            transition: 'background 0.3s, border 0.3s',
+                                        }}
+                                    >
+                                        {/* Icon bubble */}
+                                        <div style={{ position: 'relative', flexShrink: 0 }}>
                                             <motion.div
-                                                className="absolute inset-0 rounded-full bg-blue-600"
-                                                initial={{ scale: 1, opacity: 0.5 }}
-                                                animate={{ scale: 1.6, opacity: 0 }}
-                                                transition={{ duration: 1.5, repeat: Infinity }}
-                                            />
-                                        )}
-                                    </div>
+                                                animate={isActive && !isStepFailed ? { scale: [1, 1.06, 1] } : {}}
+                                                transition={{ duration: 2.5, repeat: Infinity }}
+                                                style={{
+                                                    width: 36, height: 36, borderRadius: 10,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    background: isPending
+                                                        ? 'rgba(255,255,255,0.04)'
+                                                        : `linear-gradient(135deg, ${stepAccent}30, ${stepAccent}18)`,
+                                                    border: isPending
+                                                        ? '1px solid rgba(255,255,255,0.07)'
+                                                        : `1px solid ${stepAccent}40`,
+                                                    boxShadow: (isActive || isStepDone) ? `0 0 14px ${stepAccent}30` : 'none',
+                                                    transition: 'all 0.4s',
+                                                }}
+                                            >
+                                                {isStepDone ? (
+                                                    <CheckIcon style={{ width: 16, height: 16, color: stepAccent }} />
+                                                ) : isStepFailed ? (
+                                                    <XMarkIcon style={{ width: 16, height: 16, color: stepAccent }} />
+                                                ) : (
+                                                    <Icon style={{ width: 16, height: 16, color: isPending ? '#334155' : stepAccent }} />
+                                                )}
+                                            </motion.div>
 
-                                    {/* Step Content */}
-                                    <div className="flex-1 min-w-0 pt-0.5">
-                                        <p className={`text-sm font-semibold transition-colors ${isStepComplete ? 'text-slate-900' :
-                                                isActive ? 'text-slate-900' :
-                                                    isStepFailed ? 'text-red-600' :
-                                                        'text-slate-400'
-                                            }`}>
-                                            {step.label}
-                                        </p>
-                                        <p className={`text-xs mt-0.5 transition-colors ${isStepComplete ? 'text-slate-500' :
-                                                isActive ? 'text-slate-600' :
-                                                    isStepFailed ? 'text-red-500' :
-                                                        'text-slate-400'
-                                            }`}>
-                                            {step.description}
-                                        </p>
-                                    </div>
-
-                                    {/* Status Indicator */}
-                                    {isActive && !isStepFailed && (
-                                        <div className="flex gap-1 pt-2">
-                                            {[0, 1, 2].map((i) => (
+                                            {/* Pulse ring for active */}
+                                            {isActive && !isStepFailed && (
                                                 <motion.div
-                                                    key={i}
-                                                    className="w-1.5 h-1.5 bg-blue-600 rounded-full"
-                                                    animate={{ opacity: [0.3, 1, 0.3] }}
-                                                    transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.2 }}
+                                                    style={{
+                                                        position: 'absolute', inset: -3, borderRadius: 13,
+                                                        border: '1.5px solid rgba(139,92,246,0.5)',
+                                                    }}
+                                                    initial={{ opacity: 0.6, scale: 1 }}
+                                                    animate={{ opacity: 0, scale: 1.45 }}
+                                                    transition={{ duration: 1.6, repeat: Infinity }}
                                                 />
-                                            ))}
+                                            )}
                                         </div>
-                                    )}
-                                </motion.div>
-                            );
-                        })}
+
+                                        {/* Text */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <p style={{
+                                                fontSize: 13.5, fontWeight: 600, lineHeight: 1,
+                                                color: isPending ? '#475569' : '#e2e8f0',
+                                                transition: 'color 0.3s',
+                                            }}>
+                                                {step.label}
+                                            </p>
+                                            <p style={{
+                                                fontSize: 12, marginTop: 3, lineHeight: 1,
+                                                color: isPending ? '#334155' : '#64748b',
+                                                transition: 'color 0.3s',
+                                            }}>
+                                                {step.description}
+                                            </p>
+                                        </div>
+
+                                        {/* Active dots */}
+                                        {isActive && !isStepFailed && (
+                                            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                                                {[0, 1, 2].map(i => (
+                                                    <motion.div
+                                                        key={i}
+                                                        style={{ width: 5, height: 5, borderRadius: '50%', background: accent }}
+                                                        animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.2, 0.8] }}
+                                                        transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.22 }}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Done check badge */}
+                                        {isStepDone && !isComplete && (
+                                            <motion.div
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                transition={{ type: 'spring', stiffness: 400 }}
+                                                style={{
+                                                    width: 18, height: 18, borderRadius: '50%',
+                                                    background: '#10b981',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                <CheckIcon style={{ width: 10, height: 10, color: '#fff' }} />
+                                            </motion.div>
+                                        )}
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
                     </div>
 
-                    {/* Footer Message */}
-                    {isComplete && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="bg-gradient-to-r from-green-50 to-emerald-50 border-t border-green-100 px-6 py-4"
-                        >
-                            <p className="text-sm text-green-800 text-center font-medium flex items-center justify-center gap-2">
-                                <CheckIcon className="w-4 h-4" />
-                                Redirecting to results...
-                            </p>
-                        </motion.div>
-                    )}
-
-                    {isFailed && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            className="bg-gradient-to-r from-red-50 to-rose-50 border-t border-red-100 px-6 py-4"
-                        >
-                            <p className="text-sm text-red-800 text-center flex items-center justify-center gap-2">
-                                <XMarkIcon className="w-4 h-4" />
-                                {progress.message}
-                            </p>
-                        </motion.div>
-                    )}
+                    {/* ── Footer banners ── */}
+                    <AnimatePresence>
+                        {(isComplete || isFailed) && (
+                            <motion.div
+                                key="footer"
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                style={{
+                                    background: isComplete
+                                        ? 'linear-gradient(90deg, rgba(16,185,129,0.12), rgba(5,150,105,0.08))'
+                                        : 'linear-gradient(90deg, rgba(239,68,68,0.12), rgba(220,38,38,0.08))',
+                                    borderTop: `1px solid ${isComplete ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                                    padding: '14px 28px',
+                                }}
+                            >
+                                <p style={{
+                                    fontSize: 13, fontWeight: 600,
+                                    color: isComplete ? '#34d399' : '#f87171',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                }}>
+                                    {isComplete
+                                        ? <><CheckIcon style={{ width: 15, height: 15 }} /> Redirecting to your results…</>
+                                        : <><XMarkIcon style={{ width: 15, height: 15 }} />{progress.message}</>
+                                    }
+                                </p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </motion.div>
             </motion.div>
         </AnimatePresence>
