@@ -584,6 +584,7 @@ async def get_history(
             {
                 "analysis_id": a['analysis_id'],
                 "urls": a['urls'],
+                "label": a.get('label'),
                 "created_at": convert_to_bangkok(a['created_at']),
                 "status": a['status']
             }
@@ -617,3 +618,31 @@ async def delete_analysis(
     database_store.delete_analysis(db, analysis_id)
     
     return {"message": "Analysis deleted successfully"}
+
+
+@router.patch("/api/analysis/{analysis_id}/label")
+async def rename_analysis(
+    analysis_id: str,
+    request: dict,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Rename / set a custom label for an analysis"""
+    analysis = database_store.get_analysis(db, analysis_id)
+    
+    if not analysis:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis not found"
+        )
+    
+    if analysis['user_email'] != current_user.email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    label = request.get('label', '')
+    database_store.rename_analysis(db, analysis_id, label)
+    
+    return {"message": "Label updated", "label": label.strip() or None}

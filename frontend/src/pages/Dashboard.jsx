@@ -62,6 +62,16 @@ const Dashboard = () => {
     const addUrlField = () => { if (urls.length < 5) setUrls([...urls, '']); };
     const removeUrlField = (index) => { if (urls.length > 1) setUrls(urls.filter((_, i) => i !== index)); };
     const updateUrl = (index, value) => { const n = [...urls]; n[index] = value; setUrls(n); };
+    const normalizeUrl = (index) => {
+        const raw = urls[index].trim();
+        if (!raw) return;
+        // Auto-add https:// if no protocol is present
+        if (raw && !/^https?:\/\//i.test(raw)) {
+            const n = [...urls];
+            n[index] = 'https://' + raw;
+            setUrls(n);
+        }
+    };
 
     const handleAnalyze = async () => {
         let validUrls = [];
@@ -75,6 +85,11 @@ const Dashboard = () => {
             if (validUrls.length === 0 && selectedPages.length === 0) {
                 toast.error('Please enter at least one URL or select pages'); return;
             }
+            // Normalize: add https:// if missing
+            validUrls = validUrls.map(url => {
+                const trimmed = url.trim();
+                return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+            });
             const urlPattern = /^https?:\/\/.+/;
             if (validUrls.some(url => !urlPattern.test(url))) {
                 toast.error('Please enter valid URLs starting with http:// or https://'); return;
@@ -202,6 +217,7 @@ const Dashboard = () => {
                                                     type="text"
                                                     value={url}
                                                     onChange={e => updateUrl(index, e.target.value)}
+                                                    onBlur={() => normalizeUrl(index)}
                                                     placeholder={`https://example${index > 0 ? index + 1 : ''}.com`}
                                                     className="w-full px-5 py-3.5 bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-violet-400 text-base text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
                                                     autoFocus={index === urls.length - 1}

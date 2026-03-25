@@ -31,29 +31,30 @@ const GoogleAuth = () => {
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-5 sm:gap-8 pr-2"
+                className="flex items-center gap-3"
             >
-                {/* User Info */}
-                <div className="hidden sm:flex items-center gap-4">
-                    {user.picture && (
+                {/* User chip */}
+                <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-slate-100/80 border border-slate-200/60">
+                    {user.picture ? (
                         <img
                             src={user.picture}
                             alt={user.name}
-                            className="w-11 h-11 rounded-full border-2 border-violet-100 object-cover shadow-sm"
+                            className="w-6 h-6 rounded-full object-cover border border-white shadow-sm"
                         />
+                    ) : (
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center text-[10px] font-black text-white">
+                            {user.name?.[0] ?? '?'}
+                        </div>
                     )}
-                    <div className="flex flex-col text-left">
-                        <span className="text-base font-bold text-slate-800 leading-snug">{user.name}</span>
-                        <span className="text-sm font-medium text-slate-400 leading-snug">{user.email}</span>
-                    </div>
+                    <span className="text-sm font-semibold text-slate-700 leading-none">{user.name}</span>
                 </div>
 
-                {/* Sign Out Button */}
+                {/* Sign Out */}
                 <button
                     onClick={logout}
-                    className="px-5 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-red-500 hover:border-red-200 transition-all duration-200 shadow-sm"
+                    className="px-3.5 py-1.5 rounded-full border border-slate-200 text-xs font-bold text-slate-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-all duration-200"
                 >
-                    Sign Out
+                    Sign out
                 </button>
             </motion.div>
         );

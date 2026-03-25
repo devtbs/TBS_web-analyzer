@@ -54,6 +54,7 @@ class DatabaseStore:
             'analysis_id': analysis.analysis_id,
             'user_email': analysis.user_email,
             'urls': analysis.urls,
+            'label': analysis.label,
             'created_at': analysis.created_at,
             'status': analysis.status,
             'scraped_data': analysis.scraped_data,
@@ -74,6 +75,7 @@ class DatabaseStore:
                 'analysis_id': a.analysis_id,
                 'user_email': a.user_email,
                 'urls': a.urls,
+                'label': a.label,
                 'created_at': a.created_at,
                 'status': a.status,
                 'scraped_data': a.scraped_data,
@@ -84,6 +86,14 @@ class DatabaseStore:
             }
             for a in analyses
         ]
+    
+    def rename_analysis(self, db: Session, analysis_id: str, label: str):
+        """Set a custom label for an analysis"""
+        analysis = db.query(Analysis).filter(Analysis.analysis_id == analysis_id).first()
+        if analysis:
+            analysis.label = label.strip() or None  # Store None if label is blank
+            db.commit()
+            db.refresh(analysis)
     
     def delete_analysis(self, db: Session, analysis_id: str):
         """Delete an analysis"""

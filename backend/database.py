@@ -43,6 +43,7 @@ class Analysis(Base):
     analysis_id = Column(String, primary_key=True, index=True)
     user_email = Column(String, index=True, nullable=False)
     urls = Column(JSON, nullable=False)  # List of URLs
+    label = Column(String, nullable=True)  # Optional user-defined name for the analysis
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     status = Column(String, default="processing", nullable=False)
     
