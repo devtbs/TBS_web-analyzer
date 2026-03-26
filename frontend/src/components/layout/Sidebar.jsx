@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     ClockIcon,
     ArrowRightEndOnRectangleIcon,
-    Bars3Icon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
     RocketLaunchIcon,
     QuestionMarkCircleIcon,
     Squares2X2Icon,
@@ -35,35 +36,39 @@ const Sidebar = () => {
 
     return (
         <motion.aside
-            animate={{ width: collapsed ? 72 : 260 }}
+            animate={{ width: collapsed ? 88 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
             className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden"
-            style={{ background: '#101010' }}
+            style={{ background: '#1a1d2e' }}
         >
             <div className="relative flex flex-col h-full">
 
-                {/* ── Top bar: hamburger + title ── */}
-                <div className={`flex items-center h-[60px] flex-shrink-0 ${ collapsed ? 'justify-center px-0' : 'gap-3 px-5' }`}>
-                    <button
-                        onClick={() => setCollapsed(c => !c)}
-                        className="flex-shrink-0 text-[#888] hover:text-white transition-colors outline-none"
-                    >
-                        <Bars3Icon style={{ width: 22, height: 22 }} />
-                    </button>
-
-                    <AnimatePresence initial={false}>
-                        {!collapsed && (
-                            <motion.span
-                                initial={{ opacity: 0, x: -6 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -6 }}
-                                transition={{ duration: 0.16 }}
-                                className="text-[15px] font-bold text-white whitespace-nowrap tracking-tight"
+                {/* ── Top bar: logo ── */}
+                <div className={`flex items-center h-[96px] flex-shrink-0 ${ collapsed ? 'justify-center px-0' : 'px-5' }`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    {collapsed ? (
+                        <img
+                            src="/TBS-Logo.webp"
+                            alt="TBS Logo"
+                            className="w-12 h-12 object-contain cursor-pointer transition-transform hover:scale-105"
+                            onClick={() => setCollapsed(false)}
+                            title="Expand Sidebar"
+                        />
+                    ) : (
+                        <div className="flex items-center justify-between w-full">
+                            <img
+                                src="/TBS-Logo.webp"
+                                alt="TBS Logo"
+                                className="h-16 w-auto object-contain flex-shrink-0"
+                            />
+                            <button
+                                onClick={() => setCollapsed(true)}
+                                className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-[#6b7280] hover:text-white transition-all outline-none"
+                                title="Collapse Sidebar"
                             >
-                                WebAnalyzer
-                            </motion.span>
-                        )}
-                    </AnimatePresence>
+                                <ChevronLeftIcon className="w-4 h-4 stroke-[2.5px]" />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* ── Nav groups ── */}
@@ -79,7 +84,7 @@ const Sidebar = () => {
                                         exit={{ opacity: 0 }}
                                         transition={{ duration: 0.14 }}
                                         className="px-3 mb-1.5 text-[11px] font-bold tracking-[0.14em] uppercase"
-                                        style={{ color: '#555' }}
+                                        style={{ color: '#6b7280' }}
                                     >
                                         {section}
                                     </motion.p>
@@ -99,12 +104,12 @@ const Sidebar = () => {
                                                 collapsed ? 'justify-center px-0 py-1.5' : 'px-3 py-2.5'
                                             }`}
                                             style={{
-                                                color: active ? '#fff' : '#777',
-                                                background: (!collapsed && active) ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                                color: active ? '#fff' : '#9ca3af',
+                                                background: (!collapsed && active) ? 'rgba(255,255,255,0.10)' : 'transparent',
                                             }}
                                             onMouseEnter={e => {
-                                                if (!active) e.currentTarget.style.background = collapsed ? 'transparent' : 'rgba(255,255,255,0.04)';
-                                                if (!active) e.currentTarget.style.color = '#ccc';
+                                                if (!active) e.currentTarget.style.background = collapsed ? 'transparent' : 'rgba(255,255,255,0.06)';
+                                                if (!active) e.currentTarget.style.color = '#d1d5db';
                                             }}
                                             onMouseLeave={e => {
                                                 if (!active) e.currentTarget.style.background = 'transparent';
@@ -159,7 +164,7 @@ const Sidebar = () => {
                 </nav>
 
                 {/* ── Bottom ── */}
-                <div className="flex-shrink-0 px-2 pb-4 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="flex-shrink-0 px-2 pb-4 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
 
 
                     {/* User card + Logout */}
@@ -173,7 +178,7 @@ const Sidebar = () => {
                                         src={user.picture}
                                         alt={user.name}
                                         className="w-9 h-9 rounded-full object-cover"
-                                        style={{ border: '1.5px solid rgba(255,255,255,0.15)' }}
+                                         style={{ border: '1.5px solid rgba(255,255,255,0.2)' }}
                                     />
                                 ) : (
                                     <div
@@ -208,7 +213,7 @@ const Sidebar = () => {
                                         className="flex-1 min-w-0 overflow-hidden"
                                     >
                                         <p className="text-xs font-bold text-white truncate leading-tight">{user.name}</p>
-                                        <p className="text-[10px] font-medium truncate leading-tight" style={{ color: '#666' }}>
+                                        <p className="text-[10px] font-medium truncate leading-tight" style={{ color: '#6b7280' }}>
                                             {user.email}
                                         </p>
                                     </motion.div>
@@ -225,9 +230,9 @@ const Sidebar = () => {
                                         onClick={logout}
                                         title="Logout"
                                         className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center outline-none transition-all duration-150 group/btn"
-                                        style={{ background: '#27272a' }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#3f1a1a'}
-                                        onMouseLeave={e => e.currentTarget.style.background = '#27272a'}
+                                        style={{ background: '#252840' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = '#3d1f1f'}
+                                        onMouseLeave={e => e.currentTarget.style.background = '#252840'}
                                     >
                                         <ArrowRightEndOnRectangleIcon
                                             className="text-[#888] group-hover/btn:text-red-400 transition-colors"
