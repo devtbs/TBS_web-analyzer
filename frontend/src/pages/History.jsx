@@ -137,7 +137,7 @@ const History = () => {
                         <p className="text-slate-500 mt-1 text-sm font-medium">All your past website analyses in one place</p>
                     </div>
                     <button
-                        onClick={() => navigate('/dashboard')}
+                        onClick={() => navigate('/new-analysis')}
                         className="self-start sm:self-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-white font-bold text-sm bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 shadow-lg shadow-purple-300/40 hover:shadow-purple-400/50 hover:-translate-y-0.5 transition-all duration-200"
                     >
                         <RocketLaunchIcon className="w-4 h-4" />
