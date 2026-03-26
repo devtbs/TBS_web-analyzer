@@ -115,13 +115,28 @@ export default function Dashboard() {
                 {/* ── Stat cards ── */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-                        <StatCard label="Total Analyses" value={loading ? '—' : total} gradient="bg-gradient-to-br from-violet-600 to-purple-700" icon={ChartBarIcon} />
+                        <StatCard 
+                            label="Total Analyses" 
+                            value={loading ? <div className="h-9 w-16 bg-white/30 rounded animate-pulse mt-1" /> : total} 
+                            gradient="bg-gradient-to-br from-violet-600 to-purple-700" 
+                            icon={ChartBarIcon} 
+                        />
                     </motion.div>
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                        <StatCard label="Completed" value={loading ? '—' : completed} gradient="bg-gradient-to-br from-emerald-500 to-teal-600" icon={CheckCircleIcon} />
+                        <StatCard 
+                            label="Completed" 
+                            value={loading ? <div className="h-9 w-16 bg-white/30 rounded animate-pulse mt-1" /> : completed} 
+                            gradient="bg-gradient-to-br from-emerald-500 to-teal-600" 
+                            icon={CheckCircleIcon} 
+                        />
                     </motion.div>
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-                        <StatCard label="Failed" value={loading ? '—' : failed} gradient="bg-gradient-to-br from-rose-500 to-red-600" icon={ExclamationCircleIcon} />
+                        <StatCard 
+                            label="Failed" 
+                            value={loading ? <div className="h-9 w-16 bg-white/30 rounded animate-pulse mt-1" /> : failed} 
+                            gradient="bg-gradient-to-br from-rose-500 to-red-600" 
+                            icon={ExclamationCircleIcon} 
+                        />
                     </motion.div>
                 </div>
 
@@ -146,7 +161,24 @@ export default function Dashboard() {
                     </div>
 
                     {loading ? (
-                        <div className="py-12 text-center text-slate-400 text-sm">Loading...</div>
+                        <div className="flex flex-col gap-4 mt-2">
+                            {[1, 2, 3].map((i) => (
+                                <div key={i} className="bg-white rounded-[20px] p-6 shadow-sm border border-slate-100 flex items-center justify-between animate-pulse">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-slate-100 rounded-2xl" />
+                                        <div className="space-y-2">
+                                            <div className="h-4 w-48 bg-slate-100 rounded-md" />
+                                            <div className="h-3 w-32 bg-slate-50 rounded-md" />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-20 h-8 bg-slate-100 rounded-full" />
+                                        <div className="w-8 h-8 bg-slate-50 rounded-full" />
+                                        <div className="w-8 h-8 bg-slate-50 rounded-full" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     ) : analyses.length === 0 ? (
                         <div className="bg-white rounded-[14px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-200/60 py-16 text-center">
                             <GlobeAltIcon className="w-10 h-10 text-slate-200 mx-auto mb-3" />

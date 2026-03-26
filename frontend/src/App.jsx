@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 import Header from './components/layout/Header';
@@ -13,28 +14,44 @@ import History from './pages/History';
 import Results from './pages/Results';
 import PageSelector from './pages/PageSelector';
 import Help from './pages/Help';
+import SEOAnalytics from './pages/SEOAnalytics';
 
 /* ── Protected Route ─────────────────────────────────────── */
 const ProtectedRoute = ({ children }) => {
     const { user, loading } = useAuth();
 
     if (loading) {
-        // Return null or a subtle light background to prevent the dark flash
-        return <div className="min-h-screen bg-slate-50" />;
+        // Render the Sidebar layout with an empty main content area so the sidebar doesn't flash
+        return (
+            <SidebarLayout>
+                <div className="flex-1 bg-slate-50 animate-pulse" />
+            </SidebarLayout>
+        );
     }
 
     return user ? children : <Navigate to="/" />;
 };
 
 /* ── Sidebar layout (for authenticated app pages) ───────── */
-const SidebarLayout = ({ children }) => (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto">
-            {children}
-        </main>
-    </div>
-);
+const SidebarLayout = ({ children }) => {
+    const location = useLocation();
+    return (
+        <div className="flex h-screen overflow-hidden bg-slate-50">
+            <Sidebar />
+            <main className="flex-1 overflow-y-auto">
+                <motion.div
+                    key={location.pathname}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    className="min-h-full"
+                >
+                    {children}
+                </motion.div>
+            </main>
+        </div>
+    );
+};
 
 /* ── Public layout (Home page) ───────────────────────────── */
 const PublicLayout = ({ children }) => (
@@ -61,6 +78,14 @@ function AppContent() {
                     element={
                         <ProtectedRoute>
                             <SidebarLayout><Dashboard /></SidebarLayout>
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/seo-analytics"
+                    element={
+                        <ProtectedRoute>
+                            <SidebarLayout><SEOAnalytics /></SidebarLayout>
                         </ProtectedRoute>
                     }
                 />

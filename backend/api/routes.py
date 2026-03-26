@@ -14,6 +14,7 @@ from services import scraper, kg_generator, topical_generator, comparator
 from utils.storage import database_store
 from utils.progress_tracker import progress_tracker
 from database import get_db
+from config import settings
 from datetime import datetime
 import asyncio
 import json
@@ -83,32 +84,69 @@ async def connect_gsc(
     db: Session = Depends(get_db)
 ):
     """
-    Connect Google Search Console with OAuth token that has webmasters scope
-    This endpoint stores the GSC access token in the database
+    Connect Google Search Console using OAuth authorization code.
+    Exchanges the code for access + refresh tokens and stores the refresh token.
+    The refresh token allows permanent access without re-authentication.
     """
     from services.gsc_service import GSCService
     from utils.user_manager import update_gsc_token
+    import requests as http_requests
     
-    gsc_token = request.get('gsc_token')
-    if not gsc_token:
+    gsc_code = request.get('gsc_code')
+    if not gsc_code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GSC token is required"
+            detail="GSC authorization code is required"
         )
     
-    # Verify the token works by trying to fetch properties
+    # Exchange the authorization code for access + refresh tokens
     try:
-        service = GSCService(gsc_token)
+        token_response = http_requests.post(
+            'https://oauth2.googleapis.com/token',
+            data={
+                'code': gsc_code,
+                'client_id': settings.GOOGLE_CLIENT_ID,
+                'client_secret': settings.GOOGLE_CLIENT_SECRET,
+                'redirect_uri': 'postmessage',  # Required for popup/ux_mode flows
+                'grant_type': 'authorization_code',
+            }
+        )
+        token_data = token_response.json()
+        
+        if 'error' in token_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Google token exchange failed: {token_data.get('error_description', token_data['error'])}"
+            )
+        
+        refresh_token = token_data.get('refresh_token')
+        access_token = token_data.get('access_token')
+        
+        if not refresh_token and not access_token:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No tokens received from Google. Ensure the app is configured for offline access."
+            )
+        
+        # Prefer refresh token (permanent); fall back to access token (short-lived)
+        token_to_store = refresh_token if refresh_token else access_token
+        is_refresh = bool(refresh_token)
+        
+        # Verify the token works by trying to fetch properties
+        service = GSCService(access_token=access_token, refresh_token=refresh_token)
         properties = await service.get_properties()
         
         # Store the token in database
-        update_gsc_token(db, current_user.email, gsc_token)
+        update_gsc_token(db, current_user.email, token_to_store, is_refresh_token=is_refresh)
         
         return {
             "message": "Successfully connected to Google Search Console",
             "properties_count": len(properties),
-            "connected": True
+            "connected": True,
+            "token_type": "refresh" if is_refresh else "access"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -128,8 +166,8 @@ async def get_gsc_properties(
     from services.gsc_service import get_user_properties
     from utils.user_manager import get_user_gsc_token
     
-    # Get token from database
-    gsc_token = get_user_gsc_token(db, current_user.email)
+    # Get token from database (returns tuple: token, is_refresh_token)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
     
     if not gsc_token:
         raise HTTPException(
@@ -138,7 +176,7 @@ async def get_gsc_properties(
         )
     
     try:
-        properties = await get_user_properties(gsc_token)
+        properties = await get_user_properties(gsc_token, is_refresh_token=is_refresh)
         return {"properties": properties}
     except Exception as e:
         raise HTTPException(
@@ -180,11 +218,10 @@ async def get_gsc_pages(
     from utils.user_manager import get_user_gsc_token
     from urllib.parse import unquote
     
-    # Decode the URL-encoded property URL
     property_url = unquote(property_url)
     
-    # Get token from database
-    gsc_token = get_user_gsc_token(db, current_user.email)
+    # Get token from database (returns tuple: token, is_refresh_token)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
     
     if not gsc_token:
         raise HTTPException(
@@ -193,7 +230,7 @@ async def get_gsc_pages(
         )
     
     try:
-        service = GSCService(gsc_token)
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh)
         pages = await service.get_pages_with_queries(property_url, days)
         return {
             "property_url": property_url,
@@ -204,6 +241,51 @@ async def get_gsc_pages(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch pages: {str(e)}"
+        )
+
+
+# ============= Analytics Routes =============
+
+@router.get("/auth/gsc/analytics/{property_url:path}")
+async def get_gsc_analytics(
+    property_url: str,
+    days: int = 365,
+    group_by: str = 'daily',
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get complete search analytics including time-series and page data"""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+    
+    property_url = unquote(property_url)
+    
+    # Get token from database (returns tuple: token, is_refresh_token)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    
+    if not gsc_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GSC not connected. Please connect your Google Search Console account first."
+        )
+        
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh)
+        # Fetch chart data and totals
+        analytics_data = await service.get_search_analytics(property_url, days, group_by)
+        # Fetch pages (90 days is standard)
+        pages = await service.get_pages_with_queries(property_url, 90)
+        
+        return {
+            "property_url": property_url,
+            "analytics": analytics_data,
+            "pages": pages
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch analytics: {str(e)}"
         )
 
 

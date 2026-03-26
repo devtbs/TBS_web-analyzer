@@ -112,26 +112,36 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         }
         setIsConnecting(true);
         try {
-            const client = window.google.accounts.oauth2.initTokenClient({
+            // Use Authorization Code flow to get a refresh token (not just an access token)
+            // This ensures GSC stays connected permanently, not just for 1 hour
+            const client = window.google.accounts.oauth2.initCodeClient({
                 client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
                 scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+                ux_mode: 'popup',
                 callback: async (response) => {
-                    if (response.access_token) {
+                    if (response.code) {
                         try {
                             const authToken = localStorage.getItem('access_token');
                             await axios.post('/auth/gsc/connect',
-                                { gsc_token: response.access_token },
+                                { gsc_code: response.code },
                                 { headers: { Authorization: `Bearer ${authToken}` } }
                             );
                             setIsConnected(true);
                             toast.success('Connected to Google Search Console!');
                             await fetchProperties();
-                        } catch { toast.error('Failed to connect to Search Console'); }
+                        } catch (err) {
+                            toast.error(err.response?.data?.detail || 'Failed to connect to Search Console');
+                        }
+                    } else if (response.error) {
+                        toast.error(`Google error: ${response.error}`);
                     }
                     setIsConnecting(false);
                 },
+                error_callback: () => {
+                    setIsConnecting(false);
+                }
             });
-            client.requestAccessToken();
+            client.requestCode();
         } catch { toast.error('Failed to initialize Google connection'); setIsConnecting(false); }
     };
 

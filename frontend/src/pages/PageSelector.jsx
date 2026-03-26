@@ -153,7 +153,7 @@ const PageSelector = () => {
 
     if (loading) {
         return (
-            <div className="flex-1 h-full w-full flex items-center justify-center" style={{ background: '#f5f4fa' }}>
+            <div className="flex flex-col flex-1 min-h-[80vh] w-full items-center justify-center" style={{ background: '#f5f4fa' }}>
                 <div className="flex flex-col items-center gap-4">
                     <div className="w-12 h-12 rounded-full border-[3px] border-violet-200 border-t-violet-600 animate-spin" />
                     <p className="text-sm font-semibold text-slate-500 tracking-wide">Connecting to Google Search Console...</p>

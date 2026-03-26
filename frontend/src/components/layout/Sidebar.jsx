@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,10 +6,9 @@ import {
     ClockIcon,
     ArrowRightEndOnRectangleIcon,
     ChevronLeftIcon,
-    ChevronRightIcon,
     RocketLaunchIcon,
-    QuestionMarkCircleIcon,
     Squares2X2Icon,
+    ChartBarIcon,
 } from '@heroicons/react/24/outline';
 
 const NAV_GROUPS = [
@@ -20,16 +19,25 @@ const NAV_GROUPS = [
         ],
     },
     {
-        section: 'Analysis',
+        section: 'Analyze',
         items: [
             { label: 'New Analysis', path: '/new-analysis', icon: RocketLaunchIcon },
             { label: 'History',      path: '/history',      icon: ClockIcon },
+            { label: 'SEO Analytics', path: '/seo-analytics', icon: ChartBarIcon },
         ],
     },
 ];
 
 const Sidebar = () => {
-    const [collapsed, setCollapsed] = useState(false);
+    const [collapsed, setCollapsed] = useState(() => {
+        const saved = localStorage.getItem('sidebar_collapsed');
+        return saved === 'true';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('sidebar_collapsed', collapsed);
+    }, [collapsed]);
+
     const { user, logout } = useAuth();
     const location = useLocation();
     const isActive = (path) => location.pathname === path;

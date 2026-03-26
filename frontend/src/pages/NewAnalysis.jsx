@@ -150,7 +150,7 @@ const NewAnalysis = () => {
     const canAnalyze = totalUrls > 0 && totalUrls <= 5;
 
     return (
-        <div className="flex flex-col items-center justify-center flex-1 h-full w-full py-2 sm:py-6" style={{ background: '#f5f4fa' }}>
+        <div className="flex flex-col items-center justify-center flex-1 min-h-full w-full py-12" style={{ background: '#f5f4fa' }}>
             
             {analysisId && (
                 <ProgressModal

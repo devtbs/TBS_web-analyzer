@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON
+from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -31,6 +31,7 @@ class User(Base):
     name = Column(String, nullable=True)
     picture = Column(String, nullable=True)
     gsc_token = Column(Text, nullable=True)  # Google Search Console OAuth token
+    gsc_token_is_refresh = Column(Boolean, default=False, nullable=False)  # True = refresh token (permanent)
     gsc_connected_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_login = Column(DateTime, default=datetime.utcnow, nullable=False)
