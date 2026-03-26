@@ -25,20 +25,27 @@ const getFaviconUrl = (url) => {
 };
 
 /* ─── Skeleton ────────────────────────────────────────────────────── */
-const Skeleton = () => (
-    <div className="space-y-4 animate-pulse">
-        <div className="h-14 bg-slate-100 rounded-xl w-full" />
+const PropertiesSkeleton = () => (
+    <div className="flex flex-col gap-3 animate-pulse w-full">
         {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex items-center gap-4 py-4 border-b border-slate-100">
-                <div className="w-10 h-10 bg-slate-100 rounded-xl" />
-                <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-slate-100 rounded w-48" />
+            <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between py-4 px-5 rounded-2xl bg-white border border-transparent">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="w-12 h-12 rounded-xl bg-slate-50 flex-shrink-0" />
+                    <div className="h-4 bg-slate-50 rounded-full w-48 sm:w-64" />
                 </div>
-                <div className="h-8 w-28 bg-slate-100 rounded-lg" />
+                <div className="h-9 bg-slate-50 rounded-xl w-28 flex-shrink-0 mt-4 sm:mt-0" />
             </div>
         ))}
     </div>
 );
+
+const FullSkeleton = () => (
+    <div className="w-full animate-pulse">
+        <div className="h-[76px] bg-slate-50/80 rounded-2xl mb-6 w-full" />
+        <PropertiesSkeleton />
+    </div>
+);
+
 
 /* ─── Main ────────────────────────────────────────────────────────── */
 const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
@@ -170,7 +177,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const filtered = properties.filter(p => p.url.toLowerCase().includes(searchQuery.toLowerCase()));
 
     /* ── Loading ── */
-    if (isCheckingStatus) return <Skeleton />;
+    if (isCheckingStatus) return <FullSkeleton />;
 
     /* ── Not connected ── */
     if (!isConnected) {
@@ -246,8 +253,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
 
             {/* Properties list */}
             <div className="flex flex-col">
-                {isFetching ? (
-                    <Skeleton />
+                {isFetching && properties.length === 0 ? (
+                    <PropertiesSkeleton />
                 ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-center py-8 text-center bg-slate-50 rounded-xl border border-slate-100">
                         <XCircleIcon className="w-10 h-10 text-slate-300 mb-2" />

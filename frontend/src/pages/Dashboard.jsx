@@ -1,315 +1,195 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import ProgressModal from '../components/ui/ProgressModal';
-import GSCPropertySelector from '../components/gsc/GSCPropertySelector';
-import {
-    PlusIcon,
-    XMarkIcon,
-    GlobeAltIcon,
-    SparklesIcon,
-    CheckCircleIcon,
-} from '@heroicons/react/24/outline';
+import { useAuth } from '../context/AuthContext';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import {
+    RocketLaunchIcon,
+    ClockIcon,
+    ChartBarIcon,
+    GlobeAltIcon,
+    ArrowRightIcon,
+    CheckCircleIcon,
+    ExclamationCircleIcon,
+    SparklesIcon,
+} from '@heroicons/react/24/outline';
+import { CheckCircleIcon as SolidCheck } from '@heroicons/react/24/solid';
+import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import AnalysisCard from '../components/ui/AnalysisCard';
 
-const Dashboard = () => {
-    const navigate = useNavigate();
-    const location = useLocation();
-    const [urls, setUrls] = useState(['']);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [analysisId, setAnalysisId] = useState(null);
-    const [useGSC, setUseGSC] = useState(true);
-    const [tabLoading, setTabLoading] = useState(false);
-    const tabTimerRef = useRef(null);
-
-    const switchTab = useCallback((toGSC) => {
-        if (toGSC === useGSC) return;
-        setTabLoading(true);
-        clearTimeout(tabTimerRef.current);
-        tabTimerRef.current = setTimeout(() => {
-            setUseGSC(toGSC);
-            setTabLoading(false);
-        }, 150);
-    }, [useGSC]);
-
-    useEffect(() => () => clearTimeout(tabTimerRef.current), []);
-    const [selectedProperties, setSelectedProperties] = useState([]);
-
-    const [selectedPages, setSelectedPages] = useState(() => {
-        const saved = sessionStorage.getItem('selectedPages');
-        return saved ? JSON.parse(saved) : [];
-    });
-
-    const processedStateRef = useRef(false);
-
-    useEffect(() => {
-        sessionStorage.setItem('selectedPages', JSON.stringify(selectedPages));
-    }, [selectedPages]);
-
-    useEffect(() => {
-        if (location.state?.urls && location.state?.mode === 'cluster' && !processedStateRef.current) {
-            processedStateRef.current = true;
-            const newPages = location.state.urls;
-            setSelectedPages(prev => [...new Set([...prev, ...newPages])]);
-            toast.success(`${newPages.length} pages added!`);
-            navigate(location.pathname, { replace: true, state: {} });
-        } else if (!location.state?.urls) {
-            processedStateRef.current = false;
-        }
-    }, [location.state, navigate]);
-
-    const addUrlField = () => { if (urls.length < 5) setUrls([...urls, '']); };
-    const removeUrlField = (index) => { if (urls.length > 1) setUrls(urls.filter((_, i) => i !== index)); };
-    const updateUrl = (index, value) => { const n = [...urls]; n[index] = value; setUrls(n); };
-    const normalizeUrl = (index) => {
-        const raw = urls[index].trim();
-        if (!raw) return;
-        // Auto-add https:// if no protocol is present
-        if (raw && !/^https?:\/\//i.test(raw)) {
-            const n = [...urls];
-            n[index] = 'https://' + raw;
-            setUrls(n);
-        }
-    };
-
-    const handleAnalyze = async () => {
-        let validUrls = [];
-        if (useGSC) {
-            if (selectedProperties.length === 0 && selectedPages.length === 0) {
-                toast.error('Please select at least one property or page'); return;
-            }
-            validUrls = selectedProperties.map(p => p.url);
-        } else {
-            validUrls = urls.filter(url => url.trim() !== '');
-            if (validUrls.length === 0 && selectedPages.length === 0) {
-                toast.error('Please enter at least one URL or select pages'); return;
-            }
-            // Normalize: add https:// if missing
-            validUrls = validUrls.map(url => {
-                const trimmed = url.trim();
-                return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
-            });
-            const urlPattern = /^https?:\/\/.+/;
-            if (validUrls.some(url => !urlPattern.test(url))) {
-                toast.error('Please enter valid URLs starting with http:// or https://'); return;
-            }
-        }
-        validUrls = [...validUrls, ...selectedPages];
-        if (validUrls.length > 5) {
-            toast.error(`Maximum 5 URLs allowed. You have ${validUrls.length}.`); return;
-        }
-        setIsAnalyzing(true);
-        try {
-            const token = localStorage.getItem('access_token');
-            const response = await axios.post('/api/analyze',
-                { urls: validUrls },
-                { headers: { Authorization: `Bearer ${token} ` } }
-            );
-            setAnalysisId(response.data.analysis_id);
-            setSelectedPages([]);
-            sessionStorage.removeItem('selectedPages');
-        } catch (error) {
-            toast.error(error.response?.data?.detail || 'Analysis failed');
-            setIsAnalyzing(false);
-        }
-    };
-
-    const handleProgressComplete = () => { if (analysisId) navigate(`/results/${analysisId}`); };
-    const handleProgressError = (error) => {
-        toast.error(error || 'Analysis failed');
-        setIsAnalyzing(false);
-        setAnalysisId(null);
-    };
-
-    const canAnalyze = useGSC
-        ? (selectedProperties.length > 0 || selectedPages.length > 0)
-        : (urls.filter(u => u.trim()).length > 0 || selectedPages.length > 0);
-
-    return (
-        <div className="flex flex-col items-center justify-center flex-1 h-full w-full py-2 sm:py-6" style={{ background: '#f5f4fa' }}>
-            
-            {analysisId && (
-                <ProgressModal
-                    analysisId={analysisId}
-                    onComplete={handleProgressComplete}
-                    onError={handleProgressError}
-                />
-            )}
-
-            <div className="relative w-full flex justify-center px-4 sm:px-6">
-                <div className="w-full max-w-[1024px]">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.98, y: 10 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        transition={{ duration: 0.4, ease: 'easeOut' }}
-                        className="bg-white rounded-[24px] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] overflow-hidden border border-white p-6 sm:p-8"
-                    >
-                        
-                        {/* ── Mode Toggle ── */}
-                        <div className="flex justify-center mb-6">
-                            <div className="bg-slate-100/80 rounded-full p-1.5 flex relative w-full sm:w-[560px]">
-                                {/* Active slider background */}
-                                <motion.div
-                                    layout
-                                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                                    className="absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 rounded-full shadow-md"
-                                    style={{ left: useGSC ? '6px' : 'calc(50%)' }}
-                                />
-                                <button
-                                    onClick={() => switchTab(true)}
-                                    disabled={tabLoading}
-                                    className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-base font-bold relative z-10 transition-colors duration-200 
-                                        ${useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    Search Console
-                                    {useGSC && <div className="ml-3 w-5 h-5 bg-white rounded-full shadow-sm" />}
-                                </button>
-                                <button
-                                    onClick={() => switchTab(false)}
-                                    disabled={tabLoading}
-                                    className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-base font-bold relative z-10 transition-colors duration-200 
-                                        ${!useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    Manual Entry
-                                    {!useGSC && <div className="ml-3 w-5 h-5 bg-white rounded-full shadow-sm" />}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* ── Content ── */}
-                        <div className="min-h-[140px] relative">
-                            {/* ── Tab Loading Overlay ── */}
-                            {tabLoading && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[2px] rounded-2xl"
-                                >
-                                    <div className="flex flex-col items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full border-[3px] border-violet-200 border-t-violet-600 animate-spin" />
-                                        <span className="text-sm font-semibold text-slate-400 tracking-wide">Switching...</span>
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {useGSC ? (
-                                <GSCPropertySelector
-                                    selectedProperties={selectedProperties}
-                                    onPropertySelect={setSelectedProperties}
-                                />
-                            ) : (
-                                <div className="space-y-4 px-2 max-w-[800px] mx-auto">
-                                    {urls.map((url, index) => (
-                                        <motion.div
-                                            key={index}
-                                            initial={{ opacity: 0, y: 8 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: index * 0.05 }}
-                                            className="flex gap-4 items-center rounded-2xl p-1.5 hover:bg-slate-50 transition-colors"
-                                        >
-                                            <div className="flex-none p-3 rounded-2xl bg-violet-100/60 flex items-center justify-center">
-                                                <GlobeAltIcon className="w-6 h-6 text-violet-600" />
-                                            </div>
-                                            <div className="flex-1 relative">
-                                                <input
-                                                    type="text"
-                                                    value={url}
-                                                    onChange={e => updateUrl(index, e.target.value)}
-                                                    onBlur={() => normalizeUrl(index)}
-                                                    placeholder={`https://example${index > 0 ? index + 1 : ''}.com`}
-                                                    className="w-full px-5 py-3.5 bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-violet-400 text-base text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
-                                                    autoFocus={index === urls.length - 1}
-                                                />
-                                            </div>
-                                            {urls.length > 1 && (
-                                                <button
-                                                    onClick={() => removeUrlField(index)}
-                                                    className="p-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors"
-                                                >
-                                                    <XMarkIcon className="w-5 h-5" />
-                                                </button>
-                                            )}
-                                        </motion.div>
-                                    ))}
-
-                                    {urls.length < 5 && (
-                                        <button
-                                            onClick={addUrlField}
-                                            className="ml-3 mt-6 flex items-center gap-3 text-base font-bold text-violet-600 hover:text-violet-700 transition-colors"
-                                        >
-                                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-violet-100 text-violet-600">
-                                                <PlusIcon className="w-5 h-5" />
-                                            </div>
-                                            Add Another Website
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* ── Selected Pages ── */}
-                            {selectedPages.length > 0 && (
-                                <div className="mt-8 rounded-2xl border border-slate-100 bg-slate-50 p-6 shadow-sm">
-                                    <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
-                                        <div className="flex items-center gap-2.5">
-                                            <CheckCircleIcon className="w-5 h-5 text-emerald-500" />
-                                            <span className="text-base font-bold text-slate-800">
-                                                {selectedPages.length} Pages Selected for Analysis
-                                            </span>
-                                        </div>
-                                        <button
-                                            onClick={() => { setSelectedPages([]); sessionStorage.removeItem('selectedPages'); }}
-                                            className="text-sm font-bold text-slate-500 hover:text-red-500 transition-colors"
-                                        >
-                                            Clear All
-                                        </button>
-                                    </div>
-                                    <div className="max-h-48 overflow-y-auto pr-3 space-y-1.5">
-                                        {selectedPages.map((pageUrl, i) => (
-                                            <div key={i} className="flex items-center justify-between py-2 text-base">
-                                                <span className="text-slate-600 truncate flex-1 font-medium">{pageUrl}</span>
-                                                <button onClick={() => setSelectedPages(prev => prev.filter((_, idx) => idx !== i))} className="ml-4 p-1.5 text-slate-400 hover:bg-white hover:text-red-500 hover:shadow-sm rounded transition-all flex-shrink-0">
-                                                    <XMarkIcon className="w-5 h-5" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ── Analyze Button ── */}
-                        <div className="flex justify-center mt-6">
-                            <motion.button
-                                whileHover={{ scale: canAnalyze && !isAnalyzing ? 1.02 : 1 }}
-                                whileTap={{ scale: canAnalyze && !isAnalyzing ? 0.98 : 1 }}
-                                onClick={handleAnalyze}
-                                disabled={isAnalyzing || !canAnalyze}
-                                className={`px-16 py-4 rounded-full font-bold text-[17px] transition-all duration-300 flex items-center justify-center gap-3 text-white bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500
-                                    ${canAnalyze && !isAnalyzing
-                                        ? 'shadow-xl hover:shadow-purple-500/40 hover:-translate-y-0.5'
-                                        : 'opacity-70 cursor-not-allowed shadow-none'
-                                    }`}
-                            >
-                                {isAnalyzing ? (
-                                    <>
-                                        <SparklesIcon className="w-5 h-5 animate-spin" />
-                                        Analyzing...
-                                    </>
-                                ) : (
-                                    <>
-                                        Start AI Analysis
-                                    </>
-                                )}
-                            </motion.button>
-                        </div>
-                        
-                    </motion.div>
-                </div>
+const StatCard = ({ label, value, gradient, icon: Icon }) => (
+    <div className={`relative overflow-hidden rounded-2xl p-5 text-white ${gradient} shadow-lg`}>
+        <div className="flex items-start justify-between">
+            <div>
+                <p className="text-sm font-semibold text-white/70 mb-1">{label}</p>
+                <p className="text-4xl font-black tracking-tight">{value ?? '—'}</p>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <Icon className="w-5 h-5 text-white" />
             </div>
         </div>
-    );
-};
+    </div>
+);
 
-export default Dashboard;
+
+
+export default function Dashboard() {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [analyses, setAnalyses] = useState([]);   // recent 5 for table
+    const [allAnalyses, setAllAnalyses] = useState([]); // full list for stats
+    const [loading, setLoading] = useState(true);
+    const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, analysisId: null });
+
+    const handleDelete = async (analysisId) => {
+        try {
+            const token = localStorage.getItem('access_token');
+            await axios.delete(`/api/analysis/${analysisId}`, { headers: { Authorization: `Bearer ${token}` } });
+            toast.success('Analysis deleted');
+            setAnalyses(prev => prev.filter(a => a.analysis_id !== analysisId));
+            setAllAnalyses(prev => prev.filter(a => a.analysis_id !== analysisId));
+        } catch {
+            toast.error('Failed to delete analysis');
+        }
+    };
+
+    const handleLabelSaved = (analysisId, newLabel) => {
+        setAnalyses(prev => prev.map(a => a.analysis_id === analysisId ? { ...a, label: newLabel } : a));
+        setAllAnalyses(prev => prev.map(a => a.analysis_id === analysisId ? { ...a, label: newLabel } : a));
+    };
+
+    useEffect(() => {
+        const fetch = async () => {
+            try {
+                const token = localStorage.getItem('access_token');
+                const { data } = await axios.get('/api/history', {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                const list = data.analyses || [];
+                setAllAnalyses(list);          // full list → stats
+                setAnalyses(list.slice(0, 5)); // first 5 → table
+            } catch {
+                // silently fail
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetch();
+    }, []);
+
+    const total = allAnalyses.length;
+    const completed = allAnalyses.filter(a => a.status === 'completed').length;
+    const failed = allAnalyses.filter(a => a.status === 'failed').length;
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const firstName = user?.name?.split(' ')[0] ?? 'there';
+
+    return (
+        <div className="flex-1 w-full min-h-screen py-10 px-4 sm:px-8" style={{ background: '#f5f4fa' }}>
+            <div className="max-w-[1080px] mx-auto w-full space-y-8">
+
+                {/* ── Header ── */}
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                >
+                    <div>
+                        <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+                            {greeting}, {firstName} 👋
+                        </h1>
+                        <p className="text-slate-500 mt-1 text-sm font-medium">
+                            Here's an overview of your analysis activity.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => navigate('/new-analysis')}
+                        className="self-start sm:self-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-white font-bold text-sm bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 shadow-lg shadow-purple-300/40 hover:shadow-purple-400/50 hover:-translate-y-0.5 transition-all duration-200"
+                    >
+                        <RocketLaunchIcon className="w-4 h-4" />
+                        New Analysis
+                    </button>
+                </motion.div>
+
+                {/* ── Stat cards ── */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+                        <StatCard label="Total Analyses" value={loading ? '—' : total} gradient="bg-gradient-to-br from-violet-600 to-purple-700" icon={ChartBarIcon} />
+                    </motion.div>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                        <StatCard label="Completed" value={loading ? '—' : completed} gradient="bg-gradient-to-br from-emerald-500 to-teal-600" icon={CheckCircleIcon} />
+                    </motion.div>
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
+                        <StatCard label="Failed" value={loading ? '—' : failed} gradient="bg-gradient-to-br from-rose-500 to-red-600" icon={ExclamationCircleIcon} />
+                    </motion.div>
+                </div>
+
+                {/* ── Recent analyses ── */}
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex flex-col gap-4"
+                >
+                    <div className="flex items-center justify-between px-1 mt-2">
+                        <div className="flex items-center gap-2.5">
+                            <ClockIcon className="w-[18px] h-[18px] text-slate-400 stroke-2" />
+                            <h2 className="text-[16px] font-bold text-slate-800">Recent Analyses</h2>
+                        </div>
+                        <Link
+                            to="/history"
+                            className="inline-flex items-center gap-1 text-[13px] font-bold text-violet-600 hover:text-violet-700 transition-colors"
+                        >
+                            View all <ArrowRightIcon className="w-3.5 h-3.5 stroke-2" />
+                        </Link>
+                    </div>
+
+                    {loading ? (
+                        <div className="py-12 text-center text-slate-400 text-sm">Loading...</div>
+                    ) : analyses.length === 0 ? (
+                        <div className="bg-white rounded-[14px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-200/60 py-16 text-center">
+                            <GlobeAltIcon className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                            <p className="text-sm font-semibold text-slate-400">No analyses yet</p>
+                            <p className="text-xs text-slate-300 mt-1">Start your first analysis to see results here</p>
+                            <button
+                                onClick={() => navigate('/new-analysis')}
+                                className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-white text-sm font-bold bg-gradient-to-r from-violet-600 to-fuchsia-500"
+                            >
+                                <RocketLaunchIcon className="w-4 h-4" /> Start Now
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <AnimatePresence mode="popLayout">
+                                {analyses.map((a, index) => (
+                                    <AnalysisCard
+                                        key={a.analysis_id}
+                                        analysis={a}
+                                        index={index}
+                                        onLabelSaved={handleLabelSaved}
+                                        onDelete={(id) => setDeleteDialog({ isOpen: true, analysisId: id })}
+                                    />
+                                ))}
+                            </AnimatePresence>
+                        </div>
+                    )}
+                </motion.div>
+
+            </div>
+
+            <ConfirmDialog
+                isOpen={deleteDialog.isOpen}
+                onClose={() => setDeleteDialog({ isOpen: false, analysisId: null })}
+                onConfirm={() => {
+                    handleDelete(deleteDialog.analysisId);
+                    setDeleteDialog({ isOpen: false, analysisId: null });
+                }}
+                title="Delete Analysis"
+                message="Are you sure you want to delete this analysis? This action cannot be undone."
+                confirmText="Delete"
+                isDestructive={true}
+            />
+        </div>
+    );
+}

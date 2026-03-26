@@ -1,8 +1,30 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MagnifyingGlassIcon, FunnelIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, FunnelIcon, CheckIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { motion } from 'framer-motion';
+
+/* ── Favicon helper ─────────────────────────────────────────── */
+const Favicon = ({ url, size = 20 }) => {
+    const [err, setErr] = useState(false);
+    try {
+        const host = new URL(url).hostname;
+        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-violet-300" />;
+        return (
+            <img
+                src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
+                alt=""
+                width={size}
+                height={size}
+                className="rounded-sm object-contain"
+                onError={() => setErr(true)}
+            />
+        );
+    } catch {
+        return <GlobeAltIcon style={{ width: size, height: size }} className="text-violet-300" />;
+    }
+};
 
 const PageSelector = () => {
     const [searchParams] = useSearchParams();
@@ -65,7 +87,7 @@ const PageSelector = () => {
             const totalAfterAdd = existingPages.length + newSelected.size + 1;
 
             if (totalAfterAdd > 5) {
-                toast.error(`Maximum 5 URLs allowed. You already have ${existingPages.length} pages selected in Dashboard.`);
+                toast.error(`Maximum 5 URLs allowed. You already have ${existingPages.length} pages selected.`);
                 return;
             }
             newSelected.add(pageUrl);
@@ -77,16 +99,20 @@ const PageSelector = () => {
         if (selectedPages.size === filteredPages.length) {
             setSelectedPages(new Set());
         } else {
-            // Check limit before selecting all
+            // Add up to the 5 maximum limit
             const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
-            const totalAfterAdd = existingPages.length + filteredPages.length;
-
-            if (totalAfterAdd > 5) {
-                const canSelect = Math.max(0, 5 - existingPages.length);
-                toast.error(`Maximum 5 URLs allowed. You already have ${existingPages.length} pages selected. You can only select ${canSelect} more.`);
+            const canSelect = Math.max(0, 5 - existingPages.length);
+            
+            if (canSelect === 0) {
+                toast.error(`Maximum 5 URLs allowed. You already have 5 pages selected.`);
                 return;
             }
-            setSelectedPages(new Set(filteredPages.map(p => p.url)));
+            
+            if (filteredPages.length > canSelect) {
+                toast.success(`Limit reached! Selected the first ${canSelect} pages.`);
+            }
+            
+            setSelectedPages(new Set(filteredPages.slice(0, canSelect).map(p => p.url)));
         }
     };
 
@@ -107,7 +133,7 @@ const PageSelector = () => {
 
         // Navigate to analysis with selected URLs
         const urls = Array.from(selectedPages);
-        navigate('/dashboard', { state: { urls, mode: 'cluster' } });
+        navigate('/new-analysis', { state: { urls, mode: 'cluster' } });
     };
 
     const sortPages = (pages) => {
@@ -127,10 +153,10 @@ const PageSelector = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-                    <p className="mt-4 text-slate-600">Loading pages from Search Console...</p>
+            <div className="flex-1 h-full w-full flex items-center justify-center" style={{ background: '#f5f4fa' }}>
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 rounded-full border-[3px] border-violet-200 border-t-violet-600 animate-spin" />
+                    <p className="text-sm font-semibold text-slate-500 tracking-wide">Connecting to Google Search Console...</p>
                 </div>
             </div>
         );
@@ -144,19 +170,15 @@ const PageSelector = () => {
     const isAtLimit = remainingSlots === 0;
 
     return (
-        <div className="min-h-screen bg-slate-50 py-12 px-4 font-sans relative overflow-hidden">
-            {/* Ambient Background Blur to match Dashboard */}
-            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-violet-200/30 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-200/30 rounded-full blur-[100px] translate-y-1/3 -translate-x-1/3 pointer-events-none" />
-
-            <div className="max-w-6xl mx-auto relative z-10 flex flex-col h-[calc(100vh-6rem)]">
+        <div className="flex flex-col flex-1 h-full w-full py-4 sm:py-8 px-4 sm:px-6" style={{ background: '#f5f4fa' }}>
+            <div className="w-full max-w-[1200px] mx-auto flex flex-col flex-1 relative z-10 min-h-[600px] max-h-[calc(100vh-8rem)]">
                 {/* ── Main Floating Card ── */}
-                <div className="bg-white/80 backdrop-blur-xl rounded-[24px] shadow-xl shadow-slate-200/40 border border-slate-200/60 flex flex-col flex-1 overflow-hidden">
+                <div className="bg-white rounded-[24px] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] overflow-hidden border border-white flex flex-col flex-1">
                     
                     {/* Header Strip */}
-                    <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white/50">
+                    <div className="px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
-                            <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 tracking-tight">Select Pages for Analysis</h1>
+                            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Select Pages for Analysis</h1>
                             <div className="flex items-center gap-3 mt-1.5">
                                 <span className="inline-flex items-center rounded-md bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-700/10">
                                     {propertyUrl}
@@ -182,7 +204,7 @@ const PageSelector = () => {
                     </div>
 
                     {/* Filters & Content Area */}
-                    <div className="p-8 flex flex-col flex-1 overflow-hidden">
+                    <div className="p-6 sm:p-8 flex flex-col flex-1 overflow-hidden bg-white">
                         
                         {/* Search and Sort Controls */}
                         <div className="flex gap-4 items-center mb-6">
@@ -208,86 +230,97 @@ const PageSelector = () => {
                         </div>
 
                         {/* List Metadata */}
-                        <div className="flex items-center justify-between mb-3 px-1 text-sm font-semibold text-slate-500">
-                            <span>Showing {sortedPages.length} of {pages.length} crawled pages</span>
+                        <div className="flex items-center justify-between mb-4 px-1">
+                            <span className="text-sm font-semibold text-slate-500">
+                                Showing <span className="text-slate-700">{sortedPages.length}</span> of {pages.length} crawled pages
+                            </span>
                             <button
                                 onClick={toggleAll}
-                                className="text-violet-600 hover:text-violet-700 transition-colors"
+                                className="text-sm font-bold text-violet-600 hover:text-violet-700 transition-colors flex items-center gap-2"
                             >
-                                {selectedPages.size === filteredPages.length ? 'Deselect All' : 'Select All Filtered'}
+                                <div className={`w-5 h-5 rounded md flex items-center justify-center transition-colors border ${selectedPages.size === filteredPages.length && filteredPages.length > 0 ? 'bg-violet-600 border-violet-600' : 'bg-white border-slate-300'}`}>
+                                    {selectedPages.size === filteredPages.length && filteredPages.length > 0 && <CheckIcon className="w-3.5 h-3.5 text-white" />}
+                                </div>
+                                {selectedPages.size === filteredPages.length && filteredPages.length > 0 ? 'Deselect All' : 'Select All Filtered'}
                             </button>
                         </div>
 
-                        {/* Scrolling Data Table */}
-                        <div className="flex-1 overflow-auto bg-white rounded-2xl border border-slate-100 shadow-sm relative">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-50/80 backdrop-blur-md sticky top-0 z-10 border-b border-slate-100">
-                                    <tr>
-                                        <th className="w-14 px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedPages.size === filteredPages.length && filteredPages.length > 0}
-                                                onChange={toggleAll}
-                                                className="w-4.5 h-4.5 text-violet-600 bg-white border-slate-300 rounded cursor-pointer focus:ring-violet-500 focus:ring-offset-2"
-                                            />
-                                        </th>
-                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider">Page URL</th>
-                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider hidden md:table-cell">Top Search Intents</th>
-                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Clicks</th>
-                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right">Impressions</th>
-                                        <th className="px-6 py-4 font-semibold text-slate-500 text-xs uppercase tracking-wider text-right hidden sm:table-cell">Pos</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {sortedPages.map((page) => (
-                                        <tr
-                                            key={page.url}
-                                            className={`group transition-all cursor-pointer hover:bg-violet-50/50 ${selectedPages.has(page.url) ? 'bg-violet-50/80 border-l-4 border-l-violet-500' : 'border-l-4 border-l-transparent'}`}
-                                            onClick={() => togglePage(page.url)}
-                                        >
-                                            <td className="px-6 py-4">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedPages.has(page.url)}
-                                                    onChange={e => { e.stopPropagation(); togglePage(page.url); }}
-                                                    className="w-4.5 h-4.5 text-violet-600 bg-white border-slate-300 rounded cursor-pointer focus:ring-violet-500 focus:ring-offset-2"
-                                                />
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-[15px] text-slate-900 font-semibold truncate max-w-sm" title={page.url}>
-                                                    {page.url.replace('https://', '').replace('http://', '').replace('www.', '')}
+                        {/* Scrolling Data Cards */}
+                        <div className="flex-1 overflow-auto pr-2 pb-6 space-y-3" style={{ scrollbarWidth: 'thin' }}>
+                            {sortedPages.map((page, index) => {
+                                const isSelected = selectedPages.has(page.url);
+                                return (
+                                    <motion.div
+                                        key={page.url}
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                                        onClick={() => togglePage(page.url)}
+                                        className={`flex flex-col lg:flex-row lg:items-center justify-between p-4 sm:p-5 border cursor-pointer transition-all duration-300 gap-4 group rounded-[20px]
+                                            ${isSelected 
+                                                ? 'bg-violet-50/60 border-violet-400 shadow-sm ring-1 ring-violet-500/20' 
+                                                : 'bg-white border-slate-200 shadow-sm hover:border-violet-300 hover:shadow-md hover:bg-violet-50/30 hover:-translate-y-0.5'}`}
+                                    >
+                                        <div className="flex items-start gap-4 flex-1 min-w-0">
+                                            {/* Custom Checkbox */}
+                                            <div className="pt-0.5 sm:pt-1">
+                                                <div className={`w-5 h-5 rounded-[6px] border flex items-center justify-center transition-all ${isSelected ? 'bg-violet-600 border-violet-600 shadow-md shadow-violet-400/30' : 'bg-white border-slate-300 group-hover:border-violet-400'}`}>
+                                                    {isSelected && <CheckIcon className="w-3.5 h-3.5 text-white stroke-[3px]" />}
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4 hidden md:table-cell">
-                                                <div className="flex flex-wrap gap-1.5">
+                                            </div>
+                                            
+                                            {/* Main Content */}
+                                            <div className="flex flex-col gap-2.5 flex-1 min-w-0">
+                                                <div className="flex items-center gap-2.5 overflow-hidden">
+                                                    <div className="flex-shrink-0 mt-0.5">
+                                                        <Favicon url={page.url} size={16} />
+                                                    </div>
+                                                    <div className="text-[15px] sm:text-[16px] text-slate-800 font-bold truncate tracking-tight transition-colors group-hover:text-violet-900" title={page.url}>
+                                                        {page.url.replace('https://', '').replace('http://', '').replace('www.', '')}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                                                     {page.queries.slice(0, 3).map((query, idx) => (
                                                         <span
                                                             key={idx}
-                                                            className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-600 group-hover:bg-white transition-colors border border-slate-200/60 shadow-sm"
+                                                            className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[12px] font-semibold border shadow-sm transition-all
+                                                                ${isSelected 
+                                                                    ? 'bg-white border-violet-200 text-violet-700' 
+                                                                    : 'bg-slate-50 border-slate-200/80 text-slate-600 group-hover:bg-white'}`}
                                                         >
                                                             {query.query}
                                                         </span>
                                                     ))}
                                                     {page.queries.length > 3 && (
-                                                        <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold text-slate-400">
+                                                        <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-bold text-slate-400">
                                                             +{page.queries.length - 3}
                                                         </span>
                                                     )}
                                                 </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-right whitespace-nowrap text-[15px] font-medium text-slate-800">
-                                                {page.total_clicks.toLocaleString()}
-                                            </td>
-                                            <td className="px-6 py-4 text-right whitespace-nowrap text-[15px] text-slate-500">
-                                                {page.total_impressions.toLocaleString()}
-                                            </td>
-                                            <td className="px-6 py-4 text-right whitespace-nowrap text-[15px] text-slate-500 hidden sm:table-cell">
-                                                {page.avg_position}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                            </div>
+                                        </div>
+
+                                        {/* SEO Stats Bar */}
+                                        <div className="flex items-center gap-6 sm:gap-8 flex-shrink-0 ml-9 lg:ml-0 bg-slate-50/80 rounded-2xl px-5 py-2.5 border border-slate-100">
+                                            <div className="flex flex-col items-center sm:items-start min-w-[50px]">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Clicks</span>
+                                                <span className="text-sm font-bold text-slate-800">{page.total_clicks.toLocaleString()}</span>
+                                            </div>
+                                            <div className="w-px h-8 bg-slate-200" />
+                                            <div className="flex flex-col items-center sm:items-start min-w-[50px]">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Impr.</span>
+                                                <span className="text-sm font-semibold text-slate-600">{page.total_impressions.toLocaleString()}</span>
+                                            </div>
+                                            <div className="w-px h-8 bg-slate-200" />
+                                            <div className="flex flex-col items-center sm:items-start min-w-[40px]">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">Position</span>
+                                                <span className="text-sm font-semibold text-slate-600">{page.avg_position}</span>
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>

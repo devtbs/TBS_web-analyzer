@@ -19,92 +19,9 @@ import {
 import { CheckCircleIcon as SolidCheckCircle, ExclamationCircleIcon } from '@heroicons/react/24/solid';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import AnalysisCard from '../components/ui/AnalysisCard';
 
-/* ── Favicon helper ─────────────────────────────────────────── */
-const Favicon = ({ url, size = 20 }) => {
-    const [err, setErr] = useState(false);
-    try {
-        const host = new URL(url).hostname;
-        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-violet-300" />;
-        return (
-            <img
-                src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
-                alt=""
-                width={size}
-                height={size}
-                className="rounded-sm object-contain"
-                onError={() => setErr(true)}
-            />
-        );
-    } catch {
-        return <GlobeAltIcon style={{ width: size, height: size }} className="text-violet-300" />;
-    }
-};
 
-/* ── Inline rename ──────────────────────────────────────────── */
-const RenameInput = ({ analysisId, currentLabel, onSaved, onCancel }) => {
-    const [value, setValue] = useState(currentLabel || '');
-    const inputRef = useRef(null);
-
-    useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
-
-    const save = async () => {
-        try {
-            const token = localStorage.getItem('access_token');
-            await axios.patch(`/api/analysis/${analysisId}/label`,
-                { label: value },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            onSaved(value.trim() || null);
-            toast.success('Label saved');
-        } catch {
-            toast.error('Failed to save label');
-        }
-    };
-
-    const onKey = (e) => {
-        if (e.key === 'Enter') save();
-        if (e.key === 'Escape') onCancel();
-    };
-
-    return (
-        <div className="flex items-center gap-2 w-full">
-            <input
-                ref={inputRef}
-                value={value}
-                onChange={e => setValue(e.target.value)}
-                onKeyDown={onKey}
-                placeholder="Enter a label…"
-                className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-violet-300 focus:border-violet-500 focus:ring-2 focus:ring-violet-100 text-sm font-semibold text-slate-800 bg-white outline-none transition-all"
-            />
-            <button onClick={save} className="flex-shrink-0 p-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors">
-                <CheckIcon className="w-4 h-4" />
-            </button>
-            <button onClick={onCancel} className="flex-shrink-0 p-1.5 rounded-lg bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200 transition-colors">
-                <XMarkIcon className="w-4 h-4" />
-            </button>
-        </div>
-    );
-};
-
-/* ── Status badge ───────────────────────────────────────────── */
-const StatusBadge = ({ status }) => {
-    if (status === 'completed') return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold border border-emerald-100">
-            <SolidCheckCircle className="w-3.5 h-3.5" /> Completed
-        </span>
-    );
-    if (status === 'processing') return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 text-violet-600 rounded-full text-xs font-bold border border-violet-100">
-            <SparklesIcon className="w-3.5 h-3.5 animate-spin" /> Processing
-        </span>
-    );
-    return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-500 rounded-full text-xs font-bold border border-red-100">
-            <ExclamationCircleIcon className="w-3.5 h-3.5" /> Failed
-        </span>
-    );
-};
 
 /* ── Stat card ──────────────────────────────────────────────── */
 const StatCard = ({ icon, label, value, gradient, iconBg }) => (
@@ -174,30 +91,7 @@ const History = () => {
         setEditingId(null);
     };
 
-    const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
 
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return new Intl.DateTimeFormat('en-US', {
-            month: 'short', day: 'numeric', year: 'numeric'
-        }).format(date);
-    };
-
-    const getDisplayName = (analysis) => {
-        if (analysis.label) return analysis.label;
-        const domains = (analysis.urls || [])
-            .slice(0, 2)
-            .map(u => { try { return new URL(u).hostname.replace('www.', ''); } catch { return u; } });
-        return domains.join(' · ') + (analysis.urls?.length > 2 ? ` +${analysis.urls.length - 2}` : '');
-    };
 
     const filtered = analyses.filter(a => {
         const matchesFilter = filter === 'all' || a.status === filter;
@@ -214,7 +108,7 @@ const History = () => {
     /* ── Loading ── */
     if (isLoading) {
         return (
-            <div className="flex-1 w-full flex items-center justify-center min-h-[calc(100vh-160px)]" style={{ background: '#f5f4fa' }}>
+            <div className="flex-1 w-full flex items-center justify-center min-h-screen" style={{ background: '#f5f4fa' }}>
                 <div className="flex flex-col items-center gap-4">
                     <div className="relative w-16 h-16">
                         <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 opacity-20 animate-ping" />
@@ -229,7 +123,7 @@ const History = () => {
     }
 
     return (
-        <div className="flex-1 w-full min-h-[calc(100vh-160px)] py-10 px-4 sm:px-8" style={{ background: '#f5f4fa' }}>
+        <div className="flex-1 w-full min-h-screen py-10 px-4 sm:px-8" style={{ background: '#f5f4fa' }}>
             <div className="max-w-[1080px] mx-auto w-full space-y-8">
 
                 {/* ── Page header ── */}
@@ -359,134 +253,13 @@ const History = () => {
                     <div className="space-y-4">
                         <AnimatePresence mode="popLayout">
                             {filtered.map((analysis, index) => (
-                                <motion.div
+                                <AnalysisCard
                                     key={analysis.analysis_id}
-                                    layout
-                                    initial={{ opacity: 0, y: 16 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, x: -20, transition: { duration: 0.15 } }}
-                                    transition={{ delay: index * 0.04, duration: 0.3 }}
-                                    className="group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-[0_8px_32px_-8px_rgba(139,92,246,0.18)] hover:border-violet-100 transition-all duration-300"
-                                >
-                                    <div className="flex gap-0">
-
-                                        {/* ── Left accent strip ── */}
-                                        <div className={`hidden sm:flex w-1 rounded-l-2xl flex-shrink-0 ${
-                                            analysis.status === 'completed' ? 'bg-gradient-to-b from-emerald-400 to-teal-500' :
-                                            analysis.status === 'processing' ? 'bg-gradient-to-b from-violet-400 to-purple-500 animate-pulse' :
-                                            'bg-gradient-to-b from-red-400 to-rose-500'
-                                        }`} />
-
-                                        {/* ── Card body ── */}
-                                        <div className="flex-1 px-5 py-4 min-w-0">
-
-                                            {/* ── Top row: icon + info + actions ── */}
-                                            <div className="flex items-center gap-4">
-
-                                                {/* Icon */}
-                                                <div className="relative flex-shrink-0">
-                                                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-md shadow-violet-300/30">
-                                                        <GlobeAltIcon className="w-5 h-5 text-white" />
-                                                    </div>
-                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-white border border-slate-100 flex items-center justify-center shadow-sm">
-                                                        <span className="text-[8px] font-black text-violet-700 leading-none">{analysis.urls?.length || 0}</span>
-                                                    </div>
-                                                </div>
-
-                                                {/* Title + status + timestamp */}
-                                                <div className="flex-1 min-w-0">
-                                                    {/* Row 1: name + status badge (inline) */}
-                                                    <div className="flex items-center gap-2 min-w-0 mb-0.5">
-                                                        {editingId === analysis.analysis_id ? (
-                                                            <div className="flex-1 min-w-0">
-                                                                <RenameInput
-                                                                    analysisId={analysis.analysis_id}
-                                                                    currentLabel={analysis.label}
-                                                                    onSaved={(lbl) => handleLabelSaved(analysis.analysis_id, lbl)}
-                                                                    onCancel={() => setEditingId(null)}
-                                                                />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center gap-1.5 group/name min-w-0 flex-1">
-                                                                <h3 className="text-sm font-bold text-slate-800 truncate">
-                                                                    {getDisplayName(analysis)}
-                                                                </h3>
-                                                                {!analysis.label && (
-                                                                    <span className="text-[9px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full flex-shrink-0">auto</span>
-                                                                )}
-                                                                <button
-                                                                    onClick={() => setEditingId(analysis.analysis_id)}
-                                                                    title="Rename"
-                                                                    className="opacity-0 group-hover/name:opacity-100 p-0.5 rounded text-slate-300 hover:text-violet-500 hover:bg-violet-50 transition-all flex-shrink-0"
-                                                                >
-                                                                    <PencilIcon className="w-3 h-3" />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                        {/* Status badge pinned right of title */}
-                                                        <StatusBadge status={analysis.status} />
-                                                    </div>
-
-                                                    {/* Row 2: timestamp */}
-                                                    <div className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
-                                                        <ClockIcon className="w-3 h-3 flex-shrink-0" />
-                                                        {formatDate(analysis.created_at)}
-                                                    </div>
-                                                </div>
-
-                                                {/* ── Actions ── */}
-                                                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                                                    {analysis.status === 'completed' && (
-                                                        <button
-                                                            onClick={() => navigate(`/results/${analysis.analysis_id}`)}
-                                                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-violet-600 to-purple-600 shadow-sm hover:shadow-lg hover:shadow-purple-400/30 hover:-translate-y-0.5 transition-all duration-200"
-                                                        >
-                                                            View Results
-                                                            <ArrowRightIcon className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
-                                                    {analysis.status === 'processing' && (
-                                                        <button
-                                                            onClick={() => navigate(`/results/${analysis.analysis_id}`)}
-                                                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-violet-600 bg-violet-50 border border-violet-200 hover:bg-violet-100 transition-all"
-                                                        >
-                                                            <SparklesIcon className="w-3.5 h-3.5 animate-spin" />
-                                                            In Progress
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => setDeleteDialog({ isOpen: true, analysisId: analysis.analysis_id })}
-                                                        title="Delete"
-                                                        className="p-2 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 border border-slate-100 hover:border-red-200 transition-all"
-                                                    >
-                                                        <TrashIcon className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* ── Bottom row: URL pills ── */}
-                                            {(analysis.urls?.length || 0) > 0 && (
-                                                <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-50">
-                                                    {(analysis.urls || []).slice(0, 5).map((url, i) => {
-                                                        let host = url;
-                                                        try { host = new URL(url).hostname.replace('www.', ''); } catch {}
-                                                        return (
-                                                            <div key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-xs text-slate-500 font-medium hover:bg-violet-50 hover:border-violet-100 hover:text-violet-700 transition-colors">
-                                                                <Favicon url={url} size={11} />
-                                                                <span className="truncate max-w-[120px]">{host}</span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                    {(analysis.urls?.length || 0) > 5 && (
-                                                        <div className="inline-flex items-center px-2.5 py-1 bg-violet-50 border border-violet-100 rounded-lg text-xs text-violet-600 font-bold">
-                                                            +{analysis.urls.length - 5}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </motion.div>
+                                    analysis={analysis}
+                                    index={index}
+                                    onLabelSaved={handleLabelSaved}
+                                    onDelete={(id) => setDeleteDialog({ isOpen: true, analysisId: id })}
+                                />
                             ))}
                         </AnimatePresence>
 
