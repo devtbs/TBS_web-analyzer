@@ -693,15 +693,15 @@ const SEOAnalytics = () => {
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                             disabled={currentPage === 1}
-                                            className="px-3 py-1 border border-slate-200 rounded text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                                            className="px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
                                         >
                                             Previous
                                         </button>
-                                        <span className="text-slate-600 px-2 font-medium">{currentPage} / {totalPagesCount}</span>
+                                        <span className="text-slate-500 px-2 font-bold">{currentPage} / {totalPagesCount}</span>
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.min(totalPagesCount, prev + 1))}
                                             disabled={currentPage === totalPagesCount}
-                                            className="px-3 py-1 border border-slate-200 rounded text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                                            className="px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
                                         >
                                             Next
                                         </button>
