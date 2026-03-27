@@ -26,8 +26,16 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
     useEffect(() => {
         if (!analysisId) return;
         const token = localStorage.getItem('access_token');
+        let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        
+        // Ensure baseURL is absolute for EventSource
+        if (!baseURL.startsWith('http')) {
+            const isProd = !window.location.hostname.includes('localhost');
+            baseURL = isProd ? 'https://api.phyominthein.com' : `http://${window.location.hostname}:8000`;
+        }
+
         const eventSource = new EventSource(
-            `/api/progress/${analysisId}?token=${encodeURIComponent(token)}`
+            `${baseURL.replace(/\/$/, '')}/api/progress/${analysisId}?token=${encodeURIComponent(token)}`
         );
 
         eventSource.onmessage = (event) => {
