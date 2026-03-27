@@ -23,10 +23,15 @@ import toast from 'react-hot-toast';
 const CustomTooltip = ({ active, payload, label, activeMetric }) => {
     if (active && payload && payload.length) {
         const metricConfig = {
-            clicks: { name: 'Clicks', color: 'bg-[#059669]', format: val => val.toLocaleString() },
-            impressions: { name: 'Impressions', color: 'bg-indigo-600', format: val => val.toLocaleString() },
-            ctr: { name: 'Avg. CTR', color: 'bg-amber-500', format: val => `${Number(val).toFixed(2)}%` },
-            position: { name: 'Avg. Position', color: 'bg-rose-500', format: val => Number(val).toFixed(2) }
+            clicks: { name: 'Clicks', hex: '#059669', format: val => val.toLocaleString() },
+            impressions: { name: 'Impressions', hex: '#059669', format: val => val.toLocaleString() },
+            ctr: { name: 'Avg. CTR', hex: '#059669', format: val => `${Number(val).toFixed(2)}%` },
+            position: { name: 'Avg. Position', hex: '#059669', format: val => Number(val).toFixed(2) },
+            growth: { 
+                name: 'Clicks Growth', 
+                hex: payload[0].value >= 0 ? '#059669' : '#F87171', 
+                format: val => `${Number(val).toFixed(2)}%` 
+            }
         };
         const config = metricConfig[activeMetric] || metricConfig.clicks;
         
@@ -37,7 +42,7 @@ const CustomTooltip = ({ active, payload, label, activeMetric }) => {
                 </p>
                 <div className="flex items-center justify-between gap-6">
                     <div className="flex items-center gap-2.5">
-                        <div className={`w-3.5 h-3.5 rounded-sm ${config.color}`} />
+                        <div className="w-3.5 h-3.5 rounded-sm" style={{ backgroundColor: config.hex }} />
                         <span className="text-[14px] font-bold text-slate-700">
                             {config.name}
                         </span>
@@ -574,7 +579,11 @@ const SEOAnalytics = () => {
                         </div>
                         <div className="h-[260px] w-full mt-2 mb-12 bg-white px-2">
                             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                <BarChart data={enrichedChartData} margin={{ top: 20, right: 20, left: -10, bottom: 0 }}>
+                                <BarChart 
+                                    data={enrichedChartData} 
+                                    margin={{ top: 20, right: 20, left: -10, bottom: 0 }}
+                                    onMouseLeave={() => setActiveBarIndex(null)}
+                                >
                                     <CartesianGrid vertical={false} stroke="#F1F5F9" />
                                     <XAxis 
                                         dataKey="month" 

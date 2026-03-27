@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import api from '../api/axios';
 
 const AuthContext = createContext();
 
@@ -19,10 +19,8 @@ export const AuthProvider = ({ children }) => {
         // Check for existing token
         const token = localStorage.getItem('access_token');
         if (token) {
-            // Verify token is still valid
-            axios.get('/auth/me', {
-                headers: { Authorization: `Bearer ${token}` }
-            })
+            // Verify token is still valid via centralized api instance
+            api.get('/auth/me')
                 .then(response => {
                     setUser(response.data);
                 })
@@ -39,7 +37,7 @@ export const AuthProvider = ({ children }) => {
 
     const login = async (googleToken) => {
         try {
-            const response = await axios.post('/auth/google/login', {
+            const response = await api.post('/auth/google/login', {
                 token: googleToken
             });
 
@@ -56,31 +54,22 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            const token = localStorage.getItem('access_token');
-            if (token) {
-                await axios.post('/auth/logout', {}, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-            }
+            await api.post('/auth/logout', {});
         } catch (error) {
             console.error('Logout error:', error);
         } finally {
-            // Clear all user-related data from localStorage
             localStorage.removeItem('access_token');
-
-            // Clear sessionStorage (selected pages, etc.)
             sessionStorage.removeItem('selectedPages');
-
             setUser(null);
         }
     };
 
-    const value = {
+    const value = useMemo(() => ({
         user,
         loading,
         login,
         logout,
-    };
+    }), [user, loading]);
 
     return (
         <AuthContext.Provider value={value}>

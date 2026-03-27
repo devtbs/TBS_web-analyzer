@@ -122,7 +122,7 @@ const Sidebar = () => {
                                             }}
                                             onMouseLeave={e => {
                                                 if (!active) e.currentTarget.style.background = 'transparent';
-                                                if (!active) e.currentTarget.style.color = '#777';
+                                                if (!active) e.currentTarget.style.color = '#9ca3af';
                                             }}
                                         >
 
