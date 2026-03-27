@@ -30,9 +30,36 @@ const ProtectedLayout = () => {
             <div className="flex h-screen overflow-hidden bg-[#1a1d2e]">
                 <Sidebar />
                 <div className="flex-1 bg-slate-50 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
-                        <p className="text-slate-500 font-medium animate-pulse">Checking credentials...</p>
+                    <div className="flex flex-col items-center gap-6 max-w-xs text-center p-8">
+                        <div className="relative">
+                            <div className="w-12 h-12 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-2 h-2 bg-indigo-600 rounded-full animate-ping" />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-slate-800 font-bold text-lg">Checking credentials...</p>
+                            <p className="text-slate-500 text-sm">Validating your session with the server. This may take a moment if the server is waking up.</p>
+                        </div>
+                        
+                        {/* Escape hatch for users if it takes too long */}
+                        <div className="pt-4 flex flex-col gap-3 w-full">
+                            <button 
+                                onClick={() => window.location.reload()}
+                                className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-4 py-2 rounded-lg transition-colors"
+                            >
+                                Manual Refresh
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    localStorage.removeItem('access_token');
+                                    window.location.href = '/';
+                                }}
+                                className="text-sm font-medium text-slate-400 hover:text-red-500 transition-colors"
+                            >
+                                Stuck? Sign out and try again
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

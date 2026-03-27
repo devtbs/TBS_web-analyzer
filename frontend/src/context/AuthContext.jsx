@@ -12,27 +12,60 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(() => {
+        const cached = localStorage.getItem('user_data');
+        if (cached) {
+            try { return JSON.parse(cached); } catch { return null; }
+        }
+        return null;
+    });
+    const [loading, setLoading] = useState(() => {
+        // If we have a token and cached user, we can start in non-loading state
+        const token = localStorage.getItem('access_token');
+        const cachedUser = localStorage.getItem('user_data');
+        return !(token && cachedUser);
+    });
 
     useEffect(() => {
-        // Check for existing token
+        // Check for existing token and cached user data
         const token = localStorage.getItem('access_token');
+        
+        // Background / Safety check
+        const safetyTimer = setTimeout(() => {
+            if (loading) {
+                console.warn('Auth check timed out after 15s.');
+                setLoading(false);
+            }
+        }, 15000);
+
         if (token) {
-            // Verify token is still valid via centralized api instance
+            // Verify session in background (or foreground if not cached)
             api.get('/auth/me')
                 .then(response => {
-                    setUser(response.data);
+                    const userData = response.data;
+                    setUser(userData);
+                    // Cache the user data for next reload
+                    localStorage.setItem('user_data', JSON.stringify(userData));
                 })
-                .catch(() => {
-                    localStorage.removeItem('access_token');
+                .catch((err) => {
+                    console.error('Session verification failed:', err);
+                    // Only clear if it's a real 401/403 auth error
+                    if (err.response?.status === 401 || err.response?.status === 403) {
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('user_data');
+                        setUser(null);
+                    }
                 })
                 .finally(() => {
+                    clearTimeout(safetyTimer);
                     setLoading(false);
                 });
         } else {
+            clearTimeout(safetyTimer);
             setLoading(false);
         }
+
+        return () => clearTimeout(safetyTimer);
     }, []);
 
     const login = async (googleToken) => {
@@ -43,6 +76,7 @@ export const AuthProvider = ({ children }) => {
 
             const { access_token, user: userData } = response.data;
             localStorage.setItem('access_token', access_token);
+            localStorage.setItem('user_data', JSON.stringify(userData));
             setUser(userData);
 
             return userData;
@@ -59,6 +93,7 @@ export const AuthProvider = ({ children }) => {
             console.error('Logout error:', error);
         } finally {
             localStorage.removeItem('access_token');
+            localStorage.removeItem('user_data');
             sessionStorage.removeItem('selectedPages');
             setUser(null);
         }
