@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: '', // API base URL if needed, currently relative
+    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
 });
 
 // Request interceptor to add authorization header to every request
