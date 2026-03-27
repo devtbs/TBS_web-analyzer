@@ -66,6 +66,22 @@ class ProgressTracker:
         async with self._lock:
             return self._progress.get(analysis_id)
     
+    async def cancel(self, analysis_id: str):
+        """Mark analysis as cancelled"""
+        async with self._lock:
+            if analysis_id in self._progress:
+                self._progress[analysis_id]['status'] = 'cancelled'
+                self._progress[analysis_id]['message'] = 'Analysis cancelled and deleted.'
+                self._progress[analysis_id]['updated_at'] = datetime.utcnow().isoformat()
+
+    async def is_cancelled(self, analysis_id: str) -> bool:
+        """Check if an analysis has been cancelled"""
+        async with self._lock:
+            status_data = self._progress.get(analysis_id)
+            if status_data is None:
+                return True  # If tracking is gone, treat as cancelled
+            return status_data.get('status') == 'cancelled'
+
     async def cleanup(self, analysis_id: str):
         """Remove progress tracking (call after client disconnects)"""
         async with self._lock:

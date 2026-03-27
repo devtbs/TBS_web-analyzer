@@ -376,19 +376,27 @@ async def process_analysis(analysis_id: str, urls: List[str]):
         print(f"[{analysis_id}] Starting analysis for {len(urls)} URLs...")
         await progress_tracker.update(analysis_id, 1, 'scraping', f'Scraping {len(urls)} website(s)...')
         
+        async def check_cancelled():
+            if await progress_tracker.is_cancelled(analysis_id):
+                print(f"[{analysis_id}] 🛑 Analysis cancelled by user. Stopping.")
+                raise asyncio.CancelledError()
+
         # Scrape URLs
         print(f"[{analysis_id}] Scraping URLs...")
         scraped_data = await scraper.scrape_multiple(urls)
+        await check_cancelled()
         
         # Generate knowledge graph with AI
         await progress_tracker.update(analysis_id, 2, 'knowledge_graph', 'Generating knowledge graph with AI...')
         print(f"[{analysis_id}] Generating knowledge graph with AI...")
         knowledge_graph = await kg_generator.generate_graph(scraped_data)
+        await check_cancelled()
         
         # Generate topical maps with AI
         await progress_tracker.update(analysis_id, 3, 'topical_map', 'Creating topical maps and content strategy...')
         print(f"[{analysis_id}] Generating topical maps with AI...")
         topical_maps = await topical_generator.generate_multiple(scraped_data)
+        await check_cancelled()
         
         # Generate comparison with AI (if multiple URLs)
         comparison = None
@@ -396,6 +404,7 @@ async def process_analysis(analysis_id: str, urls: List[str]):
             await progress_tracker.update(analysis_id, 4, 'comparison', 'Comparing websites...')
             print(f"[{analysis_id}] Generating comparison with AI...")
             comparison = await comparator.compare_websites(scraped_data, topical_maps)
+            await check_cancelled()
         else:
             # Skip comparison step if single URL
             await progress_tracker.update(analysis_id, 4, 'comparison', 'Skipping comparison (single URL)...')
@@ -426,6 +435,10 @@ async def process_analysis(analysis_id: str, urls: List[str]):
         await progress_tracker.complete(analysis_id, 'Analysis complete! Redirecting to results...')
         print(f"[{analysis_id}] ✅ Successfully completed!")
         
+    except asyncio.CancelledError:
+        # User intentionally cancelled/deleted the analysis
+        print(f"[{analysis_id}] 🛑 Task terminated: Cleanup complete.")
+        return
     except Exception as e:
         print(f"[{analysis_id}] ❌ Error processing analysis: {str(e)}")
         import traceback
@@ -696,8 +709,11 @@ async def delete_analysis(
             detail="Access denied"
         )
     
-    # Delete the analysis
+    # Delete the analysis from DB
     database_store.delete_analysis(db, analysis_id)
+    
+    # Cancel any running background task
+    await progress_tracker.cancel(analysis_id)
     
     return {"message": "Analysis deleted successfully"}
 
