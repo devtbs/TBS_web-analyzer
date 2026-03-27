@@ -209,7 +209,6 @@ const NewAnalysis = () => {
                                         ${useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Search Console
-                                    {useGSC && <div className="ml-3 w-5 h-5 bg-white rounded-full shadow-sm" />}
                                 </button>
                                 <button
                                     onClick={() => switchTab(false)}
@@ -218,7 +217,6 @@ const NewAnalysis = () => {
                                         ${!useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     Manual Entry
-                                    {!useGSC && <div className="ml-3 w-5 h-5 bg-white rounded-full shadow-sm" />}
                                 </button>
                             </div>
                         </div>

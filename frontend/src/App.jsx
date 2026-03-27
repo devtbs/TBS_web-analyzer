@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -17,24 +17,29 @@ import Help from './pages/Help';
 import SEOAnalytics from './pages/SEOAnalytics';
 
 /* ── Protected Route ─────────────────────────────────────── */
-const ProtectedRoute = ({ children }) => {
+/* ── Persistent Layout for Authenticated Pages ─────────── */
+const ProtectedLayout = () => {
     const { user, loading } = useAuth();
+    const location = useLocation();
 
+    // If loading, render the sidebar and a spinner in the content area
+    // This maintains layout stability and prevents "flashing" on reload
     if (loading) {
-        // Render the Sidebar layout with an empty main content area so the sidebar doesn't flash
         return (
-            <SidebarLayout>
-                <div className="flex-1 bg-slate-50 animate-pulse" />
-            </SidebarLayout>
+            <div className="flex h-screen overflow-hidden bg-[#1a1d2e]">
+                <Sidebar />
+                <div className="flex-1 bg-slate-50 flex items-center justify-center">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+                        <p className="text-slate-500 font-medium animate-pulse">Checking credentials...</p>
+                    </div>
+                </div>
+            </div>
         );
     }
 
-    return user ? children : <Navigate to="/" />;
-};
+    if (!user) return <Navigate to="/" replace />;
 
-/* ── Sidebar layout (for authenticated app pages) ───────── */
-const SidebarLayout = ({ children }) => {
-    const location = useLocation();
     return (
         <div className="flex h-screen overflow-hidden bg-slate-50">
             <Sidebar />
@@ -46,7 +51,7 @@ const SidebarLayout = ({ children }) => {
                     transition={{ duration: 0.3, ease: 'easeOut' }}
                     className="min-h-full"
                 >
-                    {children}
+                    <Outlet />
                 </motion.div>
             </main>
         </div>
@@ -54,15 +59,22 @@ const SidebarLayout = ({ children }) => {
 };
 
 /* ── Public layout (Home page) ───────────────────────────── */
-const PublicLayout = ({ children }) => (
-    <div className="min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-1 flex flex-col">
-            {children}
-        </main>
-        <Footer />
-    </div>
-);
+const PublicLayout = ({ children }) => {
+    const { user, loading } = useAuth();
+    
+    if (loading) return null;
+    if (user) return <Navigate to="/dashboard" replace />;
+    
+    return (
+        <div className="min-h-screen flex flex-col">
+            <Header />
+            <main className="flex-1 flex flex-col">
+                {children}
+            </main>
+            <Footer />
+        </div>
+    );
+};
 
 /* ── App routing ─────────────────────────────────────────── */
 function AppContent() {
@@ -72,63 +84,16 @@ function AppContent() {
                 {/* Public pages — top header + footer */}
                 <Route path="/" element={<PublicLayout><Home /></PublicLayout>} />
 
-                {/* Protected pages — sidebar layout */}
-                <Route
-                    path="/dashboard"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><Dashboard /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/seo-analytics"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><SEOAnalytics /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/new-analysis"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><NewAnalysis /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/history"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><History /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/select-pages"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><PageSelector /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/results/:analysisId"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><Results /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/help"
-                    element={
-                        <ProtectedRoute>
-                            <SidebarLayout><Help /></SidebarLayout>
-                        </ProtectedRoute>
-                    }
-                />
+                {/* All protected pages share the same Layout wrapper */}
+                <Route element={<ProtectedLayout />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/seo-analytics" element={<SEOAnalytics />} />
+                    <Route path="/new-analysis" element={<NewAnalysis />} />
+                    <Route path="/history" element={<History />} />
+                    <Route path="/select-pages" element={<PageSelector />} />
+                    <Route path="/results/:analysisId" element={<Results />} />
+                    <Route path="/help" element={<Help />} />
+                </Route>
             </Routes>
 
             <Toaster

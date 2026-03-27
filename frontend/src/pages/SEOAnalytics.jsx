@@ -1,11 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import * as XLSX from 'xlsx';
 import {
     ChevronDownIcon,
-    ChevronUpIcon,
-    ArrowDownTrayIcon,
-    MagnifyingGlassIcon,
 } from '@heroicons/react/20/solid';
 import { ArrowPathIcon, LinkIcon, PlusIcon, ArrowTopRightOnSquareIcon, ChartBarIcon, PencilIcon } from '@heroicons/react/24/outline';
 import {
@@ -85,6 +83,17 @@ const getStatusInfo = (status) => {
     }
 };
 
+const getStatusDesc = (status) => {
+    switch (status) {
+        case 'Top result': return 'Position is 1–10 and has not recently experienced ranking loss';
+        case 'Quick Win': return 'Achieved 1–10 position within 3 months from publishing';
+        case 'Decay': return 'Lost more than 2 positions and clicks decreased';
+        case 'Opportunity': return 'Strong potential; in positions 11–30 with significant search volume';
+        case 'Ranked': return 'Generating clicks, but no leading avg. position';
+        default: return 'No recorded rankings or clicks in the past 30 days';
+    }
+};
+
 /* ── Component ─────────────────────────────────────────────── */
 const SEOAnalytics = () => {
     const navigate = useNavigate();
@@ -94,6 +103,7 @@ const SEOAnalytics = () => {
     const [activeMetric, setActiveMetric] = useState('clicks');
     const [activeTab, setActiveTab] = useState('Pages'); // Make Pages the default tab
     const [chartGrouping, setChartGrouping] = useState('daily');
+    const [activeBarIndex, setActiveBarIndex] = useState(null);
     
     // Data states
     const [loading, setLoading] = useState(false);
@@ -247,13 +257,12 @@ const SEOAnalytics = () => {
                     queryMap[q.query].total_position_x_imp += (q.position * q.impressions);
                 });
             });
-            return Object.values(queryMap).map(q => ({
+            results = Object.values(queryMap).map(q => ({
                 ...q,
                 avg_position: q.total_impressions > 0 ? (q.total_position_x_imp / q.total_impressions) : 0
             })).sort((a, b) => b.total_clicks - a.total_clicks);
         } else if (activeTab === 'Clusters') {
             const clusterMap = {};
-            const stopWords = ['in', 'the', 'of', 'and', 'for', 'with', 'to', 'is', 'at', 'on', 'thailand', 'services', 'agency', 'company'];
             
             // 1. Group all unique queries and their stats
             const queryStats = {};
@@ -272,7 +281,7 @@ const SEOAnalytics = () => {
             Object.keys(queryStats).forEach(queryText => {
                 const words = queryText.toLowerCase().split(/\s+/).filter(w => w.length > 3);
                 
-                // Use words as clusters (simple but effective for this scale)
+                // Use words as clusters
                 words.forEach(word => {
                     if (!clusterMap[word]) {
                         clusterMap[word] = {
@@ -296,14 +305,14 @@ const SEOAnalytics = () => {
                 });
             });
 
-            return Object.values(clusterMap)
+            results = Object.values(clusterMap)
                 .map(c => ({
                     ...c,
                     avg_position: c.total_impressions > 0 ? (c.total_position_x_imp / c.total_impressions) : 0,
                     top_queries: c.top_queries.sort((a, b) => b.clicks - a.clicks).slice(0, 2).map(q => q.text)
                 }))
                 .sort((a, b) => b.total_impressions - a.total_impressions)
-                .slice(0, 15);
+                .slice(0, 50); // Increased slice to allow for better filtering
         }
 
         // Apply Status Filter
@@ -313,6 +322,86 @@ const SEOAnalytics = () => {
 
         return results;
     }, [pages, activeTab, statusFilter]);
+
+    const handleDownloadReport = () => {
+        if (!pages || pages.length === 0) {
+            toast.error('No data available to download');
+            return;
+        }
+
+        // 1. Prepare Queries Data
+        const queryMap = {};
+        pages.forEach(p => {
+            p.queries?.forEach(q => {
+                if (!queryMap[q.query]) {
+                    queryMap[q.query] = {
+                        query: q.query,
+                        clicks: 0,
+                        impressions: 0,
+                        total_pos_imp: 0,
+                    };
+                }
+                queryMap[q.query].clicks += q.clicks;
+                queryMap[q.query].impressions += q.impressions;
+                queryMap[q.query].total_pos_imp += (q.position * q.impressions);
+            });
+        });
+
+        const queryRows = Object.values(queryMap).map(q => {
+            const avgPos = q.impressions > 0 ? q.total_pos_imp / q.impressions : 0;
+            const status = getStatus(avgPos);
+            return {
+                'Query': q.query,
+                'Clicks': q.clicks,
+                'Impressions': q.impressions,
+                'CTR': q.impressions > 0 ? ((q.clicks / q.impressions) * 100).toFixed(2) + '%' : '0.00%',
+                'Position': avgPos.toFixed(2),
+                'Clicks Diff': 0,
+                'Impressions Diff': 0,
+                'CTR Diff': 0,
+                'Position Diff': 0,
+                'Months with Data': 12,
+                'Status': status,
+                'Status Desc': getStatusDesc(status)
+            };
+        }).sort((a, b) => b.Clicks - a.Clicks);
+
+        // 2. Prepare Pages Data
+        const pageRows = pages.map(p => {
+            const ctr = p.total_impressions > 0 ? ((p.total_clicks / p.total_impressions) * 100).toFixed(2) : '0.00';
+            const status = getStatus(p.avg_position);
+            return {
+                'Page URL': p.url,
+                'Clicks': p.total_clicks,
+                'Impressions': p.total_impressions,
+                'CTR': ctr + '%',
+                'Position': p.avg_position.toFixed(2),
+                'Clicks Diff': 0,
+                'Impressions Diff': 0,
+                'CTR Diff': 0,
+                'Position Diff': 0,
+                'Months with Data': 12,
+                'Status': status,
+                'Status Desc': getStatusDesc(status)
+            };
+        }).sort((a, b) => b.Clicks - a.Clicks);
+
+        // 3. Create Workbook
+        const wb = XLSX.utils.book_new();
+        
+        // Add Queries Sheet
+        const wsQueries = XLSX.utils.json_to_sheet(queryRows);
+        XLSX.utils.book_append_sheet(wb, wsQueries, 'Queries');
+        
+        // Add Pages Sheet
+        const wsPages = XLSX.utils.json_to_sheet(pageRows);
+        XLSX.utils.book_append_sheet(wb, wsPages, 'Pages');
+
+        // 4. Trigger Download
+        const domain = getDomain(selectedProperty).replace(/\./g, '_');
+        XLSX.writeFile(wb, `SEO_Report_${domain}_${new Date().toISOString().split('T')[0]}.xlsx`);
+        toast.success('Report downloaded successfully');
+    };
 
     // Table Filtering
     const filteredPages = activeTabList.filter((item) => {
@@ -417,26 +506,6 @@ const SEOAnalytics = () => {
                     />
                 </div>
 
-                {/* Status Filter Pill */}
-                <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm">
-                    <div className="bg-white px-3 flex items-center h-full">
-                        <div className={`w-2 h-2 rounded-full mr-2 ${getStatusInfo(statusFilter).color}`} />
-                        <select 
-                            className="appearance-none bg-transparent border-none focus:ring-0 py-1 cursor-pointer text-slate-700 outline-none w-full min-w-[10rem] font-bold text-[13px]"
-                            value={statusFilter}
-                            onChange={(e) => {setStatusFilter(e.target.value); setCurrentPage(1);}}
-                        >
-                            <option value="All">All Statuses</option>
-                            <option value="Top result">Top Result</option>
-                            <option value="Quick Win">Quick Win</option>
-                            <option value="Ranked">Ranked</option>
-                            <option value="Decay">Decay</option>
-                            <option value="Opportunity">Opportunity</option>
-                            <option value="Unranked">Unranked</option>
-                        </select>
-                        <ChevronDownIcon className="w-4 h-4 text-slate-400 -ml-6 pointer-events-none" />
-                    </div>
-                </div>
 
                 <div className="ml-auto flex items-center">
                     <button 
@@ -504,7 +573,7 @@ const SEOAnalytics = () => {
                             </div>
                         </div>
                         <div className="h-[260px] w-full mt-2 mb-12 bg-white px-2">
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                 <BarChart data={enrichedChartData} margin={{ top: 20, right: 20, left: -10, bottom: 0 }}>
                                     <CartesianGrid vertical={false} stroke="#F1F5F9" />
                                     <XAxis 
@@ -529,13 +598,17 @@ const SEOAnalytics = () => {
                                     />
                                     <Tooltip 
                                         content={<CustomTooltip activeMetric={activeMetric} />} 
-                                        cursor={{ fill: '#F8FAFC', radius: 8 }}
+                                        active={activeBarIndex !== null}
+                                        cursor={false}
+                                        isAnimationActive={false}
                                     />
                                     <Bar 
                                         dataKey={activeMetric} 
                                         radius={[8, 8, 0, 0]} 
                                         barSize={32}
                                         animationDuration={1000}
+                                        onMouseEnter={(_, index) => setActiveBarIndex(index)}
+                                        onMouseLeave={() => setActiveBarIndex(null)}
                                     >
                                         {enrichedChartData.map((entry, i) => (
                                             <Cell 
@@ -570,7 +643,10 @@ const SEOAnalytics = () => {
                                         </button>
                                     ))}
                                 </div>
-                                <button className="text-xs text-slate-500 border border-slate-200 rounded-md px-3 py-1.5 hover:bg-slate-50 transition-colors bg-white">
+                                <button 
+                                    onClick={handleDownloadReport}
+                                    className="text-xs text-slate-800 border border-slate-300 rounded-md px-4 py-1.5 hover:bg-slate-50 transition-all bg-white font-bold shadow-sm"
+                                >
                                     Download Report
                                 </button>
                             </div>
@@ -579,8 +655,21 @@ const SEOAnalytics = () => {
                             <div className="flex justify-between items-center mb-4">
                                 <div className="flex items-center gap-4">
                                     <div className="relative">
-                                        <select className="appearance-none bg-white border border-slate-200 text-slate-600 text-[13px] rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-emerald-400 cursor-pointer">
-                                            <option>All {activeTab}</option>
+                                        <select 
+                                            value={statusFilter}
+                                            onChange={(e) => {
+                                                setStatusFilter(e.target.value);
+                                                setCurrentPage(1); // Reset to first page on filter change
+                                            }}
+                                            className="appearance-none bg-white border border-slate-200 text-slate-700 text-[13px] font-bold rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-emerald-400 cursor-pointer shadow-sm hover:border-slate-300 transition-colors"
+                                        >
+                                            <option value="All">All {activeTab}</option>
+                                            <option value="Top result">Top Results</option>
+                                            <option value="Quick Win">Quick Wins</option>
+                                            <option value="Opportunity">Opportunities</option>
+                                            <option value="Ranked">Ranked Only</option>
+                                            <option value="Decay">Decaying</option>
+                                            <option value="Unranked">Unranked</option>
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
                                             <ChevronDownIcon className="w-4 h-4" />

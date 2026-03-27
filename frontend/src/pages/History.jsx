@@ -24,7 +24,7 @@ import AnalysisCard from '../components/ui/AnalysisCard';
 
 
 /* ── Stat card ──────────────────────────────────────────────── */
-const StatCard = ({ icon, label, value, gradient, iconBg }) => (
+const StatCard = ({ icon, label, value, gradient, iconBg, isLoading }) => (
     <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
@@ -33,7 +33,13 @@ const StatCard = ({ icon, label, value, gradient, iconBg }) => (
         <div className="flex items-center justify-between">
             <div>
                 <p className="text-sm font-semibold text-white/70 mb-1">{label}</p>
-                <p className="text-4xl font-black text-white tracking-tight">{value}</p>
+                <div className="flex items-baseline">
+                    {isLoading ? (
+                        <div className="h-10 w-16 bg-white/20 animate-pulse rounded-lg mt-1" />
+                    ) : (
+                        <p className="text-4xl font-black text-white tracking-tight">{value}</p>
+                    )}
+                </div>
             </div>
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${iconBg} shadow-inner`}>
                 {icon}
@@ -105,23 +111,6 @@ const History = () => {
     const completedCount = analyses.filter(a => a.status === 'completed').length;
     const urlsCount = analyses.reduce((sum, a) => sum + (a.urls?.length || 0), 0);
 
-    /* ── Loading ── */
-    if (isLoading) {
-        return (
-            <div className="flex-1 w-full flex items-center justify-center min-h-screen" style={{ background: '#f5f4fa' }}>
-                <div className="flex flex-col items-center gap-4">
-                    <div className="relative w-16 h-16">
-                        <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 opacity-20 animate-ping" />
-                        <div className="relative w-16 h-16 rounded-full bg-gradient-to-tr from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/30">
-                            <SparklesIcon className="w-8 h-8 text-white animate-spin" />
-                        </div>
-                    </div>
-                    <p className="text-slate-500 font-bold text-base">Loading your history…</p>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="flex-1 w-full min-h-screen py-10 px-4 sm:px-8" style={{ background: '#f5f4fa' }}>
             <div className="max-w-[1080px] mx-auto w-full space-y-8">
@@ -153,6 +142,7 @@ const History = () => {
                         gradient="bg-gradient-to-br from-violet-600 to-purple-700"
                         iconBg="bg-white/20"
                         icon={<ChartBarIcon className="w-7 h-7 text-white" />}
+                        isLoading={isLoading}
                     />
                     <StatCard
                         label="Completed"
@@ -160,6 +150,7 @@ const History = () => {
                         gradient="bg-gradient-to-br from-emerald-500 to-teal-600"
                         iconBg="bg-white/20"
                         icon={<SolidCheckCircle className="w-7 h-7 text-white" />}
+                        isLoading={isLoading}
                     />
                     <StatCard
                         label="URLs Analyzed"
@@ -167,6 +158,7 @@ const History = () => {
                         gradient="bg-gradient-to-br from-fuchsia-500 to-pink-600"
                         iconBg="bg-white/20"
                         icon={<GlobeAltIcon className="w-7 h-7 text-white" />}
+                        isLoading={isLoading}
                     />
                 </div>
 
@@ -215,8 +207,14 @@ const History = () => {
                     </motion.div>
                 )}
 
-                {/* ── Empty state ── */}
-                {analyses.length === 0 ? (
+                {/* ── Main Content Area ── */}
+                {isLoading ? (
+                    <div className="space-y-4">
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="h-32 bg-white/50 border border-slate-100 rounded-3xl animate-pulse" />
+                        ))}
+                    </div>
+                ) : analyses.length === 0 ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.97 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -231,7 +229,7 @@ const History = () => {
                         <h3 className="text-2xl font-black text-slate-800 mb-2">No analyses yet</h3>
                         <p className="text-slate-500 mb-8 max-w-sm mx-auto">Start your first AI-powered website analysis to see comprehensive insights here.</p>
                         <button
-                            onClick={() => navigate('/dashboard')}
+                            onClick={() => navigate('/new-analysis')}
                             className="inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-white font-bold bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 shadow-xl shadow-purple-300/40 hover:shadow-purple-400/50 hover:-translate-y-0.5 transition-all duration-200"
                         >
                             <RocketLaunchIcon className="w-5 h-5" />

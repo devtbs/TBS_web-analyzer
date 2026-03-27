@@ -44,6 +44,7 @@ const Sidebar = () => {
 
     return (
         <motion.aside
+            initial={false}
             animate={{ width: collapsed ? 88 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
             className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden"
