@@ -19,6 +19,7 @@ async def startup_event():
     """Initialize database tables on startup"""
     init_db()
     print("✅ Database initialized successfully")
+    print(f"🌍 Allowed Origins: {settings.allowed_origins_list}")
 
 # Configure CORS
 app.add_middleware(
