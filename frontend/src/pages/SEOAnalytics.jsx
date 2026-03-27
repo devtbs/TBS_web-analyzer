@@ -693,7 +693,7 @@ const SEOAnalytics = () => {
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                             disabled={currentPage === 1}
-                                            className="px-3 py-1 border border-slate-200 rounded text-slate-400 hover:bg-slate-50 disabled:opacity-40"
+                                            className="px-3 py-1 border border-slate-200 rounded text-slate-600 hover:bg-slate-50 disabled:opacity-40"
                                         >
                                             Previous
                                         </button>

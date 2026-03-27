@@ -10,9 +10,7 @@ import {
     ArrowRightIcon,
     CheckCircleIcon,
     ExclamationCircleIcon,
-    SparklesIcon,
 } from '@heroicons/react/24/outline';
-import { CheckCircleIcon as SolidCheck } from '@heroicons/react/24/solid';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
