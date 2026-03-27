@@ -2,13 +2,13 @@
 Progress tracking for analysis tasks
 Stores progress updates in memory for real-time streaming to clients
 """
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from datetime import datetime
 import asyncio
 
 class ProgressTracker:
     def __init__(self):
-        self._progress: Dict[str, dict] = {}
+        self._progress: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
     
     async def create(self, analysis_id: str, total_steps: int):
@@ -61,10 +61,11 @@ class ProgressTracker:
             progress['message'] = f'Error: {error}'
             progress['updated_at'] = datetime.utcnow().isoformat()
     
-    async def get(self, analysis_id: str) -> Optional[dict]:
+    async def get(self, analysis_id: str) -> Optional[Dict[str, Any]]:
         """Get current progress for an analysis"""
         async with self._lock:
-            return self._progress.get(analysis_id)
+            progress = self._progress.get(analysis_id)
+        return progress
     
     async def cancel(self, analysis_id: str):
         """Mark analysis as cancelled"""
@@ -78,15 +79,16 @@ class ProgressTracker:
         """Check if an analysis has been cancelled"""
         async with self._lock:
             status_data = self._progress.get(analysis_id)
-            if status_data is None:
-                return True  # If tracking is gone, treat as cancelled
-            return status_data.get('status') == 'cancelled'
+            
+        if status_data is None:
+            return True  # If tracking is gone, treat as cancelled
+            
+        return status_data.get('status') == 'cancelled'
 
     async def cleanup(self, analysis_id: str):
         """Remove progress tracking (call after client disconnects)"""
         async with self._lock:
-            if analysis_id in self._progress:
-                del self._progress[analysis_id]
+            self._progress.pop(analysis_id, None)
 
 # Global progress tracker instance
 progress_tracker = ProgressTracker()

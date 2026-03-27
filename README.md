@@ -1,233 +1,121 @@
-# Web Analysis Platform
+<p align="center">
+  <img src="./frontend/public/TBS-Logo.webp" alt="TBS Marketing Logo" width="180px" />
+</p>
 
-A comprehensive full-stack platform for analyzing websites with AI-powered insights, knowledge graph visualization, topical mapping, and competitive comparison.
+# TBS Web Analysis & SEO Platform
 
-## Features
+A premium, full-stack SEO powerhouse and web analysis platform. It combines AI-powered website insights (Knowledge Graphs, Topical Mapping) with real-time Google Search Console analytics to provide a comprehensive view of digital performance.
 
-- 🌐 **Multi-URL Analysis**: Analyze up to 5 websites simultaneously
-- 🕸️ **Knowledge Graph**: Interactive visualization of entities and relationships
-- 📊 **Topical Mapping**: Semantic analysis with business insights, target audiences, and search intent
-- ⚖️ **Comparison**: Side-by-side analysis of business models, services, technologies, and features
-- 🔐 **Google Authentication**: Secure login with Google OAuth 2.0
-- 🎨 **Modern UI**: Beautiful glassmorphism design with smooth animations
+![Premium Dashboard](./frontend/public/SEO.png)
 
-## Tech Stack
+## 🌟 Core Features
+
+### 📊 SEO Analytics Dashboard (New)
+- **Direct GSC Integration**: Securely connect Google Search Console properties.
+- **Performance Metrics**: Real-time tracking of Clicks, Impressions, Avg. CTR, and Avg. Position.
+- **Interactive Visualization**: Dynamic historical bar charts with daily/weekly/monthly grouping.
+- **Smart Classification**: Automated ranking of pages into categories like "Quick Wins," "Opportunities," "Top Results," and "Decaying."
+- **Entity Clustering**: Intelligent keyword clustering to identify semantic search trends.
+- **Excel Export**: Generate comprehensive SEO reports with a single click.
+
+### 🧠 AI Web Analysis
+- **Knowledge Graph**: Interactive 3D/2D visualization of entity relationships and service maps.
+- **Topical Mapping**: Semantic depth analysis, audience segmentation, and search intent discovery.
+- **Competitive Comparison**: Side-by-side analysis of business models, tech stacks, and geographic reach.
+- **Multi-URL Processing**: Analyze up to 5 competitors simultaneously.
+
+### ⚡ Real-Time Progress Engine
+- **SSE-Powered Tracking**: Watch the AI work in real-time with step-by-step progress updates.
+- **Background Processing**: Heavy analysis tasks run asynchronously, allowing you to browse while the AI thinks.
+
+## 🛠️ Tech Stack
 
 ### Backend
-- **FastAPI**: High-performance Python web framework
-- **BeautifulSoup4**: Web scraping
-- **NetworkX**: Knowledge graph generation
-- **Google OAuth**: Authentication
-- **Async/Await**: Concurrent URL processing
+- **FastAPI**: Ultra-fast Python framework with async capabilities.
+- **SQLAlchemy & PostgreSQL**: Robust data persistence for user history and tokens.
+- **Google OAuth 2.0**: Secure authentication for user accounts and Search Console access.
+- **OpenAI/Anthropic**: Powering the semantic analysis and knowledge extraction.
 
 ### Frontend
-- **React 18**: Modern UI library
-- **Vite**: Lightning-fast build tool
-- **React Force Graph**: Interactive graph visualization
-- **Axios**: HTTP client
-- **Google OAuth**: Authentication integration
+- **React 18**: Built for performance and reliability.
+- **Vite**: Modern build orchestration.
+- **Recharts**: Professional, interactive data visualization.
+- **Framer Motion**: Smooth, high-end micro-animations and transitions.
+- **Tailwind CSS**: Custom "Glassmorphism" design system.
 
-## Getting Started
+## 🚀 Getting Started
 
 ### Prerequisites
-
-- Python 3.9+
+- Python 3.9+ 
 - Node.js 18+
-- Google Cloud account (for OAuth)
+- PostgreSQL database
+- Google Cloud Console Project (with Search Console API enabled)
 
-### Backend Setup
+### 1. Environment Configuration
 
-1. Navigate to backend directory:
+#### Backend (`backend/.env`)
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/dbname
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+SECRET_KEY=your_jwt_secret
+ALLOWED_ORIGINS=http://localhost:5173
+```
+
+#### Frontend (`frontend/.env`)
+```env
+VITE_GOOGLE_CLIENT_ID=your_client_id
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+### 2. Installation
+
+**Backend Setup:**
 ```bash
 cd backend
-```
-
-2. Create virtual environment:
-```bash
 python -m venv venv
-source venv/bin/activate  # On Mac/Linux
-# or
-venv\Scripts\activate  # On Windows
-```
-
-3. Install dependencies:
-```bash
+source venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. Create `.env` file from example:
-```bash
-cp .env.example .env
-```
-
-5. Configure Google OAuth:
-   - Go to [Google Cloud Console](https://console.cloud.google.com/)
-   - Create a new project or select existing one
-   - Enable Google+ API
-   - Create OAuth 2.0 credentials
-   - Add authorized redirect URIs: `http://localhost:5173/auth/callback`
-   - Copy Client ID and Client Secret to `.env`
-
-6. Run the backend:
-```bash
 python main.py
 ```
 
-Backend will run on `http://localhost:8000`
-
-### Frontend Setup
-
-1. Navigate to frontend directory:
+**Frontend Setup:**
 ```bash
 cd frontend
-```
-
-2. Install dependencies:
-```bash
 npm install
-```
-
-3. Create `.env` file:
-```bash
-cp .env.example .env
-```
-
-4. Add your Google Client ID to `.env`:
-```
-VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-```
-
-5. Run the frontend:
-```bash
 npm run dev
 ```
 
-Frontend will run on `http://localhost:5173`
+## 🔐 Google OAuth Configuration
 
-## Usage
+To enable fully functional Search Console integration, ensure your Google Cloud project is configured with:
 
-1. **Login**: Click "Sign in with Google" button
-2. **Enter URLs**: Add 1-5 website URLs to analyze
-3. **Analyze**: Click "Analyze Websites" button
-4. **View Results**:
-   - **Knowledge Graph**: Explore entity relationships
-   - **Topical Map**: Review business insights and audience analysis
-   - **Comparison**: Compare features across websites (2+ URLs required)
+1.  **Scopes**: 
+    - `https://www.googleapis.com/auth/userinfo.email`
+    - `https://www.googleapis.com/auth/userinfo.profile`
+    - `https://www.googleapis.com/auth/webmasters.readonly` (Search Console)
+2.  **Redirect URIs**:
+    - `http://localhost:5173/auth/callback`
+3.  **Client Configuration**: Set `Access Type` to `Offline` to allow the platform to refresh tokens in the background.
 
-## API Endpoints
+## 📁 Project Structure
 
-### Authentication
-- `POST /auth/google/login` - Google OAuth login
-- `POST /auth/logout` - Logout
-- `GET /auth/me` - Get current user
-
-### Analysis
-- `POST /api/analyze` - Submit URLs for analysis
-- `GET /api/results/{analysis_id}` - Get complete results
-- `GET /api/knowledge-graph/{analysis_id}` - Get knowledge graph
-- `GET /api/topical-map/{analysis_id}` - Get topical analysis
-- `GET /api/compare/{analysis_id}` - Get comparison data
-- `GET /api/history` - Get user's analysis history
-
-## Google OAuth Setup Guide
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Navigate to "APIs & Services" > "Credentials"
-4. Click "Create Credentials" > "OAuth client ID"
-5. Choose "Web application"
-6. Add authorized JavaScript origins:
-   - `http://localhost:5173`
-7. Add authorized redirect URIs:
-   - `http://localhost:5173/auth/callback`
-8. Copy the Client ID and Client Secret
-9. Add to backend `.env`:
-   ```
-   GOOGLE_CLIENT_ID=your-client-id
-   GOOGLE_CLIENT_SECRET=your-client-secret
-   ```
-10. Add Client ID to frontend `.env`:
-    ```
-    VITE_GOOGLE_CLIENT_ID=your-client-id
-    ```
-
-## Project Structure
-
-```
+```text
 web/
 ├── backend/
-│   ├── api/
-│   │   └── routes.py          # API endpoints
-│   ├── auth/
-│   │   └── auth.py            # Google OAuth handler
-│   ├── services/
-│   │   ├── scraper.py         # Web scraping
-│   │   ├── knowledge_graph.py # Graph generation
-│   │   ├── topical_map.py     # Topical analysis
-│   │   └── comparator.py      # Comparison engine
-│   ├── config.py              # Configuration
-│   ├── main.py                # FastAPI app
-│   └── requirements.txt       # Python dependencies
-│
+│   ├── api/routes.py          # SSE Progress & GSC Endpoints
+│   ├── services/gsc_service.py # Search Console Integration logic
+│   ├── utils/progress_tracker.py # Real-time status management
+│   └── database.py            # PostgreSQL configuration
 └── frontend/
-    ├── src/
-    │   ├── components/
-    │   │   ├── GoogleAuth.jsx
-    │   │   ├── URLInput.jsx
-    │   │   ├── KnowledgeGraph.jsx
-    │   │   ├── TopicalMap.jsx
-    │   │   └── Comparison.jsx
-    │   ├── context/
-    │   │   └── AuthContext.jsx
-    │   ├── utils/
-    │   │   └── api.js
-    │   ├── App.jsx
-    │   └── main.jsx
-    └── package.json
+    ├── src/pages/SEOAnalytics.jsx # Massive data-dense dashboard
+    ├── src/components/ui/      # High-end glassmorphism components
+    └── src/context/AuthContext.jsx # Global auth & GSC state
 ```
 
-## Features Explained
+## 📄 License
+MIT © TBS Marketing
 
-### Knowledge Graph
-- Visualizes relationships between business entities
-- Color-coded nodes by type (domain, service, audience, technology, location)
-- Interactive exploration with zoom and pan
-- Click nodes for details
+## 🤝 Support
+For technical support or feature requests, contact the development lead or open an internal issue.
 
-### Topical Map
-- Business description (150-250 words)
-- Central entity identification
-- Search intent analysis
-- Target audience segmentation
-- Source context (business model, conversion methods)
-
-### Comparison
-- Business model comparison
-- Service overlap analysis
-- Audience comparison
-- Technology stack analysis
-- Geographic coverage
-- Unique feature identification
-- Similarity matrix
-
-## Development
-
-### Backend
-```bash
-cd backend
-source venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Frontend
-```bash
-cd frontend
-npm run dev
-```
-
-## License
-
-MIT
-
-## Support
-
-For issues or questions, please open an issue on GitHub.
