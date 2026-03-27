@@ -12,7 +12,7 @@ import {
     XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as SolidCheckCircle, ExclamationCircleIcon } from '@heroicons/react/24/solid';
-import axios from 'axios';
+import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 /* ── Favicon helper ─────────────────────────────────────────── */
@@ -46,9 +46,8 @@ const RenameInput = ({ analysisId, currentLabel, onSaved, onCancel }) => {
     const save = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            await axios.patch(`/api/analysis/${analysisId}/label`,
-                { label: value },
-                { headers: { Authorization: `Bearer ${token}` } }
+            await api.patch(`/api/analysis/${analysisId}/label`,
+                { label: value }
             );
             onSaved(value.trim() || null);
             toast.success('Label saved');

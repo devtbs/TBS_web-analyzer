@@ -16,7 +16,7 @@ import {
     ResponsiveContainer,
     Cell
 } from 'recharts';
-import axios from 'axios';
+import api from '../api/axios';
 import toast from 'react-hot-toast';
 
 /* ── Custom Chart Tooltip ──────────────────────────────────── */
@@ -134,7 +134,7 @@ const SEOAnalytics = () => {
                     setIsConnected(false);
                     return;
                 }
-                const res = await axios.get('/auth/gsc/properties', { headers: { Authorization: `Bearer ${authToken}` } });
+                const res = await api.get('/auth/gsc/properties');
                 const fetchedProps = res.data.properties || [];
                 setProperties(fetchedProps);
                 setIsConnected(true);
@@ -168,8 +168,7 @@ const SEOAnalytics = () => {
             setLoading(true);
             try {
                 const authToken = localStorage.getItem('access_token');
-                const res = await axios.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, { 
-                    headers: { Authorization: `Bearer ${authToken}` },
+                const res = await api.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, { 
                     params: { group_by: chartGrouping }
                 });
                 setAnalytics(res.data.analytics.totals);
@@ -193,9 +192,7 @@ const SEOAnalytics = () => {
 
         try {
             const authToken = localStorage.getItem('access_token');
-            await axios.post('/auth/gsc/disconnect', {}, {
-                headers: { Authorization: `Bearer ${authToken}` }
-            });
+            await api.post('/auth/gsc/disconnect', {});
             localStorage.removeItem('gsc_selected_property');
             setIsConnected(false);
             setProperties([]);

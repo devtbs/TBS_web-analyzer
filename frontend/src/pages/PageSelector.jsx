@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MagnifyingGlassIcon, FunnelIcon, CheckIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 
@@ -64,9 +64,7 @@ const PageSelector = () => {
         try {
             setLoading(true);
             const token = localStorage.getItem('access_token');
-            const response = await axios.get(`/auth/gsc/pages/${encodeURIComponent(propertyUrl)}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await api.get(`/auth/gsc/pages/${encodeURIComponent(propertyUrl)}`);
             setPages(response.data.pages);
             setFilteredPages(response.data.pages);
         } catch (error) {

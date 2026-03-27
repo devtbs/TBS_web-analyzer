@@ -10,7 +10,7 @@ import {
     SparklesIcon,
     CheckCircleIcon,
 } from '@heroicons/react/24/outline';
-import axios from 'axios';
+import api from '../api/axios';
 import toast from 'react-hot-toast';
 
 /* ── Favicon helper ─────────────────────────────────────────── */
@@ -123,9 +123,8 @@ const NewAnalysis = () => {
         setIsAnalyzing(true);
         try {
             const token = localStorage.getItem('access_token');
-            const response = await axios.post('/api/analyze',
-                { urls: validUrls },
-                { headers: { Authorization: `Bearer ${token} ` } }
+            const response = await api.post('/api/analyze',
+                { urls: validUrls }
             );
             setAnalysisId(response.data.analysis_id);
             setSelectedPages([]);

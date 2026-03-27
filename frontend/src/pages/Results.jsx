@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
+import api from '../api/axios';
 import toast from 'react-hot-toast';
 import KnowledgeGraph from '../components/visualizations/KnowledgeGraph';
 import TopicalMap from '../components/visualizations/TopicalMap';
@@ -134,10 +134,7 @@ const Results = () => {
 
     const fetchResults = async () => {
         try {
-            const token = localStorage.getItem('access_token');
-            const statusRes = await axios.get(`/api/results/${analysisId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const statusRes = await api.get(`/api/results/${analysisId}`);
 
             if (statusRes.data.status === 'processing') {
                 setTimeout(fetchResults, 2000);
@@ -150,9 +147,9 @@ const Results = () => {
             }
 
             const [kgRes, topicalRes, comparisonRes] = await Promise.all([
-                axios.get(`/api/knowledge-graph/${analysisId}`, { headers: { Authorization: `Bearer ${token}` } }),
-                axios.get(`/api/topical-map/${analysisId}`, { headers: { Authorization: `Bearer ${token}` } }),
-                axios.get(`/api/compare/${analysisId}`, { headers: { Authorization: `Bearer ${token}` } })
+                api.get(`/api/knowledge-graph/${analysisId}`),
+                api.get(`/api/topical-map/${analysisId}`),
+                api.get(`/api/compare/${analysisId}`)
                     .catch(() => ({ data: { status: 'not_applicable' } })),
             ]);
 

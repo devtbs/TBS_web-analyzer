@@ -10,7 +10,7 @@ import {
     MagnifyingGlassIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as SolidCheckCircle } from '@heroicons/react/24/solid';
-import axios from 'axios';
+import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 /* ─── Small helpers ───────────────────────────────────────────────── */
@@ -97,7 +97,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         setIsCheckingStatus(true);
         try {
             const authToken = localStorage.getItem('access_token');
-            const res = await axios.get('/auth/gsc/properties', { headers: { Authorization: `Bearer ${authToken}` } });
+            const res = await api.get('/auth/gsc/properties');
             if (res.data.properties) { setIsConnected(true); setProperties(res.data.properties); }
         } catch (err) {
             if (err.response?.status !== 404) console.error('GSC status error:', err);
@@ -122,9 +122,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                     if (response.code) {
                         try {
                             const authToken = localStorage.getItem('access_token');
-                            await axios.post('/auth/gsc/connect',
-                                { gsc_code: response.code },
-                                { headers: { Authorization: `Bearer ${authToken}` } }
+                            await api.post('/auth/gsc/connect',
+                                { gsc_code: response.code }
                             );
                             setIsConnected(true);
                             toast.success('Connected to Google Search Console!');
@@ -149,7 +148,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         setIsFetching(true);
         try {
             const authToken = localStorage.getItem('access_token');
-            const res = await axios.get('/auth/gsc/properties', { headers: { Authorization: `Bearer ${authToken}` } });
+            const res = await api.get('/auth/gsc/properties');
             setProperties(res.data.properties || []);
             if (!res.data.properties?.length) toast('No Search Console properties found.', { duration: 6000 });
         } catch (err) {
@@ -161,7 +160,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const handleDisconnect = async () => {
         try {
             const authToken = localStorage.getItem('access_token');
-            await axios.post('/auth/gsc/disconnect', {}, { headers: { Authorization: `Bearer ${authToken}` } });
+            await api.post('/auth/gsc/disconnect', {});
             setIsConnected(false);
             setProperties([]);
             onPropertySelect([]);

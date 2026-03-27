@@ -1,7 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../api/axios';
 import {
     RocketLaunchIcon,
     ClockIcon,
@@ -45,7 +45,7 @@ export default function Dashboard() {
     const handleDelete = async (analysisId) => {
         try {
             const token = localStorage.getItem('access_token');
-            await axios.delete(`/api/analysis/${analysisId}`, { headers: { Authorization: `Bearer ${token}` } });
+            await api.delete(`/api/analysis/${analysisId}`);
             toast.success('Analysis deleted');
             setAnalyses(prev => prev.filter(a => a.analysis_id !== analysisId));
             setAllAnalyses(prev => prev.filter(a => a.analysis_id !== analysisId));
@@ -63,9 +63,7 @@ export default function Dashboard() {
         const fetch = async () => {
             try {
                 const token = localStorage.getItem('access_token');
-                const { data } = await axios.get('/api/history', {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+                const { data } = await api.get('/api/history');
                 const list = data.analyses || [];
                 setAllAnalyses(list);          // full list → stats
                 setAnalyses(list.slice(0, 5)); // first 5 → table

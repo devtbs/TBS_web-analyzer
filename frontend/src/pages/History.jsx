@@ -17,7 +17,7 @@ import {
     RocketLaunchIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as SolidCheckCircle, ExclamationCircleIcon } from '@heroicons/react/24/solid';
-import axios from 'axios';
+import api from '../api/axios';
 import toast from 'react-hot-toast';
 import AnalysisCard from '../components/ui/AnalysisCard';
 
@@ -65,9 +65,7 @@ const History = () => {
     const fetchHistory = async () => {
         try {
             const token = localStorage.getItem('access_token');
-            const response = await axios.get('/api/history', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const response = await api.get('/api/history');
             setAnalyses(response.data.analyses || []);
         } catch (error) {
             console.error('Failed to fetch history:', error);
@@ -80,9 +78,7 @@ const History = () => {
     const handleDelete = async (analysisId) => {
         try {
             const token = localStorage.getItem('access_token');
-            await axios.delete(`/api/analysis/${analysisId}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await api.delete(`/api/analysis/${analysisId}`);
             toast.success('Analysis deleted');
             setAnalyses(prev => prev.filter(a => a.analysis_id !== analysisId));
         } catch {
