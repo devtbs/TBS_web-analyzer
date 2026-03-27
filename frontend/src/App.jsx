@@ -14,7 +14,6 @@ import NewAnalysis from './pages/NewAnalysis';
 import History from './pages/History';
 import Results from './pages/Results';
 import PageSelector from './pages/PageSelector';
-import Help from './pages/Help';
 import SEOAnalytics from './pages/SEOAnalytics';
 
 /* ── Protected Route ─────────────────────────────────────── */
@@ -120,7 +119,6 @@ function AppContent() {
                     <Route path="/history" element={<History />} />
                     <Route path="/select-pages" element={<PageSelector />} />
                     <Route path="/results/:analysisId" element={<Results />} />
-                    <Route path="/help" element={<Help />} />
                 </Route>
             </Routes>
             
