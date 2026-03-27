@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     
     # App Settings
     ENVIRONMENT: str = "development"
-    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000,https://analysis.phyominthein.com,https://api.phyominthein.com"
     
     @property
     def allowed_origins_list(self) -> List[str]:
