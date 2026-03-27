@@ -193,15 +193,16 @@ const AnalysisCard = ({ analysis, onLabelSaved, onDelete, index }) => {
 
                 {/* ── Actions ── */}
                 <div className="flex items-center gap-3 flex-shrink-0 ml-[62px] sm:ml-0">
-                    <StatusBadge status={analysis.status} />
+                    {/* Only show badge for failure; success/processing used the button below */}
+                    {analysis.status === 'failed' && <StatusBadge status={analysis.status} />}
 
                     {analysis.status === 'completed' && (
                         <button
                             onClick={() => navigate(`/results/${analysis.analysis_id}`)}
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-bold text-white bg-[#8b5cf6] hover:bg-[#7c3aed] shadow-sm transition-colors"
                         >
+                            <CheckIcon className="w-3.5 h-3.5 stroke-2" />
                             View Results
-                            <ArrowRightIcon className="w-3.5 h-3.5 stroke-2" />
                         </button>
                     )}
                     {analysis.status === 'processing' && (
@@ -210,7 +211,7 @@ const AnalysisCard = ({ analysis, onLabelSaved, onDelete, index }) => {
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[13px] font-bold text-violet-600 bg-violet-50 border border-violet-100 hover:bg-violet-100 transition-colors"
                         >
                             <SparklesIcon className="w-3.5 h-3.5 animate-spin" />
-                            In Progress
+                            Analyzing...
                         </button>
                     )}
                     <button
