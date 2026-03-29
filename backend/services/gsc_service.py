@@ -126,7 +126,8 @@ class GSCService:
                 'endDate': end_date.strftime('%Y-%m-%d'),
                 'dimensions': ['page', 'query'],
                 'rowLimit': 25000,
-                'startRow': 0
+                'startRow': 0,
+                'dataState': 'all'
             }
 
             response = self.service.searchanalytics().query(
@@ -197,6 +198,7 @@ class GSCService:
                 'endDate': end_date.strftime('%Y-%m-%d'),
                 'dimensions': ['date'],
                 'rowLimit': 25000,
+                'dataState': 'all'
             }
 
             response = self.service.searchanalytics().query(
@@ -273,7 +275,7 @@ class GSCService:
                     'ctr': avg_ctr,
                     'position': avg_position
                 },
-                'chart_data': chart_data[-12:]
+                'chart_data': chart_data[-(30 if group_by == 'daily' else 14 if group_by == 'weekly' else 12):]
             }
         except Exception as e:
             logger.error(f"Error fetching analytics chart data: {str(e)}")
