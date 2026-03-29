@@ -638,7 +638,7 @@ const SEOAnalytics = () => {
                                     {['Pages', 'Queries', 'Clusters'].map(tab => (
                                         <button 
                                             key={tab}
-                                            onClick={() => setActiveTab(tab)}
+                                            onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
                                             className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${
                                                 activeTab === tab 
                                                     ? 'bg-white text-slate-800 border-slate-300 border shadow-sm' 
