@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import toast from 'react-hot-toast';
+ 
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,7 +11,14 @@ import {
     RocketLaunchIcon,
     Squares2X2Icon,
     ChartBarIcon,
+    DocumentTextIcon,
+    ChevronDownIcon,
 } from '@heroicons/react/24/outline';
+import { 
+    FolderIcon as FolderIconSolid, 
+    EllipsisHorizontalIcon 
+} from '@heroicons/react/20/solid';
+import api from '../../api/axios';
 
 const NAV_GROUPS = [
     {
@@ -26,6 +35,12 @@ const NAV_GROUPS = [
             { label: 'SEO Analytics', path: '/seo-analytics', icon: ChartBarIcon },
         ],
     },
+    {
+        section: 'Writing',
+        items: [
+            { label: 'Documents',    path: '/documents',    icon: DocumentTextIcon },
+        ],
+    },
 ];
 
 const Sidebar = () => {
@@ -33,6 +48,89 @@ const Sidebar = () => {
         const saved = localStorage.getItem('sidebar_collapsed');
         return saved === 'true';
     });
+    const [isFoldersOpen, setIsFoldersOpen] = useState(() => {
+        const saved = localStorage.getItem('sidebar_folders_open');
+        return saved !== 'false'; // default to true
+    });
+    const [folders, setFolders] = useState([]);
+
+    const [isMenuTransitioning, setIsMenuTransitioning] = useState(false);
+
+    useEffect(() => {
+        localStorage.setItem('sidebar_folders_open', isFoldersOpen);
+        setIsMenuTransitioning(true);
+    }, [isFoldersOpen]);
+
+    const [activeFolderMenu, setActiveFolderMenu] = useState(null);
+    const [editingFolder, setEditingFolder] = useState(null);
+    const [renameValue, setRenameValue] = useState('');
+
+    const dispatchRefresh = () => {
+        window.dispatchEvent(new CustomEvent('documents-updated'));
+    };
+
+    const fetchFolders = async () => {
+        try {
+            const response = await api.get('/api/documents');
+            const uniqueFolders = [...new Set(response.data.map(doc => doc.folder).filter(Boolean))].sort();
+            setFolders(uniqueFolders);
+        } catch (error) {
+            console.error('Failed to fetch folders:', error);
+        }
+    };
+
+    useEffect(() => {
+        fetchFolders();
+        window.addEventListener('documents-updated', fetchFolders);
+        const handleClickOutside = () => setActiveFolderMenu(null);
+        window.addEventListener('click', handleClickOutside);
+        return () => {
+            window.removeEventListener('documents-updated', fetchFolders);
+            window.removeEventListener('click', handleClickOutside);
+        };
+    }, []);
+
+    const handleRenameFolder = (e, folderName) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditingFolder(folderName);
+        setRenameValue(folderName);
+        setActiveFolderMenu(null);
+    };
+
+    const saveRename = async (oldName) => {
+        const newName = renameValue.trim();
+        if (!newName || newName === oldName) {
+            setEditingFolder(null);
+            return;
+        }
+
+        try {
+            await api.put(`/api/folders/${encodeURIComponent(oldName)}`, { new_name: newName });
+            setFolders(prev => prev.map(f => f === oldName ? newName : f));
+            dispatchRefresh();
+            toast.success('Folder renamed');
+        } catch (error) {
+            toast.error('Failed to rename folder');
+        } finally {
+            setEditingFolder(null);
+        }
+    };
+
+    const handleDeleteFolder = async (e, folderName) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!window.confirm(`Delete folder "${folderName}"? Documents will be kept but unassigned from this folder.`)) return;
+        try {
+            await api.delete(`/api/folders/${encodeURIComponent(folderName)}`);
+            setFolders(prev => prev.filter(f => f !== folderName));
+            dispatchRefresh();
+            toast.success('Folder deleted');
+        } catch (error) {
+            toast.error('Failed to delete folder');
+        }
+        setActiveFolderMenu(null);
+    };
 
     useEffect(() => {
         localStorage.setItem('sidebar_collapsed', collapsed);
@@ -40,7 +138,12 @@ const Sidebar = () => {
 
     const { user, logout } = useAuth();
     const location = useLocation();
-    const isActive = (path) => location.pathname === path;
+    const isActive = (path) => {
+        if (path.includes('?')) {
+            return location.pathname + location.search === path;
+        }
+        return location.pathname === path;
+    };
 
     return (
         <motion.aside
@@ -81,9 +184,9 @@ const Sidebar = () => {
                 </div>
 
                 {/* ── Nav groups ── */}
-                <nav className={`flex-1 py-2 overflow-y-auto overflow-x-hidden space-y-2 ${ collapsed ? 'px-0' : 'px-2' }`} style={{ scrollbarWidth: 'none' }}>
+                <nav className={`flex-1 py-2 overflow-y-auto overflow-x-hidden space-y-6 ${ collapsed ? 'px-0' : 'px-2' } scrollbar-hide`} style={{ scrollbarWidth: 'none' }}>
                     {NAV_GROUPS.map(({ section, items }) => (
-                        <div key={section}>
+                        <div key={section} className="space-y-1.5">
                             {/* Section label */}
                             <AnimatePresence initial={false}>
                                 {!collapsed && (
@@ -117,40 +220,27 @@ const Sidebar = () => {
                                                 background: (!collapsed && active) ? 'rgba(255,255,255,0.10)' : 'transparent',
                                             }}
                                             onMouseEnter={e => {
-                                                if (!active) e.currentTarget.style.background = collapsed ? 'transparent' : 'rgba(255,255,255,0.06)';
+                                                if (!active && !collapsed) e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
                                                 if (!active) e.currentTarget.style.color = '#d1d5db';
                                             }}
                                             onMouseLeave={e => {
-                                                if (!active) e.currentTarget.style.background = 'transparent';
-                                                if (!active) e.currentTarget.style.color = '#9ca3af';
+                                                if (!active) {
+                                                    e.currentTarget.style.background = 'transparent';
+                                                    e.currentTarget.style.color = '#9ca3af';
+                                                }
                                             }}
                                         >
 
                                             {collapsed ? (
-                                                /* Collapsed: icon inside a centred rounded container */
                                                 <div
                                                     className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150"
-                                                    style={{
-                                                        background: active
-                                                            ? 'rgba(255,255,255,0.1)'
-                                                            : 'transparent',
-                                                    }}
-                                                    onMouseEnter={e => {
-                                                        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
-                                                    }}
-                                                    onMouseLeave={e => {
-                                                        if (!active) e.currentTarget.style.background = 'transparent';
-                                                    }}
+                                                    style={{ background: active ? 'rgba(255,255,255,0.1)' : 'transparent' }}
                                                 >
                                                     <Icon className="flex-shrink-0" style={{ width: 20, height: 20 }} />
                                                 </div>
                                             ) : (
-                                                /* Expanded: icon inline with label */
                                                 <>
-                                                    <Icon
-                                                        className="flex-shrink-0 transition-colors"
-                                                        style={{ width: 20, height: 20 }}
-                                                    />
+                                                    <Icon className="flex-shrink-0 transition-colors" style={{ width: 20, height: 20 }} />
                                                     <AnimatePresence initial={false}>
                                                         <motion.span
                                                             initial={{ opacity: 0, x: -6 }}
@@ -170,17 +260,173 @@ const Sidebar = () => {
                             </div>
                         </div>
                     ))}
+
+                    {/* ── Dynamic Folders Section ── */}
+                    {folders.length > 0 && (
+                        <div className="space-y-1 pt-2">
+                            <AnimatePresence initial={false}>
+                                {!collapsed && (
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        onClick={() => setIsFoldersOpen(!isFoldersOpen)}
+                                        className="px-3 flex items-center justify-between mb-2 group/header cursor-pointer select-none"
+                                    >
+                                        <p className="text-[12px] font-medium tracking-tight text-slate-400 group-hover/header:text-slate-200 transition-colors">
+                                            Your folders
+                                        </p>
+                                        <ChevronDownIcon className={`w-3 h-3 text-slate-500 group-hover/header:text-slate-300 transition-transform duration-200 ${isFoldersOpen ? '' : '-rotate-90'}`} />
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            <AnimatePresence>
+                                {isFoldersOpen && (
+                                    <motion.div 
+                                        initial={collapsed ? { opacity: 1 } : { height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                        onAnimationComplete={() => setIsMenuTransitioning(false)}
+                                        className="space-y-0.5"
+                                        style={{ overflow: isFoldersOpen && !isMenuTransitioning ? 'visible' : 'hidden' }}
+                                    >
+                                        {folders.map((folder) => {
+                                            const folderPath = `/documents?folder=${encodeURIComponent(folder)}`;
+                                            const active = isActive(folderPath);
+
+                                            if (collapsed) {
+                                                return (
+                                                    <Link
+                                                        key={folder}
+                                                        to={folderPath}
+                                                        title={folder}
+                                                        className="flex items-center justify-center py-2 group-item"
+                                                    >
+                                                        <div
+                                                            className="w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-150"
+                                                            style={{ background: active ? 'rgba(255,255,255,0.1)' : 'transparent' }}
+                                                        >
+                                                            <FolderIconSolid 
+                                                                className="flex-shrink-0" 
+                                                                style={{ width: 19, height: 19, color: active ? '#fff' : '#64748b' }} 
+                                                            />
+                                                        </div>
+                                                    </Link>
+                                                );
+                                            }
+
+                                            return (
+                                                <div 
+                                                    key={folder}
+                                                    className="relative group/item"
+                                                >
+                                                    {editingFolder === folder ? (
+                                                        <div className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-white/10 border border-emerald-500/30 mx-1">
+                                                            <FolderIconSolid className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                                                            <input 
+                                                                autoFocus
+                                                                type="text"
+                                                                value={renameValue}
+                                                                onChange={(e) => setRenameValue(e.target.value)}
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter') saveRename(folder);
+                                                                    if (e.key === 'Escape') setEditingFolder(null);
+                                                                    e.stopPropagation();
+                                                                }}
+                                                                onBlur={() => saveRename(folder)}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="bg-transparent border-none p-0 text-[13px] text-white w-full outline-none"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <Link
+                                                                to={folderPath}
+                                                                className={`flex items-center justify-between rounded-md transition-all duration-150 outline-none px-3 py-1.5`}
+                                                                style={{
+                                                                    color: active ? '#fff' : '#94a3b8',
+                                                                    background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                                                }}
+                                                                onMouseEnter={e => {
+                                                                    if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                                                    e.currentTarget.style.color = '#fff';
+                                                                }}
+                                                                onMouseLeave={e => {
+                                                                    if (!active) {
+                                                                        e.currentTarget.style.background = 'transparent';
+                                                                        e.currentTarget.style.color = '#94a3b8';
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                    <FolderIconSolid 
+                                                                        className={`flex-shrink-0 transition-colors ${active ? 'text-slate-200' : 'text-slate-500 group-hover/item:text-slate-300'}`} 
+                                                                        style={{ width: 18, height: 18 }} 
+                                                                    />
+                                                                    <span className={`text-[13px] truncate ${active ? 'font-semibold' : 'font-medium'}`}>
+                                                                        {folder}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="w-6" />
+                                                            </Link>
+
+                                                            {/* Ellipsis menu outside of Link */}
+                                                            <div className="absolute right-1 top-1/2 -translate-y-1/2 z-[20]">
+                                                                <button
+                                                                    className="opacity-0 group-hover/item:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        setActiveFolderMenu(activeFolderMenu === folder ? null : folder);
+                                                                    }}
+                                                                >
+                                                                    <EllipsisHorizontalIcon className="w-3.5 h-3.5 text-slate-500 hover:text-slate-300" />
+                                                                </button>
+
+                                                                <AnimatePresence>
+                                                                    {activeFolderMenu === folder && (
+                                                                        <motion.div
+                                                                            initial={{ opacity: 0, scale: 0.95, x: 10 }}
+                                                                            animate={{ opacity: 1, scale: 1, x: 0 }}
+                                                                            exit={{ opacity: 0, scale: 0.95, x: 10 }}
+                                                                            className="absolute right-0 top-full mt-1 w-32 bg-[#1e293b] border border-slate-700/50 rounded-lg shadow-xl py-1 z-[100]"
+                                                                            onClick={e => e.stopPropagation()}
+                                                                        >
+                                                                            <button
+                                                                                onClick={(e) => handleRenameFolder(e, folder)}
+                                                                                className="w-full px-3 py-1.5 text-left text-[12px] text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+                                                                            >
+                                                                                Rename
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={(e) => handleDeleteFolder(e, folder)}
+                                                                                className="w-full px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-400/10 transition-colors"
+                                                                            >
+                                                                                Delete
+                                                                            </button>
+                                                                        </motion.div>
+                                                                    )}
+                                                                </AnimatePresence>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    )}
                 </nav>
 
                 {/* ── Bottom ── */}
                 <div className="flex-shrink-0 px-2 pb-4 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-
-
                     {/* User card + Logout */}
                     {user && (
                         <div className={`flex items-center gap-2.5 py-2.5 rounded-sm ${ collapsed ? 'justify-center px-0' : 'px-2' }`}>
-
-                            {/* Avatar — in collapsed mode shows logout overlay on hover */}
                             <div className="relative flex-shrink-0 group/avatar">
                                 {user.picture ? (
                                     <img
@@ -197,8 +443,6 @@ const Sidebar = () => {
                                         {user.name?.[0] ?? 'U'}
                                     </div>
                                 )}
-
-                                {/* Logout overlay — only in collapsed mode */}
                                 {collapsed && (
                                     <button
                                         onClick={logout}
@@ -211,45 +455,39 @@ const Sidebar = () => {
                                 )}
                             </div>
 
-                            {/* Name + email — expanded only */}
-                            <AnimatePresence initial={false}>
-                                {!collapsed && (
-                                    <motion.div
-                                        initial={{ opacity: 0, x: -6 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: -6 }}
-                                        transition={{ duration: 0.15 }}
-                                        className="flex-1 min-w-0 overflow-hidden"
-                                    >
-                                        <p className="text-xs font-bold text-white truncate leading-tight">{user.name}</p>
-                                        <p className="text-[10px] font-medium truncate leading-tight" style={{ color: '#6b7280' }}>
-                                            {user.email}
-                                        </p>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
+                            {!collapsed && (
+                                <motion.div
+                                    initial={{ opacity: 0, x: -6 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: -6 }}
+                                    transition={{ duration: 0.15 }}
+                                    className="flex-1 min-w-0 overflow-hidden"
+                                >
+                                    <p className="text-xs font-bold text-white truncate leading-tight">{user.name}</p>
+                                    <p className="text-[10px] font-medium truncate leading-tight" style={{ color: '#6b7280' }}>
+                                        {user.email}
+                                    </p>
+                                </motion.div>
+                            )}
 
-                            {/* Logout button — expanded only */}
-                            <AnimatePresence initial={false}>
-                                {!collapsed && (
-                                    <motion.button
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        onClick={logout}
-                                        title="Logout"
-                                        className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center outline-none transition-all duration-150 group/btn"
-                                        style={{ background: '#252840' }}
-                                        onMouseEnter={e => e.currentTarget.style.background = '#3d1f1f'}
-                                        onMouseLeave={e => e.currentTarget.style.background = '#252840'}
-                                    >
-                                        <ArrowRightEndOnRectangleIcon
-                                            className="text-[#888] group-hover/btn:text-red-400 transition-colors"
-                                            style={{ width: 15, height: 15 }}
-                                        />
-                                    </motion.button>
-                                )}
-                            </AnimatePresence>
+                            {!collapsed && (
+                                <motion.button
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={logout}
+                                    title="Logout"
+                                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center outline-none transition-all duration-150 group/btn"
+                                    style={{ background: '#252840' }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#3d1f1f'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#252840'}
+                                >
+                                    <ArrowRightEndOnRectangleIcon
+                                        className="text-[#888] group-hover/btn:text-red-400 transition-colors"
+                                        style={{ width: 15, height: 15 }}
+                                    />
+                                </motion.button>
+                            )}
                         </div>
                     )}
                 </div>

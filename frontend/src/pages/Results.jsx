@@ -189,7 +189,7 @@ const Results = () => {
         {
             label: 'Topical Map',
             icon: <GlobeAltIcon className="w-4 h-4" />,
-            content: <TopicalMap topicalMaps={results.topicalMaps} />,
+            content: <TopicalMap topicalMaps={results.topicalMaps} analysisId={analysisId} />,
         },
     ];
 

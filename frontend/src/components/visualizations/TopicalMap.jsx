@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import api from '../../api/axios';
 import {
     ChevronDownIcon,
     ChevronUpIcon,
@@ -18,15 +21,37 @@ import {
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
-const TopicalMap = ({ topicalMaps }) => {
+const TopicalMap = ({ topicalMaps, analysisId }) => {
     const [activeIndex, setActiveIndex] = useState(0);
+    const navigate = useNavigate();
+    const [generatingArticle, setGeneratingArticle] = useState(null);
+
+    const handleGenerateArticle = async (article) => {
+        setGeneratingArticle(article.title);
+        const toastId = toast.loading('Generating SEO Article... this might take a minute.');
+        try {
+            const response = await api.post(`/api/article/${analysisId}`, {
+                topic: article.title,
+                category: article.category_l1 || 'General',
+                article_type: article.article_type || 'informative'
+            }, { timeout: 120000 });
+            
+            toast.success('Article generated successfully!', { id: toastId });
+            navigate(`/documents/${response.data.document_id}`);
+        } catch (error) {
+            console.error('Failed to generate article:', error);
+            toast.error('Failed to generate article.', { id: toastId });
+        } finally {
+            setGeneratingArticle(null);
+        }
+    };
     const [expandedSections, setExpandedSections] = useState({
         semantic: true,
         audience: false,
         content: true,
         queries: false,
         competitive: true,
-        articles: false,
+        articles: true,
         seo: true,
         taxonomy: true,
         ontology: true,
@@ -833,8 +858,8 @@ const TopicalMap = ({ topicalMaps }) => {
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                                 Level 1 ↕
                                             </th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-8">
-
+                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-8 text-center">
+                                                Actions
                                             </th>
                                         </tr>
                                     </thead>
@@ -861,8 +886,13 @@ const TopicalMap = ({ topicalMaps }) => {
                                                     {article.category_l1}
                                                 </td>
                                                 <td className="px-4 py-3 text-center">
-                                                    <button className="text-slate-400 hover:text-slate-600">
-                                                        ⋮
+                                                    <button 
+                                                        onClick={() => handleGenerateArticle(article)}
+                                                        disabled={generatingArticle === article.title}
+                                                        className="inline-flex items-center gap-x-1.5 rounded bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-600 shadow-sm hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                                    >
+                                                        <SparklesIcon className="-ml-0.5 h-3.5 w-3.5" aria-hidden="true" />
+                                                        {generatingArticle === article.title ? 'Generating...' : 'Write Article'}
                                                     </button>
                                                 </td>
                                             </tr>

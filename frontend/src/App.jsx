@@ -15,6 +15,8 @@ import History from './pages/History';
 import Results from './pages/Results';
 import PageSelector from './pages/PageSelector';
 import SEOAnalytics from './pages/SEOAnalytics';
+import Documents from './pages/Documents';
+import DocumentDetail from './pages/DocumentDetail';
 
 /* ── Protected Route ─────────────────────────────────────── */
 /* ── Persistent Layout for Authenticated Pages ─────────── */
@@ -119,6 +121,8 @@ function AppContent() {
                     <Route path="/history" element={<History />} />
                     <Route path="/select-pages" element={<PageSelector />} />
                     <Route path="/results/:analysisId" element={<Results />} />
+                    <Route path="/documents" element={<Documents />} />
+                    <Route path="/documents/:documentId" element={<DocumentDetail />} />
                 </Route>
             </Routes>
             

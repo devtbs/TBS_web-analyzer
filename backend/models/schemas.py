@@ -209,3 +209,25 @@ class FullAnalysisResult(BaseModel):
     knowledge_graph: KnowledgeGraphData
     topical_maps: List[TopicalMapData]
     comparison: Optional[ComparisonData] = None
+
+class BriefRequest(BaseModel):
+    topic: str
+    category: str
+    article_type: str
+    domain: Optional[str] = ""
+
+class DocumentResponse(BaseModel):
+    id: str
+    title: str
+    content_type: str
+    analysis_id: Optional[str] = None
+    folder: Optional[str] = None
+    deadline: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class DocumentDetailResponse(DocumentResponse):
+    content: dict

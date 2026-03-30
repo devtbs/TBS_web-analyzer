@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import {
     ChevronDownIcon,
 } from '@heroicons/react/20/solid';
-import { ArrowPathIcon, LinkIcon, PlusIcon, ArrowTopRightOnSquareIcon, ChartBarIcon, PencilIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, LinkIcon, PlusIcon, ArrowTopRightOnSquareIcon, ChartBarIcon, PencilIcon, MagnifyingGlassIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import {
     BarChart,
     Bar,
@@ -109,6 +109,8 @@ const SEOAnalytics = () => {
     const [activeTab, setActiveTab] = useState('Pages'); // Make Pages the default tab
     const [chartGrouping, setChartGrouping] = useState('daily');
     const [activeBarIndex, setActiveBarIndex] = useState(null);
+    const [isDomainPickerOpen, setIsDomainPickerOpen] = useState(false);
+    const [domainSearch, setDomainSearch] = useState('');
     
     // Data states
     const [loading, setLoading] = useState(false);
@@ -462,27 +464,116 @@ const SEOAnalytics = () => {
             
             {/* ── Top Header and Filters ── */}
             <header className="flex flex-wrap items-center gap-4 pb-8 border-b border-slate-100">
-                {/* Domain Selector Pill */}
-                <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm">
-                    <div className="px-4 bg-slate-50 text-slate-500 font-bold border-r border-slate-200 h-full flex items-center text-[12px] tracking-wide uppercase">
-                        Domain
-                    </div>
-                    <div className="bg-white px-3 flex items-center h-full">
-                        <select 
-                            className="appearance-none bg-transparent border-none focus:ring-0 py-1 cursor-pointer text-slate-700 outline-none w-full min-w-[14rem] font-bold text-[13px]"
-                            value={selectedProperty}
-                            onChange={(e) => setSelectedProperty(e.target.value)}
+                {/* Domain Selector Picker */}
+                <div className="relative">
+                    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm">
+                        <div className="px-4 bg-slate-50 text-slate-500 font-bold border-r border-slate-200 h-full flex items-center text-[12px] tracking-wide uppercase">
+                            Domain
+                        </div>
+                        <button 
+                            onClick={() => setIsDomainPickerOpen(!isDomainPickerOpen)}
+                            className="bg-white px-3 flex items-center justify-between gap-3 h-full min-w-[14rem] hover:bg-slate-50 transition-colors text-left"
                         >
-                            {properties.length === 0 && <option value="">No Properties Found</option>}
-                            {properties.map(p => (
-                                <option key={p.url} value={p.url}>{getDomain(p.url)}</option>
-                            ))}
-                        </select>
-                        <ChevronDownIcon className="w-4 h-4 text-slate-400 -ml-6 pointer-events-none" />
+                            <span className="text-slate-700 font-bold text-[13px] truncate">
+                                {selectedProperty ? getDomain(selectedProperty) : 'Select Domain'}
+                            </span>
+                            <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDomainPickerOpen ? 'rotate-180' : ''}`} />
+                        </button>
                     </div>
+
+                    <AnimatePresence>
+                        {isDomainPickerOpen && (
+                            <>
+                                {/* Click Backdrop */}
+                                <div 
+                                    className="fixed inset-0 z-40" 
+                                    onClick={() => {
+                                        setIsDomainPickerOpen(false);
+                                        setDomainSearch('');
+                                    }} 
+                                />
+                                
+                                <motion.div 
+                                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                                    transition={{ duration: 0.15, ease: "easeOut" }}
+                                    className="absolute left-0 top-[calc(100%+8px)] w-[320px] bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden"
+                                >
+                                    {/* Search Bar */}
+                                    <div className="p-3 border-b border-slate-50 sticky top-0 bg-white/80 backdrop-blur-md z-10">
+                                        <div className="relative group">
+                                            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                                            <input 
+                                                autoFocus
+                                                type="text"
+                                                placeholder="Search properties..."
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-lg pl-9 pr-8 py-2 text-[13px] outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500/30 transition-all font-medium"
+                                                value={domainSearch}
+                                                onChange={(e) => setDomainSearch(e.target.value)}
+                                            />
+                                            {domainSearch && (
+                                                <button 
+                                                    onClick={() => setDomainSearch('')}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                                                >
+                                                    <XMarkIcon className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Domain List */}
+                                    <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
+                                        {properties.length === 0 ? (
+                                            <div className="px-4 py-8 text-center">
+                                                <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                    <LinkIcon className="w-5 h-5 text-slate-300" />
+                                                </div>
+                                                <p className="text-[13px] font-medium text-slate-400">No properties found</p>
+                                            </div>
+                                        ) : properties.filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase())).length === 0 ? (
+                                            <div className="px-4 py-8 text-center text-[13px] text-slate-400 font-medium">
+                                                No results for "{domainSearch}"
+                                            </div>
+                                        ) : (
+                                            properties
+                                                .filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase()))
+                                                .map(p => (
+                                                    <button 
+                                                        key={p.url}
+                                                        onClick={() => {
+                                                            setSelectedProperty(p.url);
+                                                            setIsDomainPickerOpen(false);
+                                                            setDomainSearch('');
+                                                        }}
+                                                        className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
+                                                            selectedProperty === p.url 
+                                                                ? 'bg-emerald-50 text-emerald-700' 
+                                                                : 'text-slate-600 hover:bg-slate-50'
+                                                        }`}
+                                                    >
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className={`text-[13px] font-bold truncate ${selectedProperty === p.url ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                                                {getDomain(p.url)}
+                                                            </span>
+                                                            <span className="text-[11px] text-slate-400 truncate mt-0.5">
+                                                                {p.url.replace(/^https?:\/\//, '')}
+                                                            </span>
+                                                        </div>
+                                                        {selectedProperty === p.url && (
+                                                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                        )}
+                                                    </button>
+                                                ))
+                                        )}
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>
                 </div>
 
-                {/* Query Filter Pill */}
                 <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
                     <PencilIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                     <span className="text-slate-500 font-bold text-[13px]">Query:</span>

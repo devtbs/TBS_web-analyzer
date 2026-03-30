@@ -101,7 +101,15 @@ const StatusBadge = ({ status }) => {
 };
 
 const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    if (!dateString) return '';
+    
+    // Ensure the date string is treated as UTC if no timezone is provided
+    let normalized = dateString;
+    if (dateString.includes('T') && !dateString.includes('Z') && !dateString.includes('+')) {
+        normalized = dateString + 'Z';
+    }
+
+    const date = new Date(normalized);
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);

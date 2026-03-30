@@ -56,6 +56,22 @@ class Analysis(Base):
     error = Column(Text, nullable=True)
 
 
+class Document(Base):
+    """Database model for generated documents (content briefs, etc)"""
+    __tablename__ = "documents"
+    
+    id = Column(String, primary_key=True, index=True)
+    user_email = Column(String, index=True, nullable=False)
+    analysis_id = Column(String, index=True, nullable=True)
+    title = Column(String, nullable=False)
+    content_type = Column(String, default="Content Brief", nullable=False)
+    content = Column(JSON, nullable=False)
+    folder = Column(String, nullable=True)
+    deadline = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 # Create tables
 def init_db():
     """Initialize database tables"""
