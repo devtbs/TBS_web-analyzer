@@ -130,7 +130,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                                             <SparklesIcon className="h-5 w-5 text-blue-600" />
                                         </div>
                                         <div>
-                                            <Dialog.Title as="h3" className="text-lg font-semibold leading-6 text-slate-900">
+                                            <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-slate-900">
                                                 AI Content Brief
                                             </Dialog.Title>
                                             <p className="text-sm text-slate-500 mt-0.5 truncate max-w-md">
@@ -228,7 +228,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                                                     <div className="space-y-3">
                                                         <div className="bg-white border border-slate-200 rounded p-3">
                                                             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 block">Top Title Idea</span>
-                                                            <p className="text-sm text-slate-900 font-medium">{briefData.title_ideas?.[0]}</p>
+                                                            <p className="text-sm text-slate-900 font-bold">{briefData.title_ideas?.[0]}</p>
                                                         </div>
                                                         <div className="bg-white border border-slate-200 rounded p-3">
                                                             <span className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2 block">Meta Description</span>

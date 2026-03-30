@@ -17,6 +17,22 @@ import {
 } from '@heroicons/react/24/outline';
 
 const MenuBar = ({ editor }) => {
+    const [, setUpdateCount] = React.useState(0);
+
+    React.useEffect(() => {
+        if (!editor) return;
+        
+        const update = () => setUpdateCount(c => c + 1);
+        
+        editor.on('transaction', update);
+        editor.on('selectionUpdate', update);
+        
+        return () => {
+            editor.off('transaction', update);
+            editor.off('selectionUpdate', update);
+        };
+    }, [editor]);
+
     if (!editor) {
         return null;
     }
@@ -51,15 +67,27 @@ const MenuBar = ({ editor }) => {
             <div className="w-px h-5 bg-slate-300 mx-2" />
             
             <select 
-                className="text-sm border-none bg-transparent focus:ring-0 text-slate-700 font-medium py-1 px-2 cursor-pointer hover:bg-slate-100 rounded-md"
+                className="text-sm border-none bg-transparent focus:ring-0 text-slate-800 font-bold py-1 px-2 cursor-pointer hover:bg-slate-100 rounded-md outline-none"
                 onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'p') editor.chain().focus().setParagraph().run();
-                    else if (val.startsWith('h')) editor.chain().focus().toggleHeading({ level: parseInt(val[1]) }).run();
+                    const value = e.target.value;
+                    if (value === 'p') {
+                        editor.chain().focus().setParagraph().run();
+                    } else if (value === 'h1') {
+                        editor.chain().focus().toggleHeading({ level: 1 }).run();
+                    } else if (value === 'h2') {
+                        editor.chain().focus().toggleHeading({ level: 2 }).run();
+                    } else if (value === 'h3') {
+                        editor.chain().focus().toggleHeading({ level: 3 }).run();
+                    }
                 }}
-                value={editor.isActive('heading', { level: 1 }) ? 'h1' : editor.isActive('heading', { level: 2 }) ? 'h2' : editor.isActive('heading', { level: 3 }) ? 'h3' : 'p'}
+                value={
+                    editor.isActive('heading', { level: 1 }) ? 'h1' : 
+                    editor.isActive('heading', { level: 2 }) ? 'h2' : 
+                    editor.isActive('heading', { level: 3 }) ? 'h3' : 
+                    'p'
+                }
             >
-                <option value="p">Text</option>
+                <option value="p">Normal Text</option>
                 <option value="h1">Heading 1</option>
                 <option value="h2">Heading 2</option>
                 <option value="h3">Heading 3</option>
@@ -200,7 +228,7 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving
                             <ArrowLeftIcon className="w-5 h-5" />
                         </button>
                     )}
-                    <h2 className="text-sm font-semibold text-slate-800 truncate max-w-sm" title={title}>
+                    <h2 className="text-sm font-bold text-slate-800 truncate max-w-sm" title={title}>
                         {title.length > 30 ? title.substring(0, 30) + '...' : title}
                     </h2>
                 </div>

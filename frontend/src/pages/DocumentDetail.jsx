@@ -199,7 +199,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                                         </h2>
                                         <ul className="space-y-3">
                                             {briefData.title_ideas?.map((title, i) => (
-                                                <li key={i} className="flex gap-3 text-slate-700 font-medium p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-400 transition-colors">
+                                                <li key={i} className="flex gap-3 text-slate-700 font-bold p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-400 transition-colors shadow-sm">
                                                     <span className="text-slate-400 select-none">{i + 1}.</span>
                                                     {title}
                                                 </li>
