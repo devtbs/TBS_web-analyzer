@@ -167,30 +167,6 @@ const NewAnalysis = () => {
                         transition={{ duration: 0.4, ease: 'easeOut' }}
                         className="bg-white rounded-[24px] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] overflow-hidden border border-white p-6 sm:p-8 relative"
                     >
-                        <AnimatePresence>
-                            {isAnalyzing && !analysisId && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-white/70 backdrop-blur-md"
-                                >
-                                    <div className="relative flex items-center justify-center mb-5">
-                                        <div className="absolute inset-0 bg-violet-400 rounded-full blur-[20px] opacity-40 animate-pulse"></div>
-                                        <div className="relative w-14 h-14 rounded-full border-[3px] border-violet-100 border-t-violet-600 animate-spin bg-white shadow-xl flex items-center justify-center">
-                                            <SparklesIcon className="w-6 h-6 text-violet-600 animate-pulse" />
-                                        </div>
-                                    </div>
-                                    <h3 className="text-xl font-bold text-slate-800 tracking-tight mb-2">
-                                        Initializing Analysis
-                                    </h3>
-                                    <p className="text-[14px] font-medium text-slate-500 max-w-[280px] text-center">
-                                        Setting up your workspace and dispatching the AI agents...
-                                    </p>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                        
                         {/* ── Mode Toggle ── */}
                         <div className="flex justify-center mb-6">
                             <div className="bg-slate-100/80 rounded-full p-1.5 flex relative w-full sm:w-[560px]">

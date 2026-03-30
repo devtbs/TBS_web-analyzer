@@ -688,7 +688,7 @@ const SEOAnalytics = () => {
                                 </div>
 
                                 {/* Pagination Controls */}
-                                {totalPagesCount > 1 && (
+                                {filteredPages.length > 0 && (
                                     <div className="flex items-center gap-2 text-[13px]">
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -700,7 +700,7 @@ const SEOAnalytics = () => {
                                         <span className="text-slate-500 px-2 font-bold">{currentPage} / {totalPagesCount}</span>
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.min(totalPagesCount, prev + 1))}
-                                            disabled={currentPage === totalPagesCount}
+                                            disabled={currentPage >= totalPagesCount}
                                             className="px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
                                         >
                                             Next
