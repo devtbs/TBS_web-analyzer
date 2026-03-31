@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import ConfirmDialog from '../ui/ConfirmDialog';
  
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -64,6 +65,7 @@ const Sidebar = () => {
     const [activeFolderMenu, setActiveFolderMenu] = useState(null);
     const [editingFolder, setEditingFolder] = useState(null);
     const [renameValue, setRenameValue] = useState('');
+    const [deleteFolderTarget, setDeleteFolderTarget] = useState(null); // folder name string
 
     const dispatchRefresh = () => {
         window.dispatchEvent(new CustomEvent('documents-updated'));
@@ -117,19 +119,25 @@ const Sidebar = () => {
         }
     };
 
-    const handleDeleteFolder = async (e, folderName) => {
+    const handleDeleteFolder = (e, folderName) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!window.confirm(`Delete folder "${folderName}"? Documents will be kept but unassigned from this folder.`)) return;
+        setActiveFolderMenu(null);
+        setDeleteFolderTarget(folderName);
+    };
+
+    const confirmDeleteFolder = async () => {
+        if (!deleteFolderTarget) return;
         try {
-            await api.delete(`/api/folders/${encodeURIComponent(folderName)}`);
-            setFolders(prev => prev.filter(f => f !== folderName));
+            await api.delete(`/api/folders/${encodeURIComponent(deleteFolderTarget)}`);
+            setFolders(prev => prev.filter(f => f !== deleteFolderTarget));
             dispatchRefresh();
             toast.success('Folder deleted');
         } catch (error) {
             toast.error('Failed to delete folder');
+        } finally {
+            setDeleteFolderTarget(null);
         }
-        setActiveFolderMenu(null);
     };
 
     useEffect(() => {
@@ -146,6 +154,7 @@ const Sidebar = () => {
     };
 
     return (
+        <>
         <motion.aside
             initial={false}
             animate={{ width: collapsed ? 88 : 260 }}
@@ -493,6 +502,17 @@ const Sidebar = () => {
                 </div>
             </div>
         </motion.aside>
+
+        <ConfirmDialog
+            isOpen={!!deleteFolderTarget}
+            onClose={() => setDeleteFolderTarget(null)}
+            onConfirm={confirmDeleteFolder}
+            title="Delete folder"
+            message={`Are you sure you want to delete "${deleteFolderTarget}"? Documents inside will be kept but removed from this folder.`}
+            confirmText="Delete"
+            cancelText="Cancel"
+        />
+        </>
     );
 };
 

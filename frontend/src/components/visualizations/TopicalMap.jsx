@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import api from '../../api/axios';
 import {
@@ -28,19 +29,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
     const handleGenerateArticle = async (article) => {
         setGeneratingArticle(article.title);
-        const toastId = toast.loading('Generating SEO Article... this might take a minute.');
         try {
             const response = await api.post(`/api/article/${analysisId}`, {
                 topic: article.title,
                 category: article.category_l1 || 'General',
                 article_type: article.article_type || 'informative'
             }, { timeout: 120000 });
-            
-            toast.success('Article generated successfully!', { id: toastId });
             navigate(`/documents/${response.data.document_id}`);
         } catch (error) {
             console.error('Failed to generate article:', error);
-            toast.error('Failed to generate article.', { id: toastId });
+            toast.error('Failed to generate article. Please try again.');
         } finally {
             setGeneratingArticle(null);
         }
@@ -230,6 +228,61 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     };
 
     return (
+        <>
+        {/* ── Full-screen generation overlay ── */}
+        <AnimatePresence>
+            {generatingArticle && (
+                <motion.div
+                    key="gen-overlay"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[9999] flex items-center justify-center"
+                    style={{ background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(6px)' }}
+                >
+                    <motion.div
+                        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                        className="bg-white rounded-3xl shadow-2xl px-10 py-10 flex flex-col items-center gap-5 max-w-sm w-full mx-4 text-center"
+                    >
+                        {/* Spinner */}
+                        <div className="relative w-16 h-16">
+                            <div className="absolute inset-0 rounded-full border-4 border-violet-100" />
+                            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-violet-600 animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <SparklesIcon className="w-6 h-6 text-violet-500 animate-pulse" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="text-lg font-bold text-slate-800 mb-1">Writing Article…</p>
+                            <p className="text-sm text-slate-500 font-medium line-clamp-2 leading-snug">
+                                {generatingArticle}
+                            </p>
+                        </div>
+
+                        <p className="text-xs text-slate-400 font-medium">
+                            AI is generating your article. This can take up to a minute.
+                        </p>
+
+                        {/* Progress dots */}
+                        <div className="flex gap-1.5">
+                            {[0, 1, 2].map(i => (
+                                <motion.div
+                                    key={i}
+                                    className="w-2 h-2 rounded-full bg-violet-400"
+                                    animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
+                                    transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                                />
+                            ))}
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
         <div className="space-y-6" id="export-full-topical-map">
             {/* URL Selector & Global Export */}
             <div className="flex items-center justify-between w-full gap-4 flex-wrap mb-2" data-html2canvas-ignore="true">
@@ -888,11 +941,17 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                 <td className="px-4 py-3 text-center">
                                                     <button 
                                                         onClick={() => handleGenerateArticle(article)}
-                                                        disabled={generatingArticle === article.title}
-                                                        className="inline-flex items-center gap-x-1.5 rounded bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-600 shadow-sm hover:bg-blue-100 transition-colors disabled:opacity-50"
+                                                        disabled={!!generatingArticle}
+                                                        className={`inline-flex items-center gap-x-1.5 rounded px-2 py-1 text-xs font-semibold shadow-sm transition-colors
+                                                            ${generatingArticle === article.title
+                                                                ? 'bg-violet-100 text-violet-600 cursor-wait'
+                                                                : generatingArticle
+                                                                ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                                                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                                            }`}
                                                     >
-                                                        <SparklesIcon className="-ml-0.5 h-3.5 w-3.5" aria-hidden="true" />
-                                                        {generatingArticle === article.title ? 'Generating...' : 'Write Article'}
+                                                        <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} aria-hidden="true" />
+                                                        {generatingArticle === article.title ? 'Writing…' : 'Write Article'}
                                                     </button>
                                                 </td>
                                             </tr>
@@ -959,6 +1018,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 </div>
             )}
         </div>
+        </>
     );
 };
 

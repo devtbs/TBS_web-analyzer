@@ -110,8 +110,8 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" />
                 </Transition.Child>
 
-                <div className="fixed inset-0 z-10 w-screen overflow-y-auto">
-                    <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div className="fixed inset-0 z-10 overflow-y-auto">
+                    <div className="flex min-h-full items-center justify-center p-4 text-center">
                         <Transition.Child
                             as={Fragment}
                             enter="ease-out duration-300"
@@ -121,7 +121,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                             leaveFrom="opacity-100 translate-y-0 sm:scale-100"
                             leaveTo="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
                         >
-                            <Dialog.Panel className="relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-4xl max-h-[90vh] flex flex-col">
+                            <Dialog.Panel className="relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all w-full max-w-4xl my-4 mx-auto flex flex-col" style={{ maxHeight: 'calc(100vh - 2rem)' }}>
                                 
                                 {/* Header */}
                                 <div className="bg-slate-50 border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
@@ -133,13 +133,13 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                                             <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-slate-900">
                                                 AI Content Brief
                                             </Dialog.Title>
-                                            <p className="text-sm text-slate-500 mt-0.5 truncate max-w-md">
+                                            <p className="text-sm text-slate-500 mt-0.5 truncate max-w-[12rem] sm:max-w-md">
                                                 {article?.title}
                                             </p>
                                         </div>
                                     </div>
                                     
-                                    <div className="flex items-center space-x-2">
+                                    <div className="flex items-center space-x-2 shrink-0">
                                         {briefData && (
                                             <button
                                                 type="button"
@@ -166,7 +166,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                                 </div>
 
                                 {/* Body */}
-                                <div className="px-6 py-6 overflow-y-auto flex-1 bg-white">
+                                <div className="px-4 sm:px-6 py-4 sm:py-6 overflow-y-auto flex-1 bg-white min-h-0">
                                     {loading ? (
                                         <div className="flex flex-col items-center justify-center py-20">
                                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { 
     DocumentTextIcon, 
     TrashIcon, 
@@ -39,7 +40,6 @@ import {
 const formatTimeAgo = (dateString) => {
     if (!dateString) return '';
     
-    // Ensure the date string is treated as UTC if no timezone is provided
     let normalized = dateString;
     if (dateString.includes('T') && !dateString.includes('Z') && !dateString.includes('+')) {
         normalized = dateString + 'Z';
@@ -50,9 +50,9 @@ const formatTimeAgo = (dateString) => {
     const diffInSeconds = Math.floor((now - date) / 1000);
     
     if (diffInSeconds < 60) return 'Just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} mins ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hrs ago`;
-    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}d ago`;
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
@@ -68,6 +68,10 @@ export default function Documents() {
     const [folderSearch, setFolderSearch] = useState('');
     const [viewMode, setViewMode] = useState('options');
     const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [deleteTarget, setDeleteTarget] = useState(null); // { id, title }
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const selectAllRef = useRef(null);
     const { user } = useAuth();
     const navigate = useNavigate();
 
@@ -82,14 +86,12 @@ export default function Documents() {
     }, []);
 
     useEffect(() => {
-        const handleClickOutside = (e) => {
-            // Close popovers on any click that isn't stopping propagation
+        const handleClickOutside = () => {
             setActiveDeadlinePopover(null);
             setActiveFolderPopover(null);
             setActiveActionsMenu(null);
             setViewMode('options');
         };
-        
         window.addEventListener('click', handleClickOutside);
         return () => window.removeEventListener('click', handleClickOutside);
     }, []);
@@ -108,7 +110,6 @@ export default function Documents() {
 
     const handleFolderUpdate = async (docId, newFolder) => {
         if (!newFolder) return;
-        
         try {
             await api.put(`/api/documents/${docId}`, { folder: newFolder });
             setDocuments(documents.map(doc => 
@@ -146,9 +147,7 @@ export default function Documents() {
         const tomorrow = addDays(today, 1);
         const nextWeek = addDays(today, 7);
         const twoWeeks = addDays(today, 14);
-
         const fmt = (d) => format(d, 'MMM d');
-
         return [
             { label: 'Today', date: today, dateLabel: fmt(today) },
             { label: 'Tomorrow', date: tomorrow, dateLabel: fmt(tomorrow) },
@@ -217,18 +216,57 @@ export default function Documents() {
         );
     };
 
-    const handleDelete = async (e, id) => {
+    const handleDelete = (e, doc) => {
         e.preventDefault();
         e.stopPropagation();
-        
-        if (!window.confirm('Are you sure you want to delete this document?')) return;
-        
+        setActiveActionsMenu(null);
+        setDeleteTarget(doc);
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return;
         try {
-            await api.delete(`/api/documents/${id}`);
-            setDocuments(documents.filter(doc => doc.id !== id));
+            await api.delete(`/api/documents/${deleteTarget.id}`);
+            setDocuments(documents.filter(doc => doc.id !== deleteTarget.id));
+            setSelectedIds(prev => { const n = new Set(prev); n.delete(deleteTarget.id); return n; });
             toast.success('Document deleted successfully');
         } catch (error) {
             toast.error('Failed to delete document');
+        } finally {
+            setDeleteTarget(null);
+        }
+    };
+
+    // ── Bulk selection helpers ──────────────────────────────────────
+    const allFilteredIds = filteredDocs => filteredDocs.map(d => d.id);
+
+    const toggleSelect = (e, id) => {
+        e.stopPropagation();
+        setSelectedIds(prev => {
+            const n = new Set(prev);
+            n.has(id) ? n.delete(id) : n.add(id);
+            return n;
+        });
+    };
+
+    const toggleSelectAll = (e) => {
+        e.stopPropagation();
+        const ids = filteredDocs.map(d => d.id);
+        const allSelected = ids.every(id => selectedIds.has(id));
+        setSelectedIds(allSelected ? new Set() : new Set(ids));
+    };
+
+    const confirmBulkDelete = async () => {
+        const ids = [...selectedIds];
+        try {
+            await Promise.all(ids.map(id => api.delete(`/api/documents/${id}`)));
+            setDocuments(prev => prev.filter(doc => !selectedIds.has(doc.id)));
+            setSelectedIds(new Set());
+            toast.success(`${ids.length} document${ids.length > 1 ? 's' : ''} deleted`);
+        } catch {
+            toast.error('Failed to delete some documents');
+        } finally {
+            setBulkDeleteOpen(false);
         }
     };
 
@@ -248,91 +286,180 @@ export default function Documents() {
         return matchesSearch && matchesFolder;
     });
 
+    // Keep the indeterminate state of the select-all checkbox in sync
+    useEffect(() => {
+        if (!selectAllRef.current || filteredDocs.length === 0) return;
+        const ids = filteredDocs.map(d => d.id);
+        const count = ids.filter(id => selectedIds.has(id)).length;
+        selectAllRef.current.indeterminate = count > 0 && count < ids.length;
+        selectAllRef.current.checked = count === ids.length;
+    });
+
     return (
         <div className="bg-white min-h-screen flex flex-col">
-            {/* Header Area */}
-            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100">
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-slate-800">All documents</h1>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                    <div className="relative">
+            {/* ── Header ── */}
+            <div className="px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row sm:items-center gap-3 border-b border-slate-100">
+                {/* Title or bulk-action bar */}
+                <AnimatePresence mode="wait">
+                    {selectedIds.size > 0 ? (
+                        <motion.div
+                            key="bulk"
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            className="flex items-center gap-3"
+                        >
+                            <span className="text-sm font-bold text-slate-700">
+                                {selectedIds.size} selected
+                            </span>
+                            <button
+                                onClick={() => setBulkDeleteOpen(true)}
+                                className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition-all shadow-sm"
+                            >
+                                <TrashIcon className="w-4 h-4" />
+                                Delete selected
+                            </button>
+                            <button
+                                onClick={() => setSelectedIds(new Set())}
+                                className="text-sm font-medium text-slate-400 hover:text-slate-600 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </motion.div>
+                    ) : (
+                        <motion.h1
+                            key="title"
+                            initial={{ opacity: 0, y: 4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 4 }}
+                            className="text-xl font-bold text-slate-800 flex-shrink-0"
+                        >
+                            {folderFilter ? folderFilter : 'All documents'}
+                        </motion.h1>
+                    )}
+                </AnimatePresence>
+
+                {/* Controls: search + new button */}
+                <div className="flex items-center gap-2 sm:gap-3 sm:ml-auto w-full sm:w-auto">
+                    {/* Search */}
+                    <div className="relative flex-1 sm:flex-initial">
+                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                         <input
                             type="text"
                             placeholder="Search documents..."
-                            className="text-sm bg-slate-50 border-none rounded-lg px-4 py-2 w-64 focus:ring-2 focus:ring-emerald-500 transition-all font-medium"
+                            className="text-sm bg-slate-50 border-none rounded-lg pl-9 pr-4 py-2 w-full sm:w-56 focus:ring-2 focus:ring-emerald-500 transition-all font-medium"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    {/* New document */}
                     <button 
                         onClick={handleNewDocument}
-                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm whitespace-nowrap flex-shrink-0"
                     >
-                        New document
+                        <PlusIcon className="w-4 h-4 sm:hidden" />
+                        <span className="hidden sm:inline">New document</span>
+                        <span className="sm:hidden">New</span>
                     </button>
                 </div>
             </div>
 
-            {/* Table Area */}
+            {/* ── Table (scrollable on small screens) ── */}
             <div className="flex-1 overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[800px]">
+                <table className="w-full text-left border-collapse" style={{ minWidth: '520px' }}>
                     <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/50">
-                            <th className="px-6 py-3 w-10"></th>
-                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Search Query</th>
-                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Edited</th>
-                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Folder</th>
-                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
-                            <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Deadline</th>
-                            <th className="px-6 py-3 w-10"></th>
+                            {/* Select-All Checkbox */}
+                            <th className="px-3 sm:px-6 py-3 w-8 sm:w-10">
+                                <input
+                                    ref={selectAllRef}
+                                    type="checkbox"
+                                    onClick={toggleSelectAll}
+                                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                            </th>
+                            {/* Name — always visible */}
+                            <th className="px-3 sm:px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                            {/* Search Query — visible from sm */}
+                            <th className="hidden sm:table-cell px-3 sm:px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Search Query</th>
+                            {/* Edited — visible from md */}
+                            <th className="hidden md:table-cell px-3 sm:px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Edited</th>
+                            {/* Folder — visible from md */}
+                            <th className="hidden md:table-cell px-3 sm:px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Folder</th>
+                            {/* User — visible from lg */}
+                            <th className="hidden lg:table-cell px-3 sm:px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
+                            {/* Deadline — visible from md */}
+                            <th className="hidden md:table-cell px-3 sm:px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Deadline</th>
+                            {/* Actions */}
+                            <th className="px-2 sm:px-3 py-3 w-8 sm:w-10"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                         {loading ? (
                             [...Array(5)].map((_, i) => (
                                 <tr key={i} className="animate-pulse">
-                                    <td className="px-6 py-4"><div className="w-4 h-4 bg-slate-100 rounded" /></td>
-                                    <td className="px-6 py-4">
-                                        <div className="h-4 bg-slate-100 rounded w-48 mb-2" />
-                                        <div className="h-3 bg-slate-50 rounded w-32" />
+                                    <td className="px-3 sm:px-6 py-4"><div className="w-4 h-4 bg-slate-100 rounded" /></td>
+                                    <td className="px-3 sm:px-6 py-4">
+                                        <div className="h-4 bg-slate-100 rounded w-40 mb-1" />
+                                        <div className="h-3 bg-slate-50 rounded w-28" />
                                     </td>
-                                    <td className="px-6 py-4"><div className="h-4 bg-slate-50 rounded w-32" /></td>
-                                    <td className="px-6 py-4"><div className="h-4 bg-slate-50 rounded w-20" /></td>
-                                    <td className="px-6 py-4"><div className="h-4 bg-slate-50 rounded w-24" /></td>
-                                    <td className="px-6 py-4"><div className="h-4 bg-slate-50 rounded w-28" /></td>
-                                    <td className="px-6 py-4"><div className="h-4 bg-slate-50 rounded w-12" /></td>
-                                    <td className="px-6 py-4"></td>
+                                    <td className="hidden sm:table-cell px-3 sm:px-6 py-4"><div className="h-4 bg-slate-50 rounded w-32" /></td>
+                                    <td className="hidden md:table-cell px-3 sm:px-6 py-4"><div className="h-4 bg-slate-50 rounded w-16" /></td>
+                                    <td className="hidden md:table-cell px-3 sm:px-6 py-4"><div className="h-4 bg-slate-50 rounded w-20" /></td>
+                                    <td className="hidden lg:table-cell px-3 sm:px-6 py-4"><div className="h-4 bg-slate-50 rounded w-24" /></td>
+                                    <td className="hidden md:table-cell px-3 sm:px-6 py-4"><div className="h-4 bg-slate-50 rounded w-12" /></td>
+                                    <td className="px-2 sm:px-3 py-4"></td>
                                 </tr>
                             ))
                         ) : filteredDocs.map((doc) => (
                             <tr 
                                 key={doc.id} 
                                 onClick={() => navigate(`/documents/${doc.id}`)}
-                                className="hover:bg-slate-50/80 transition-colors group cursor-pointer border-b border-slate-50"
+                                className={`transition-colors group cursor-pointer border-b border-slate-50 ${
+                                    selectedIds.has(doc.id)
+                                        ? 'bg-emerald-50/60'
+                                        : 'hover:bg-slate-50/80'
+                                }`}
                             >
-                                <td className="px-6 py-4 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                                    <input type="checkbox" className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer" />
+                                {/* Checkbox */}
+                                <td className="px-3 sm:px-6 py-3.5 sm:py-4">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(doc.id)}
+                                        onClick={(e) => toggleSelect(e, doc.id)}
+                                        onChange={() => {}}
+                                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                    />
                                 </td>
-                                <td className="px-6 py-4 max-w-xs cursor-pointer">
-                                    <div className="text-sm font-medium text-slate-900 group-hover:text-emerald-600 transition-colors line-clamp-1">
+
+                                {/* Name */}
+                                <td className="px-3 sm:px-6 py-3.5 sm:py-4 max-w-[160px] sm:max-w-[220px] cursor-pointer">
+                                    <div className="text-sm font-medium text-slate-900 group-hover:text-emerald-600 transition-colors line-clamp-2 leading-snug">
                                         {doc.title}
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 cursor-pointer">
-                                    <div className="text-xs text-slate-500 font-medium line-clamp-1 lowercase italic">
-                                        {doc.title.split(':').pop().trim()}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 cursor-pointer">
-                                    <div className="text-xs text-slate-600 font-medium">
+                                    {/* Show "edited" inline on xs only */}
+                                    <div className="md:hidden text-[11px] text-slate-400 font-medium mt-0.5">
                                         {formatTimeAgo(doc.updated_at)}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="relative group">
+
+                                {/* Search Query */}
+                                <td className="hidden sm:table-cell px-3 sm:px-6 py-3.5 sm:py-4 max-w-[160px] cursor-pointer">
+                                    <div className="text-xs text-slate-500 font-medium italic line-clamp-2 leading-snug lowercase">
+                                        {doc.title.split(':').pop().trim()}
+                                    </div>
+                                </td>
+
+                                {/* Edited */}
+                                <td className="hidden md:table-cell px-3 sm:px-6 py-3.5 sm:py-4 cursor-pointer">
+                                    <div className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                                        {formatTimeAgo(doc.updated_at)}
+                                    </div>
+                                </td>
+
+                                {/* Folder */}
+                                <td className="hidden md:table-cell px-3 sm:px-6 py-3.5 sm:py-4 whitespace-nowrap">
+                                    <div className="relative">
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
@@ -359,8 +486,7 @@ export default function Documents() {
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="absolute left-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 z-[100] overflow-hidden py-1.5"
                                                 >
-                                                    {/* Search */}
-                                                    <div className="px-2 pb-2 border-bottom border-slate-50">
+                                                    <div className="px-2 pb-2">
                                                         <div className="relative">
                                                             <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                                                             <input 
@@ -374,7 +500,6 @@ export default function Documents() {
                                                         </div>
                                                     </div>
 
-                                                    {/* Options */}
                                                     <div className="max-h-64 overflow-y-auto pt-1 space-y-0.5">
                                                         <div className="px-3 py-2 border-b border-slate-50">
                                                             <div className="flex items-center gap-2">
@@ -431,12 +556,16 @@ export default function Documents() {
                                         </AnimatePresence>
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 cursor-pointer">
-                                    <div className="text-xs font-semibold text-slate-700">
+
+                                {/* User */}
+                                <td className="hidden lg:table-cell px-3 sm:px-6 py-3.5 sm:py-4 cursor-pointer">
+                                    <div className="text-xs font-semibold text-slate-700 whitespace-nowrap">
                                         {user?.name || 'Alexander Lambie'}
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 cursor-pointer relative text-left">
+
+                                {/* Deadline */}
+                                <td className="hidden md:table-cell px-3 sm:px-6 py-3.5 sm:py-4 cursor-pointer relative text-left">
                                     <button 
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -509,7 +638,9 @@ export default function Documents() {
                                         )}
                                     </AnimatePresence>
                                 </td>
-                                <td className="pl-4 pr-2 py-4 text-right cursor-pointer" onClick={(e) => e.stopPropagation()}>
+
+                                {/* Actions ⋯ */}
+                                <td className="pl-2 pr-2 sm:pl-4 sm:pr-2 py-3.5 sm:py-4 text-right cursor-pointer" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex items-center justify-end relative">
                                         <button 
                                             onClick={(e) => {
@@ -527,7 +658,7 @@ export default function Documents() {
                                                     initial={{ opacity: 0, scale: 0.95, y: -5 }}
                                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                                     exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                                                    className="absolute right-[-4px] top-full mt-0.5 w-[155px] bg-white rounded-2xl shadow-[0_10px_38px_-10px_rgba(22,23,24,0.35),0_10px_20px_-15px_rgba(22,23,24,0.2)] border border-slate-100 z-[110] overflow-hidden p-1 text-left"
+                                                    className="absolute right-0 top-full mt-0.5 w-[155px] bg-white rounded-2xl shadow-[0_10px_38px_-10px_rgba(22,23,24,0.35),0_10px_20px_-15px_rgba(22,23,24,0.2)] border border-slate-100 z-[110] overflow-hidden p-1 text-left"
                                                 >
                                                     <button 
                                                         onClick={(e) => {
@@ -543,7 +674,7 @@ export default function Documents() {
                                                     <div className="h-[1px] bg-slate-50 my-1 mx-1" />
 
                                                     <button 
-                                                        onClick={(e) => handleDelete(e, doc.id)}
+                                                        onClick={(e) => handleDelete(e, doc)}
                                                         className="w-full flex items-center gap-2 px-2 py-1.5 text-[13px] font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors text-left"
                                                     >
                                                         <TrashIcon className="w-4 h-4" />
@@ -560,17 +691,37 @@ export default function Documents() {
                 </table>
                 
                 {(!loading && filteredDocs.length === 0) && (
-                    <div className="flex flex-col items-center justify-center p-20 text-center">
-                        <div className="w-16 h-16 bg-slate-50 text-slate-300 flex items-center justify-center rounded-2xl mb-4">
-                            <DocumentTextIcon className="w-8 h-8" />
+                    <div className="flex flex-col items-center justify-center p-10 sm:p-20 text-center">
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-slate-50 text-slate-300 flex items-center justify-center rounded-2xl mb-4">
+                            <DocumentTextIcon className="w-7 h-7 sm:w-8 sm:h-8" />
                         </div>
-                        <h3 className="text-lg font-bold text-slate-800 mb-1">No documents found</h3>
-                        <p className="text-slate-500 max-w-sm">
-                            {searchTerm ? 'Try adjusting your search query.' : 'You haven\'t created any documents yet.'}
+                        <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-1">No documents found</h3>
+                        <p className="text-slate-500 text-sm max-w-xs sm:max-w-sm">
+                            {searchTerm ? 'Try adjusting your search query.' : "You haven't created any documents yet."}
                         </p>
                     </div>
                 )}
             </div>
+
+            <ConfirmDialog
+                isOpen={!!deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                onConfirm={confirmDelete}
+                title="Delete document"
+                message={`Are you sure you want to delete "${deleteTarget?.title}"? This action cannot be undone.`}
+                confirmText="Delete"
+                cancelText="Cancel"
+            />
+
+            <ConfirmDialog
+                isOpen={bulkDeleteOpen}
+                onClose={() => setBulkDeleteOpen(false)}
+                onConfirm={confirmBulkDelete}
+                title={`Delete ${selectedIds.size} document${selectedIds.size > 1 ? 's' : ''}`}
+                message={`Are you sure you want to permanently delete ${selectedIds.size} selected document${selectedIds.size > 1 ? 's' : ''}? This action cannot be undone.`}
+                confirmText={`Delete ${selectedIds.size}`}
+                cancelText="Cancel"
+            />
         </div>
     );
 }

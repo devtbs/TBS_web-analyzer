@@ -246,8 +246,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                 </div>
             </div>
 
-            {/* Search conditionally */}
-            {properties.length > 5 && (
+            {/* Search — always visible when properties exist */}
+            {properties.length > 0 && (
                 <div className="relative mb-4">
                     <MagnifyingGlassIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                     <input
@@ -255,9 +255,26 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                         placeholder="Search properties..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 focus:border-violet-400 transition-all bg-slate-50"
+                        className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400 transition-all bg-slate-50"
                     />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                            <XCircleIcon className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
+            )}
+
+            {/* Result count when searching */}
+            {searchQuery && (
+                <p className="text-xs text-slate-400 font-medium mb-3 px-1">
+                    {filtered.length === 0
+                        ? 'No properties match your search'
+                        : `${filtered.length} of ${properties.length} properties`}
+                </p>
             )}
 
             {/* Properties list */}
@@ -265,12 +282,22 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                 {isFetching && properties.length === 0 ? (
                     <PropertiesSkeleton />
                 ) : filtered.length === 0 ? (
-                    <div className="flex flex-col items-center py-8 text-center bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex flex-col items-center py-10 text-center bg-slate-50 rounded-xl border border-slate-100">
                         <XCircleIcon className="w-10 h-10 text-slate-300 mb-2" />
-                        <p className="text-sm text-slate-500">No properties found</p>
+                        <p className="text-sm font-semibold text-slate-500 mb-1">
+                            {searchQuery ? `No results for "${searchQuery}"` : 'No properties found'}
+                        </p>
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                className="mt-2 text-xs text-violet-600 font-bold hover:underline"
+                            >
+                                Clear search
+                            </button>
+                        )}
                     </div>
                 ) : (
-                    <div className="border-t border-slate-100/80 max-h-[400px] overflow-y-auto pr-1">
+                    <div className="border-t border-slate-100/80 max-h-[480px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
                         <AnimatePresence>
                             {filtered.map((property, idx) => {
                                 const isSelected = selectedProperties.some(p => p.url === property.url);
