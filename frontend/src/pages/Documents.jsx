@@ -488,52 +488,52 @@ export default function Documents() {
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="absolute left-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 z-[100] overflow-hidden py-1.5"
                                                 >
-                                                    <div className="px-2 pb-2">
+                                                    <div className="px-2.5 py-2.5 border-b border-slate-100 bg-slate-50/30 space-y-2.5">
+                                                        {/* Search existing */}
                                                         <div className="relative">
                                                             <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                                                             <input 
                                                                 type="text"
                                                                 autoFocus
-                                                                placeholder="Search..."
+                                                                placeholder="Search folders..."
                                                                 value={folderSearch}
                                                                 onChange={(e) => setFolderSearch(e.target.value)}
-                                                                className="w-full pl-8 pr-3 py-1.5 text-[13px] bg-slate-50 border-0 rounded-lg focus:ring-1 focus:ring-slate-100 outline-none text-slate-600"
+                                                                className="w-full pl-8 pr-3 py-1.5 text-[12px] bg-white border border-slate-200 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-slate-600 transition-all"
                                                             />
+                                                        </div>
+
+                                                        {/* Create new */}
+                                                        <div className="flex items-center gap-2">
+                                                            <input 
+                                                                type="text"
+                                                                placeholder="New folder..."
+                                                                className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-medium"
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter' && e.target.value.trim()) {
+                                                                        handleFolderUpdate(doc.id, e.target.value.trim());
+                                                                        e.target.value = '';
+                                                                    }
+                                                                    e.stopPropagation();
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            />
+                                                            <button 
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const input = e.currentTarget.previousSibling;
+                                                                    if (input && input.value.trim()) {
+                                                                        handleFolderUpdate(doc.id, input.value.trim());
+                                                                        input.value = '';
+                                                                    }
+                                                                }}
+                                                                className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition-colors border border-emerald-100/50"
+                                                            >
+                                                                <PlusIconSolid className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     </div>
 
-                                                    <div className="max-h-64 overflow-y-auto pt-1 space-y-0.5">
-                                                        <div className="px-3 py-2 border-b border-slate-50">
-                                                            <div className="flex items-center gap-2">
-                                                                <input 
-                                                                    type="text"
-                                                                    placeholder="New folder..."
-                                                                    className="flex-1 min-w-0 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-[13px] outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-medium"
-                                                                    onKeyDown={(e) => {
-                                                                        if (e.key === 'Enter' && e.target.value.trim()) {
-                                                                            handleFolderUpdate(doc.id, e.target.value.trim());
-                                                                            e.target.value = '';
-                                                                        }
-                                                                        e.stopPropagation();
-                                                                    }}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                />
-                                                                <button 
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        const input = e.currentTarget.previousSibling;
-                                                                        if (input && input.value.trim()) {
-                                                                            handleFolderUpdate(doc.id, input.value.trim());
-                                                                            input.value = '';
-                                                                        }
-                                                                    }}
-                                                                    className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                                                >
-                                                                    <PlusIconSolid className="w-4 h-4" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-
+                                                    <div className="max-h-[220px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-slate-200">
                                                         {[...new Set(documents.map(d => d.folder).filter(Boolean))]
                                                             .filter(f => f.toLowerCase().includes(folderSearch.toLowerCase()))
                                                             .sort()
@@ -541,17 +541,23 @@ export default function Documents() {
                                                             <button 
                                                                 key={folder}
                                                                 onClick={() => handleFolderUpdate(doc.id, folder)}
-                                                                className="w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[13px] text-slate-600 hover:bg-slate-50 transition-colors text-left group/item"
+                                                                className="w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[13px] text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/item"
                                                             >
                                                                 <div className="flex items-center gap-2.5">
-                                                                    <FolderIconSolid className="w-4 h-4 text-slate-800" />
-                                                                    {folder}
+                                                                    <FolderIconSolid className={`w-4 h-4 transition-colors ${doc.folder === folder ? 'text-emerald-500' : 'text-slate-400 group-hover/item:text-emerald-500'}`} />
+                                                                    <span className={doc.folder === folder ? 'font-bold' : ''}>{folder}</span>
                                                                 </div>
                                                                 {doc.folder === folder && (
                                                                     <CheckIcon className="w-4 h-4 text-emerald-500" />
                                                                 )}
                                                             </button>
                                                         ))}
+                                                        
+                                                        {folderSearch && ![...new Set(documents.map(d => d.folder).filter(Boolean))].some(f => f.toLowerCase() === folderSearch.toLowerCase()) && (
+                                                            <div className="px-3 py-4 text-center">
+                                                                <p className="text-[11px] text-slate-400 italic">No matching folders</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </motion.div>
                                             )}

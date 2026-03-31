@@ -10,7 +10,7 @@ import {
     ArrowRightIcon,
     ArrowUpRightIcon,
     CheckCircleIcon,
-    ExclamationCircleIcon,
+    ExclamationTriangleIcon,
     ChartBarIcon,
     DocumentTextIcon,
     SparklesIcon,
@@ -82,6 +82,7 @@ export default function Dashboard() {
     const [allAnalyses, setAllAnalyses]     = useState([]);
     const [loading, setLoading]             = useState(true);
     const [deleteDialog, setDeleteDialog]   = useState({ isOpen: false, analysisId: null });
+    const [isVisible, setIsVisible]         = useState(false);
 
     const handleDelete = async (id) => {
         try {
@@ -100,7 +101,10 @@ export default function Dashboard() {
                 setAllAnalyses(list);
                 setAnalyses(list.slice(0, 6));
             } catch { /* silently fail */ }
-            finally { setLoading(false); }
+            finally { 
+                setLoading(false); 
+                setTimeout(() => setIsVisible(true), 50);
+            }
         })();
     }, []);
 
@@ -118,17 +122,17 @@ export default function Dashboard() {
         {
             label: 'Total Analyses', sub: 'all time', value: total,
             icon: Squares2X2Icon,
-            from: 'from-violet-500', to: 'to-purple-600',
+            glow: 'bg-indigo-50 border-indigo-100 text-indigo-600 shadow-indigo-200/50',
         },
         {
             label: 'Completed', sub: `${successPct}% success rate`, value: completed,
             icon: CheckCircleIcon,
-            from: 'from-emerald-400', to: 'to-teal-500',
+            glow: 'bg-emerald-50 border-emerald-100 text-emerald-600 shadow-emerald-200/50',
         },
         {
             label: 'Failed', sub: 'need attention', value: failed,
-            icon: ExclamationCircleIcon,
-            from: 'from-rose-400', to: 'to-red-500',
+            icon: ExclamationTriangleIcon,
+            glow: 'bg-rose-50 border-rose-100 text-rose-600 shadow-rose-200/50',
         },
     ];
 
@@ -140,16 +144,16 @@ export default function Dashboard() {
     ];
 
     return (
-        <div className="flex-1 w-full min-h-screen bg-[#f5f6fa] p-4 sm:p-6">
-            <div className="space-y-5">
+        <div className="flex-1 w-full min-h-screen bg-[#f8fafc] p-3 sm:p-4 lg:p-6">
+            <div className={`max-w-7xl mx-auto space-y-4 transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
 
                 {/* ── Hero card ── */}
                 <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="relative overflow-hidden bg-white rounded-3xl border border-slate-200/80 shadow-sm px-8 py-8"
+                    className="relative overflow-hidden bg-white/70 backdrop-blur-sm rounded-[32px] border border-white shadow-[0_8px_30px_rgb(0,0,0,0.04)] px-6 py-6"
                     style={{
-                        backgroundImage: 'radial-gradient(ellipse at top right, #d1fae5 0%, transparent 60%)',
+                        backgroundImage: 'radial-gradient(circle at 100% 0%, #ecfdf5 0%, transparent 50%)',
                     }}
                 >
                     {/* Decorative ring */}
@@ -167,11 +171,11 @@ export default function Dashboard() {
                                 </span>
                             </div>
 
-                            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
+                            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
                                 {greeting},{' '}
                                 <span className="text-emerald-500">{firstName}</span> 
                             </h1>
-                            <p className="text-slate-500 text-sm mt-2 leading-relaxed">
+                            <p className="text-slate-500 text-xs mt-1 leading-relaxed">
                                 You have{' '}
                                 <span className="font-bold text-slate-800">{loading ? '—' : `${total} analyses`}</span>
                                 {' '}and{' '}
@@ -180,19 +184,19 @@ export default function Dashboard() {
                             </p>
                         </div>
 
-                        <div className="flex items-center gap-2.5 flex-shrink-0">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                             <button
                                 onClick={() => navigate('/new-analysis')}
-                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all shadow-md shadow-emerald-600/20 hover:shadow-lg hover:-translate-y-0.5"
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-md shadow-emerald-600/20 hover:shadow-lg hover:-translate-y-0.5"
                             >
-                                <RocketLaunchIcon className="w-4 h-4" />
+                                <RocketLaunchIcon className="w-3.5 h-3.5" />
                                 New Analysis
                             </button>
                             <button
                                 onClick={() => navigate('/history')}
-                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-slate-200 bg-white/80 text-slate-700 font-bold text-sm hover:bg-slate-50 transition-all"
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white/80 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-all"
                             >
-                                <ArrowUpRightIcon className="w-4 h-4" />
+                                <ArrowUpRightIcon className="w-3.5 h-3.5" />
                                 View History
                             </button>
                         </div>
@@ -200,44 +204,39 @@ export default function Dashboard() {
                 </motion.div>
 
                 {/* ── Stat cards ── */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                    {stats.map(({ label, sub, value, icon: Icon, from, to }, i) => (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {stats.map(({ label, sub, value, icon: Icon, glow }, i) => (
                         <motion.div
                             key={label}
                             initial={{ opacity: 0, y: 15 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.1 + i * 0.08 }}
-                            className="relative overflow-hidden bg-white rounded-[24px] border border-slate-200/70 shadow-sm p-6 group hover:shadow-xl hover:shadow-slate-200/50 hover:-translate-y-1 transition-all duration-300"
+                            className="group relative bg-white rounded-[28px] border border-slate-200/60 p-6 shadow-sm hover:shadow-xl hover:shadow-slate-200/30 transition-all duration-500"
                         >
-                            {/* Glass background decoration */}
-                            <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full bg-gradient-to-br ${from} ${to} opacity-[0.03] group-hover:opacity-[0.06] transition-opacity duration-500`} />
-
-                            <div className="flex items-center justify-between mb-4">
-                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${from} ${to} flex items-center justify-center shadow-lg shadow-${from.split('-')[1]}-500/20 group-hover:scale-110 transition-transform duration-500`}>
-                                    <Icon className="w-6 h-6 text-white" />
+                            <div className="flex justify-between items-start mb-6">
+                                <div className={`w-10 h-10 rounded-xl border ${glow.split(' ')[1]} ${glow.split(' ')[0]} flex items-center justify-center shadow-lg ${glow.split(' ')[3]} group-hover:scale-110 group-hover:rotate-3 transition-all duration-500`}>
+                                    <Icon className={`w-5 h-5 ${glow.split(' ')[2]}`} />
                                 </div>
-                                <div className="p-2 rounded-full bg-slate-50 text-slate-300 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors duration-300">
-                                    <ArrowUpRightIcon className="w-4 h-4" />
-                                </div>
+                                <ArrowUpRightIcon className="w-4 h-4 text-slate-300 group-hover:text-emerald-500 transition-colors" />
                             </div>
 
-                            <div className="relative">
-                                {loading ? (
-                                    <div className="h-9 w-20 bg-slate-100 rounded-xl animate-pulse mb-1" />
-                                ) : (
-                                    <h3 className="text-3xl font-black text-slate-900 tracking-tight leading-none mb-1">
-                                        {value ?? '—'}
-                                    </h3>
-                                )}
-                                <p className="text-[13px] font-bold text-slate-800 tracking-tight">{label}</p>
-                                <p className="text-[11px] text-slate-400 font-medium mt-1 uppercase tracking-wider">{sub}</p>
+                            <div className="space-y-1">
+                                <h3 className="text-3xl font-black text-slate-900 tracking-tight">
+                                    {value ?? '0'}
+                                </h3>
+                                <p className="text-sm font-bold text-slate-800 tracking-tight">
+                                    {label}
+                                </p>
+                                <p className="text-[11px] font-medium text-slate-400">
+                                    {sub}
+                                </p>
                             </div>
                         </motion.div>
                     ))}
                 </div>
 
                 {/* ── Bottom grid ── */}
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5">
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
 
                     {/* Recent Analyses */}
                     <motion.div
@@ -308,23 +307,23 @@ export default function Dashboard() {
                             transition={{ delay: 0.25 }}
                             className="bg-white rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden"
                         >
-                            <div className="px-7 py-6 border-b border-slate-50">
-                                <h2 className="text-[15px] font-black text-slate-900 tracking-tight">Quick Actions</h2>
-                                <p className="text-[12px] text-slate-400 font-medium mt-0.5">Essential tools</p>
+                            <div className="px-6 py-4 border-b border-slate-50">
+                                <h2 className="text-[14px] font-black text-slate-900 tracking-tight">Quick Actions</h2>
+                                <p className="text-[11px] text-slate-400 font-medium mt-0.5">Essential tools</p>
                             </div>
-                            <div className="p-3 space-y-1.5">
+                            <div className="p-2 space-y-1">
                                 {quickActions.map(({ icon: Icon, label, desc, path }) => (
                                     <button
                                         key={label}
                                         onClick={() => navigate(path)}
-                                        className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-slate-50 border border-transparent transition-all duration-300 text-left group"
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 border border-transparent transition-all duration-300 text-left group"
                                     >
-                                        <div className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-600 group-hover:border-emerald-600 group-hover:rotate-6 transition-all duration-500">
-                                            <Icon className="w-5 h-5 text-slate-500 group-hover:text-white transition-all duration-500" />
+                                        <div className="w-9 h-9 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-600 group-hover:border-emerald-600 group-hover:rotate-6 transition-all duration-500">
+                                            <Icon className="w-4.5 h-4.5 text-slate-500 group-hover:text-white transition-all duration-500" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-[14px] font-bold text-slate-800 group-hover:text-emerald-700 transition-colors leading-tight">{label}</p>
-                                            <p className="text-[11px] text-slate-400 font-medium mt-1 truncate group-hover:text-slate-500 transition-colors">{desc}</p>
+                                            <p className="text-[13px] font-bold text-slate-800 group-hover:text-emerald-700 transition-colors leading-tight">{label}</p>
+                                            <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate group-hover:text-slate-500 transition-colors">{desc}</p>
                                         </div>
                                         <div className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-50 group-hover:bg-emerald-100 transition-all duration-300">
                                             <ArrowRightIcon className="w-3 h-3 text-slate-300 group-hover:text-emerald-600 transition-colors" />
