@@ -62,7 +62,7 @@ export default function Settings() {
                                         className="w-full px-3 py-2.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-sm text-white placeholder-[#444] focus:outline-none focus:border-white/20 transition-colors"
                                     />
                                 </div>
-                                <button className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors">
+                                <button className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors">
                                     Save Changes
                                 </button>
                             </div>
@@ -76,7 +76,7 @@ export default function Settings() {
                                 {['Analysis complete', 'Weekly digest', 'New features'].map(item => (
                                     <div key={item} className="flex items-center justify-between py-2 border-b border-white/[0.05]">
                                         <span className="text-sm text-[#aaa]">{item}</span>
-                                        <div className="w-9 h-5 rounded-full bg-indigo-600 flex items-center cursor-pointer px-0.5">
+                                        <div className="w-9 h-5 rounded-full bg-emerald-600 flex items-center cursor-pointer px-0.5">
                                             <div className="w-4 h-4 rounded-full bg-white ml-auto" />
                                         </div>
                                     </div>
@@ -97,7 +97,7 @@ export default function Settings() {
                                         className="w-full px-3 py-2.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-sm text-white placeholder-[#444] focus:outline-none focus:border-white/20 transition-colors"
                                     />
                                 </div>
-                                <button className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors">
+                                <button className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors">
                                     Update Password
                                 </button>
                             </div>

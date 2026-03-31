@@ -1,8 +1,11 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
-    timeout: 300000, // 5 minutes timeout to ensure AI generated articles don't fail
+    // By defaulting to '' (relative path) instead of localhost, 
+    // API calls automatically use the current domain (e.g. ngrok link). 
+    // Vite's proxy rules in vite.config.js will safely route them to the backend without CORS or Mixed Content errors!
+    baseURL: import.meta.env.VITE_API_BASE_URL || '',
+    timeout: 300000, 
 });
 
 // Request interceptor to add authorization header to every request
