@@ -209,7 +209,7 @@ const Results = () => {
         <div className="flex-1 w-full min-h-screen bg-slate-50">
 
             {/* ── Top Header Strip (Dark Premium) ── */}
-            <div className="relative bg-slate-950 pt-8 pb-32 overflow-hidden">
+            <div className="relative bg-[#0f172a] pt-8 pb-32 overflow-hidden">
                 {/* Decorative background elements */}
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light pointer-events-none"></div>
                 <div className="absolute inset-x-0 top-0 h-px bg-white/10" />

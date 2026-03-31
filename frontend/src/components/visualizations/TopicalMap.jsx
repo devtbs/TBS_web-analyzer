@@ -181,7 +181,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                 exportToPNG(elementId, `${title.replace(/\s+/g, '-').toLowerCase()}-export`);
                             }
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors text-white text-sm font-medium"
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-500 rounded-md transition-colors text-white text-xs font-black uppercase tracking-wider shadow-sm"
                         title="Export to PNG"
                     >
                         <ArrowDownTrayIcon className="w-4 h-4" />
@@ -249,10 +249,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                     >
                         {/* Spinner */}
                         <div className="relative w-16 h-16">
-                            <div className="absolute inset-0 rounded-full border-4 border-violet-100" />
-                            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-violet-600 animate-spin" />
+                            <div className="absolute inset-0 rounded-full border-4 border-slate-100" />
+                            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-600 animate-spin" />
                             <div className="absolute inset-0 flex items-center justify-center">
-                                <SparklesIcon className="w-6 h-6 text-violet-500 animate-pulse" />
+                                <SparklesIcon className="w-6 h-6 text-emerald-500 animate-pulse" />
                             </div>
                         </div>
 
@@ -272,7 +272,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             {[0, 1, 2].map(i => (
                                 <motion.div
                                     key={i}
-                                    className="w-2 h-2 rounded-full bg-violet-400"
+                                    className="w-2 h-2 rounded-full bg-emerald-400"
                                     animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
                                     transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
                                 />
@@ -293,12 +293,12 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             <button
                                 key={index}
                                 onClick={() => setActiveIndex(index)}
-                                className={`px-4 py-2 rounded-md font-medium transition-all flex items-center gap-2 ${activeIndex === index
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                className={`px-4 py-2 rounded-md font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeIndex === index
+                                    ? 'bg-emerald-600 text-white shadow-emerald-200'
+                                    : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
                                     }`}
                             >
-                                <GlobeAltIcon className="w-4 h-4 inline mr-2" />
+                                <GlobeAltIcon className={`w-4 h-4 inline mr-2 ${activeIndex === index ? 'text-white' : 'text-slate-400'}`} />
                                 {domain}
                             </button>
                         );
@@ -307,18 +307,23 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 
                 <button
                     onClick={exportAllToPDF}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-medium shadow-md shadow-blue-500/20 transition-all ml-auto ml-auto"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all ml-auto"
                 >
-                    <DocumentTextIcon className="w-5 h-5" />
+                    <ArrowDownTrayIcon className="w-4 h-4" />
                     Export Map to PDF
                 </button>
             </div>
 
             {/* Header Info */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4">
-                    <h1 className="text-2xl font-bold text-white mb-1">{activeMap.central_entity}</h1>
-                    <p className="text-blue-100 text-sm">{activeMap.url}</p>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+                <div className="bg-slate-900 p-6 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
+                    <h1 className="text-3xl font-black text-white mb-2 tracking-tight relative z-10">{activeMap.central_entity}</h1>
+                    <div className="flex items-center gap-2 text-emerald-400/90 text-sm font-semibold relative z-10">
+                        <GlobeAltIcon className="w-4 h-4" />
+                        {activeMap.url}
+                    </div>
                 </div>
                 <div className="p-4 bg-slate-50">
                     <p className="text-slate-700 text-sm leading-relaxed">{activeMap.business_description}</p>
@@ -326,13 +331,13 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             </div>
 
             {/* Key Topics - Horizontal Pills */}
-            <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-                <h3 className="text-sm font-semibold text-slate-600 mb-3">KEY TOPICS</h3>
-                <div className="flex flex-wrap gap-2">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5">
+                <h3 className="text-[11px] font-black text-slate-400 mb-4 tracking-widest uppercase">KEY TOPICS</h3>
+                <div className="flex flex-wrap gap-2.5">
                     {activeMap.key_topics?.slice(0, 10).map((topic, idx) => (
                         <span
                             key={idx}
-                            className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-medium hover:bg-blue-200 transition-colors"
+                            className="px-3.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100/50 rounded-full text-sm font-bold hover:bg-emerald-100 transition-colors cursor-default"
                         >
                             {topic}
                         </span>
@@ -341,8 +346,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             </div>
 
             {/* Business Overview - Two Column */}
-            <div id="export-business-overview" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <SectionHeader title="Business Overview" color="from-slate-600 to-slate-700" icon={GlobeAltIcon} elementId="export-business-overview" />
+            <div id="export-business-overview" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+                <SectionHeader title="Business Overview" color="from-slate-800 to-slate-900" icon={GlobeAltIcon} elementId="export-business-overview" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-slate-200">
                     <div className="bg-white p-4">
                         <h4 className="text-xs font-semibold text-slate-500 mb-2">BUSINESS MODEL</h4>
@@ -352,7 +357,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         <h4 className="text-xs font-semibold text-slate-500 mb-2">SEARCH INTENT</h4>
                         <div className="flex flex-wrap gap-1">
                             {activeMap.search_intent?.map((intent, idx) => (
-                                <span key={idx} className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
+                                <span key={idx} className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-black uppercase tracking-wider border border-emerald-100">
                                     {intent}
                                 </span>
                             ))}
@@ -380,10 +385,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             {/* Semantic Analysis */}
             {activeMap.semantic_relationships && (
                 <div id="export-semantic-analysis" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Semantic Analysis"
-                        color="from-indigo-600 to-indigo-700"
-                        icon={SparklesIcon}
+                <SectionHeader
+                    title="Semantic Analysis"
+                    color="from-slate-800 to-slate-900"
+                    icon={SparklesIcon}
                         section="semantic"
                         elementId="export-semantic-analysis"
                     />
@@ -393,10 +398,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                 {/* Core Entities */}
                                 {activeMap.semantic_relationships.core_entities?.length > 0 && (
                                     <div className="border border-slate-200 rounded-lg p-3">
-                                        <h4 className="text-xs font-semibold text-indigo-600 mb-2">CORE ENTITIES</h4>
+                                        <h4 className="text-[10px] font-black text-slate-400 mb-2 tracking-widest uppercase">CORE ENTITIES</h4>
                                         <div className="flex flex-wrap gap-1">
                                             {activeMap.semantic_relationships.core_entities.map((entity, idx) => (
-                                                <span key={idx} className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs">
+                                                <span key={idx} className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded text-xs font-bold border border-emerald-100/50">
                                                     {entity}
                                                 </span>
                                             ))}
@@ -407,10 +412,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                 {/* Derived Entities */}
                                 {activeMap.semantic_relationships.derived_entities?.length > 0 && (
                                     <div className="border border-slate-200 rounded-lg p-3">
-                                        <h4 className="text-xs font-semibold text-purple-600 mb-2">DERIVED ENTITIES</h4>
+                                        <h4 className="text-[10px] font-black text-slate-400 mb-2 tracking-widest uppercase">DERIVED ENTITIES</h4>
                                         <div className="flex flex-wrap gap-1">
                                             {activeMap.semantic_relationships.derived_entities.map((entity, idx) => (
-                                                <span key={idx} className="px-2 py-1 bg-purple-50 text-purple-700 rounded text-xs">
+                                                <span key={idx} className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-bold border border-slate-200">
                                                     {entity}
                                                 </span>
                                             ))}
@@ -420,30 +425,30 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
                                 {/* Attributes */}
                                 {activeMap.semantic_relationships.attributes?.length > 0 && (
-                                    <div className="border border-slate-200 rounded-lg p-3">
-                                        <h4 className="text-xs font-semibold text-green-600 mb-2">ATTRIBUTES</h4>
-                                        <div className="flex flex-wrap gap-1">
-                                            {activeMap.semantic_relationships.attributes.map((attr, idx) => (
-                                                <span key={idx} className="px-2 py-1 bg-green-50 text-green-700 rounded text-xs">
-                                                    {attr}
-                                                </span>
-                                            ))}
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                            <h4 className="text-[10px] font-black text-slate-400 mb-3 tracking-widest uppercase">ATTRIBUTES</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {activeMap.semantic_relationships.attributes.map((attr, idx) => (
+                                                    <span key={idx} className="px-2.5 py-1 bg-emerald-100/50 text-emerald-800 rounded-md text-xs font-bold border border-emerald-200/50">
+                                                        {attr}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
                                 )}
 
                                 {/* Context Terms */}
                                 {activeMap.semantic_relationships.context_terms?.length > 0 && (
-                                    <div className="border border-slate-200 rounded-lg p-3">
-                                        <h4 className="text-xs font-semibold text-amber-600 mb-2">CONTEXT TERMS</h4>
-                                        <div className="flex flex-wrap gap-1">
-                                            {activeMap.semantic_relationships.context_terms.map((term, idx) => (
-                                                <span key={idx} className="px-2 py-1 bg-amber-50 text-amber-700 rounded text-xs">
-                                                    {term}
-                                                </span>
-                                            ))}
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                            <h4 className="text-[10px] font-black text-slate-400 mb-3 tracking-widest uppercase">CONTEXT TERMS</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {activeMap.semantic_relationships.context_terms.map((term, idx) => (
+                                                    <span key={idx} className="px-2.5 py-1 bg-amber-100/50 text-amber-800 rounded-md text-xs font-bold border border-amber-200/50">
+                                                        {term}
+                                                    </span>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
                                 )}
                             </div>
                         </div>
@@ -456,7 +461,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-content-strategy" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Content Strategy"
-                        color="from-teal-600 to-teal-700"
+                        color="from-slate-800 to-slate-900"
                         icon={LightBulbIcon}
                         section="content"
                         elementId="export-content-strategy"
@@ -466,11 +471,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {/* Core Topics */}
                                 {activeMap.content_strategy.core_topics?.length > 0 && (
-                                    <div className="border-l-4 border-green-500 bg-green-50 p-3 rounded">
-                                        <h4 className="text-sm font-semibold text-green-700 mb-2">Core Topics (Revenue)</h4>
-                                        <ul className="space-y-1">
+                                    <div className="border-l-4 border-emerald-500 bg-emerald-50/50 p-4 rounded-r-xl">
+                                        <h4 className="text-sm font-black text-emerald-800 mb-2 tracking-tight">Core Topics (Revenue)</h4>
+                                        <ul className="space-y-1.5">
                                             {activeMap.content_strategy.core_topics.map((topic, idx) => (
-                                                <li key={idx} className="text-sm text-slate-700">• {topic}</li>
+                                                <li key={idx} className="text-sm text-slate-700 font-medium">• {topic}</li>
                                             ))}
                                         </ul>
                                     </div>
@@ -478,11 +483,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
                                 {/* Outer Topics */}
                                 {activeMap.content_strategy.outer_topics?.length > 0 && (
-                                    <div className="border-l-4 border-blue-500 bg-blue-50 p-3 rounded">
-                                        <h4 className="text-sm font-semibold text-blue-700 mb-2">Outer Topics (Authority)</h4>
-                                        <ul className="space-y-1">
+                                    <div className="border-l-4 border-slate-400 bg-slate-50/50 p-4 rounded-r-xl">
+                                        <h4 className="text-sm font-black text-slate-800 mb-2 tracking-tight">Outer Topics (Authority)</h4>
+                                        <ul className="space-y-1.5">
                                             {activeMap.content_strategy.outer_topics.map((topic, idx) => (
-                                                <li key={idx} className="text-sm text-slate-700">• {topic}</li>
+                                                <li key={idx} className="text-sm text-slate-600 font-medium leading-relaxed">• {topic}</li>
                                             ))}
                                         </ul>
                                     </div>
@@ -490,11 +495,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
                                 {/* Content Gaps */}
                                 {activeMap.content_strategy.content_gaps?.length > 0 && (
-                                    <div className="border-l-4 border-orange-500 bg-orange-50 p-3 rounded md:col-span-2">
-                                        <h4 className="text-sm font-semibold text-orange-700 mb-2">Content Gaps & Opportunities</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="border-l-4 border-amber-500 bg-amber-50/50 p-4 rounded-r-xl md:col-span-2">
+                                        <h4 className="text-sm font-black text-amber-800 mb-3 tracking-tight">Content Gaps & Opportunities</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
                                             {activeMap.content_strategy.content_gaps.map((gap, idx) => (
-                                                <div key={idx} className="text-sm text-slate-700">• {gap}</div>
+                                                <div key={idx} className="text-sm text-slate-700 font-medium">• {gap}</div>
                                             ))}
                                         </div>
                                     </div>
@@ -510,7 +515,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-taxonomy-structure" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Taxonomy"
-                        color="from-indigo-600 to-indigo-700"
+                        color="from-slate-800 to-slate-900"
                         icon={Squares2X2Icon}
                         section="taxonomy"
                         count={activeMap.taxonomy.length}
@@ -533,7 +538,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                 <div
                                                     key={idx}
                                                     className="px-3 py-2 rounded-lg text-sm font-medium text-white shadow-sm"
-                                                    style={{ backgroundColor: node.color || '#6366F1' }}
+                                                    style={{ backgroundColor: node.level === 1 ? '#0f172a' : node.level === 2 ? '#059669' : '#64748b' }}
                                                 >
                                                     {node.name}
                                                     {node.children && node.children.length > 0 && (
@@ -557,7 +562,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-taxonomy-visualization" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Taxonomy Visualization"
-                        color="from-indigo-600 to-indigo-700"
+                        color="from-slate-800 to-slate-900"
                         icon={Squares2X2Icon}
                         elementId="export-taxonomy-visualization"
                     />
@@ -576,7 +581,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                     {/* Level 1 Node */}
                                                     <div
                                                         className="px-6 py-3 rounded-lg text-sm font-semibold text-white shadow-md border-2 border-white"
-                                                        style={{ backgroundColor: l1Node.color || '#4F46E5' }}
+                                                        style={{ backgroundColor: l1Node.color || '#0f172a' }}
                                                     >
                                                         {l1Node.name}
                                                     </div>
@@ -604,7 +609,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                         {/* Level 2 Node */}
                                                                         <div
                                                                             className="px-4 py-2 rounded-lg text-xs font-medium text-white shadow-sm"
-                                                                            style={{ backgroundColor: l2Node.color || '#10B981' }}
+                                                                            style={{ backgroundColor: l2Node.color || '#059669' }}
                                                                         >
                                                                             {l2Node.name}
                                                                         </div>
@@ -625,7 +630,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                                         <div
                                                                                             key={l3Idx}
                                                                                             className="px-3 py-1.5 rounded text-xs font-medium text-white shadow-sm"
-                                                                                            style={{ backgroundColor: l3Node.color || '#F59E0B' }}
+                                                                                            style={{ backgroundColor: l3Node.color || '#64748b' }}
                                                                                         >
                                                                                             {l3Node.name}
                                                                                         </div>
@@ -654,7 +659,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-ontology-relationships" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Ontology"
-                        color="from-purple-600 to-purple-700"
+                        color="from-slate-800 to-slate-900"
                         icon={TableCellsIcon}
                         section="ontology"
                         count={activeMap.ontology.length}
@@ -665,28 +670,28 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             <div className="overflow-x-auto">
                                 <table className="w-full border-collapse">
                                     <thead>
-                                        <tr className="bg-purple-50">
-                                            <th className="border border-purple-200 px-4 py-2 text-left text-sm font-semibold text-purple-900">
+                                        <tr className="bg-slate-900">
+                                            <th className="px-4 py-2 text-left text-[10px] font-black text-slate-300 uppercase tracking-widest">
                                                 Subject
                                             </th>
-                                            <th className="border border-purple-200 px-4 py-2 text-left text-sm font-semibold text-purple-900">
+                                            <th className="px-4 py-2 text-left text-[10px] font-black text-slate-300 uppercase tracking-widest">
                                                 Predicate
                                             </th>
-                                            <th className="border border-purple-200 px-4 py-2 text-left text-sm font-semibold text-purple-900">
+                                            <th className="px-4 py-2 text-left text-[10px] font-black text-slate-300 uppercase tracking-widest">
                                                 Object
                                             </th>
-                                            <th className="border border-purple-200 px-4 py-2 text-left text-sm font-semibold text-purple-900">
+                                            <th className="px-4 py-2 text-left text-[10px] font-black text-slate-300 uppercase tracking-widest">
                                                 Context
                                             </th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {activeMap.ontology.map((relation, idx) => (
-                                            <tr key={idx} className="hover:bg-purple-50 transition-colors">
+                                            <tr key={idx} className="hover:bg-emerald-50/50 transition-colors border-b border-slate-100 last:border-0">
                                                 <td className="border border-slate-200 px-4 py-2 text-sm text-slate-700">
                                                     {relation.subject}
                                                 </td>
-                                                <td className="border border-slate-200 px-4 py-2 text-sm text-purple-600 font-medium">
+                                                <td className="px-4 py-2 text-sm text-emerald-600 font-bold italic">
                                                     {relation.predicate}
                                                 </td>
                                                 <td className="border border-slate-200 px-4 py-2 text-sm text-slate-700">
@@ -710,7 +715,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-audience-segments" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Audience Segments"
-                        color="from-purple-600 to-purple-700"
+                        color="from-slate-800 to-slate-900"
                         icon={UserGroupIcon}
                         section="audience"
                         count={activeMap.audience_segments.length}
@@ -720,10 +725,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         <div className="p-4">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {activeMap.audience_segments.map((segment, idx) => (
-                                    <div key={idx} className="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                                    <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-white transition-all shadow-sm">
                                         <div className="flex items-center gap-2 mb-3">
-                                            <UserGroupIcon className="w-5 h-5 text-purple-600" />
-                                            <h4 className="font-semibold text-purple-900">{segment.expertise_level}</h4>
+                                            <UserGroupIcon className="w-5 h-5 text-emerald-600" />
+                                            <h4 className="text-sm font-black text-slate-800">{segment.expertise_level}</h4>
                                         </div>
 
                                         <div className="space-y-3">
@@ -769,7 +774,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-tools-platforms" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Tools & Platforms"
-                        color="from-blue-600 to-blue-700"
+                        color="from-slate-800 to-slate-900"
                         icon={WrenchScrewdriverIcon}
                         section="tools"
                         count={activeMap.technology_stack.length}
@@ -779,10 +784,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         <div className="p-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {activeMap.technology_stack.map((tech, idx) => (
-                                    <div key={idx} className="border border-blue-200 rounded-lg p-4 bg-blue-50">
+                                    <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-white transition-all shadow-sm">
                                         <div className="flex items-center gap-2 mb-2">
-                                            <WrenchScrewdriverIcon className="w-5 h-5 text-blue-600" />
-                                            <h4 className="font-semibold text-blue-900">{tech}</h4>
+                                            <WrenchScrewdriverIcon className="w-5 h-5 text-emerald-600" />
+                                            <h4 className="text-sm font-black text-slate-800">{tech}</h4>
                                         </div>
                                     </div>
                                 ))}
@@ -797,7 +802,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-query-research" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Query Research"
-                        color="from-purple-600 to-purple-700"
+                        color="from-slate-800 to-slate-900"
                         icon={MagnifyingGlassIcon}
                         section="queries"
                         elementId="export-query-research"
@@ -807,25 +812,26 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             {Object.entries(activeMap.query_templates).map(([type, queries]) => {
                                 if (!queries || queries.length === 0) return null;
                                 const colors = {
-                                    informational: 'blue',
-                                    transactional: 'green',
-                                    commercial: 'amber',
-                                    navigational: 'purple',
-                                    contextual: 'cyan',
-                                    audience_specific: 'indigo',
-                                    predictive: 'pink',
+                                    informational: 'emerald',
+                                    transactional: 'teal',
+                                    commercial: 'slate',
+                                    navigational: 'amber',
+                                    contextual: 'emerald',
+                                    audience_specific: 'teal',
+                                    predictive: 'slate',
                                     voice_search: 'emerald',
                                     raw_queries: 'slate'
                                 };
                                 const color = colors[type] || 'slate';
+                                const colorClass = color === 'emerald' ? 'emerald' : color === 'teal' ? 'teal' : color === 'amber' ? 'amber' : 'slate';
                                 return (
                                     <div key={type} className="border border-slate-200 rounded p-3">
-                                        <h4 className={`text-xs font-semibold text-${color}-600 mb-2 uppercase`}>
+                                        <h4 className={`text-[10px] font-black text-${colorClass}-600 mb-2 uppercase tracking-widest`}>
                                             {type.replace(/_/g, ' ')}
                                         </h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
                                             {queries.slice(0, 10).map((query, idx) => (
-                                                <div key={idx} className={`text-xs text-slate-600 bg-${color}-50 px-2 py-1 rounded`}>
+                                                <div key={idx} className={`text-xs text-slate-700 bg-${colorClass}-100/50 px-2.5 py-1.5 rounded-md border border-${colorClass}-200/30`}>
                                                     {query}
                                                 </div>
                                             ))}
@@ -843,7 +849,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-competitive-analysis" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Competitive Analysis"
-                        color="from-orange-600 to-orange-700"
+                        color="from-slate-800 to-slate-900"
                         icon={TrophyIcon}
                         section="competitive"
                         count={activeMap.competitive_analysis.top_competitors?.length}
@@ -856,7 +862,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                 <h4 className="text-sm font-semibold text-slate-700 mb-3">Top Competitors</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                                     {activeMap.competitive_analysis.top_competitors?.map((competitor, idx) => (
-                                        <div key={idx} className="bg-orange-50 border border-orange-200 rounded p-2 text-sm text-slate-700 hover:bg-orange-100 transition-colors">
+                                        <div key={idx} className="bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-sm text-amber-900 font-bold shadow-sm hover:bg-amber-100 transition-all">
                                             {competitor}
                                         </div>
                                     ))}
@@ -886,7 +892,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-content-plan" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Content Plan"
-                        color="from-blue-600 to-blue-700"
+                        color="from-slate-800 to-slate-900"
                         icon={DocumentTextIcon}
                         section="articles"
                         count={activeMap.content_articles.length}
@@ -923,9 +929,9 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                     {article.title}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${article.section === 'Core'
-                                                        ? 'bg-blue-100 text-blue-700'
-                                                        : 'bg-slate-100 text-slate-700'
+                                                    <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${article.section === 'Core'
+                                                        ? 'bg-emerald-100 text-emerald-800 shadow-sm border border-emerald-200/50'
+                                                        : 'bg-slate-100 text-slate-700 border border-slate-200'
                                                         }`}>
                                                         {article.section}
                                                     </span>
@@ -942,12 +948,12 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                     <button 
                                                         onClick={() => handleGenerateArticle(article)}
                                                         disabled={!!generatingArticle}
-                                                        className={`inline-flex items-center gap-x-1.5 rounded px-2 py-1 text-xs font-semibold shadow-sm transition-colors
+                                                        className={`inline-flex items-center gap-x-1.5 rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all
                                                             ${generatingArticle === article.title
-                                                                ? 'bg-violet-100 text-violet-600 cursor-wait'
+                                                                ? 'bg-emerald-100 text-emerald-600 cursor-wait'
                                                                 : generatingArticle
                                                                 ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
-                                                                : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/10'
                                                             }`}
                                                     >
                                                         <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} aria-hidden="true" />
@@ -969,7 +975,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 <div id="export-seo-optimization" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="SEO Optimization"
-                        color="from-green-600 to-green-700"
+                        color="from-slate-800 to-slate-900"
                         icon={ChartBarIcon}
                         section="seo"
                         elementId="export-seo-optimization"
@@ -979,11 +985,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 {/* Topic Clusters */}
                                 {activeMap.seo_optimization.topic_clusters?.length > 0 && (
-                                    <div className="border border-purple-200 rounded p-3 bg-purple-50">
-                                        <h4 className="text-sm font-semibold text-purple-700 mb-2">Topic Clusters</h4>
-                                        <ul className="space-y-1">
+                                    <div className="border border-emerald-200/50 rounded-xl p-4 bg-emerald-50/50">
+                                        <h4 className="text-[10px] font-black text-emerald-800 mb-3 tracking-widest uppercase">Topic Clusters</h4>
+                                        <ul className="space-y-1.5">
                                             {activeMap.seo_optimization.topic_clusters.map((cluster, idx) => (
-                                                <li key={idx} className="text-sm text-slate-700">• {cluster}</li>
+                                                <li key={idx} className="text-sm text-slate-700 font-medium leading-relaxed">• {cluster}</li>
                                             ))}
                                         </ul>
                                     </div>
@@ -991,23 +997,22 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
                                 {/* Schema Recommendations */}
                                 {activeMap.seo_optimization.schema_recommendations?.length > 0 && (
-                                    <div className="border border-blue-200 rounded p-3 bg-blue-50">
-                                        <h4 className="text-sm font-semibold text-blue-700 mb-2">Schema Markup</h4>
-                                        <ul className="space-y-1">
+                                    <div className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                                        <h4 className="text-[10px] font-black text-slate-800 mb-3 tracking-widest uppercase">Schema Markup</h4>
+                                        <ul className="space-y-1.5">
                                             {activeMap.seo_optimization.schema_recommendations.map((schema, idx) => (
-                                                <li key={idx} className="text-sm text-slate-700">✓ {schema}</li>
+                                                <li key={idx} className="text-sm text-slate-700 font-medium leading-relaxed">✓ {schema}</li>
                                             ))}
                                         </ul>
                                     </div>
                                 )}
 
-                                {/* Entity Optimization */}
                                 {activeMap.seo_optimization.entity_optimization?.length > 0 && (
-                                    <div className="border border-green-200 rounded p-3 bg-green-50">
-                                        <h4 className="text-sm font-semibold text-green-700 mb-2">Entity Optimization</h4>
-                                        <ul className="space-y-1">
+                                    <div className="border border-emerald-200/50 rounded-xl p-4 bg-emerald-50/50">
+                                        <h4 className="text-[10px] font-black text-emerald-800 mb-3 tracking-widest uppercase">Entity Optimization</h4>
+                                        <ul className="space-y-1.5">
                                             {activeMap.seo_optimization.entity_optimization.map((tip, idx) => (
-                                                <li key={idx} className="text-sm text-slate-700">→ {tip}</li>
+                                                <li key={idx} className="text-sm text-slate-700 font-medium leading-relaxed">→ {tip}</li>
                                             ))}
                                         </ul>
                                     </div>

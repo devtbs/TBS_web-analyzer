@@ -159,8 +159,8 @@ const Sidebar = () => {
             initial={false}
             animate={{ width: collapsed ? 88 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
-            className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden"
-            style={{ background: '#1a1d2e' }}
+            className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-white/5"
+            style={{ background: '#1e293b' }}
         >
             <div className="relative flex flex-col h-full">
 
@@ -225,8 +225,8 @@ const Sidebar = () => {
                                                 collapsed ? 'justify-center px-0 py-1.5' : 'px-3 py-2.5'
                                             }`}
                                             style={{
-                                                color: active ? '#fff' : '#9ca3af',
-                                                background: (!collapsed && active) ? 'rgba(255,255,255,0.10)' : 'transparent',
+                                                color: active ? '#10b981' : '#9ca3af',
+                                                background: (!collapsed && active) ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
                                             }}
                                             onMouseEnter={e => {
                                                 if (!active && !collapsed) e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
@@ -243,9 +243,12 @@ const Sidebar = () => {
                                             {collapsed ? (
                                                 <div
                                                     className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150"
-                                                    style={{ background: active ? 'rgba(255,255,255,0.1)' : 'transparent' }}
+                                                    style={{ 
+                                                        background: active ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                                        boxShadow: active ? '0 0 15px rgba(16, 185, 129, 0.1)' : 'none'
+                                                    }}
                                                 >
-                                                    <Icon className="flex-shrink-0" style={{ width: 20, height: 20 }} />
+                                                    <Icon className="flex-shrink-0" style={{ width: 20, height: 20, color: active ? '#10b981' : 'inherit' }} />
                                                 </div>
                                             ) : (
                                                 <>
@@ -315,11 +318,14 @@ const Sidebar = () => {
                                                     >
                                                         <div
                                                             className="w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-150"
-                                                            style={{ background: active ? 'rgba(255,255,255,0.1)' : 'transparent' }}
+                                                            style={{ 
+                                                                background: active ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                                                boxShadow: active ? '0 0 15px rgba(16, 185, 129, 0.1)' : 'none'
+                                                            }}
                                                         >
                                                             <FolderIconSolid 
                                                                 className="flex-shrink-0" 
-                                                                style={{ width: 19, height: 19, color: active ? '#fff' : '#64748b' }} 
+                                                                style={{ width: 19, height: 19, color: active ? '#10b981' : '#475569' }} 
                                                             />
                                                         </div>
                                                     </Link>
@@ -355,8 +361,8 @@ const Sidebar = () => {
                                                                 to={folderPath}
                                                                 className={`flex items-center justify-between rounded-md transition-all duration-150 outline-none px-3 py-1.5`}
                                                                 style={{
-                                                                    color: active ? '#fff' : '#94a3b8',
-                                                                    background: active ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                                                    color: active ? '#10b981' : '#94a3b8',
+                                                                    background: active ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
                                                                 }}
                                                                 onMouseEnter={e => {
                                                                     if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
@@ -371,7 +377,7 @@ const Sidebar = () => {
                                                             >
                                                                 <div className="flex items-center gap-3 min-w-0">
                                                                     <FolderIconSolid 
-                                                                        className={`flex-shrink-0 transition-colors ${active ? 'text-slate-200' : 'text-slate-500 group-hover/item:text-slate-300'}`} 
+                                                                        className={`flex-shrink-0 transition-colors ${active ? 'text-emerald-500' : 'text-slate-500 group-hover/item:text-slate-300'}`} 
                                                                         style={{ width: 18, height: 18 }} 
                                                                     />
                                                                     <span className={`text-[13px] truncate ${active ? 'font-semibold' : 'font-medium'}`}>
