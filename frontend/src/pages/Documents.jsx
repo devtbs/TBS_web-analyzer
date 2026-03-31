@@ -14,6 +14,7 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     MagnifyingGlassIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -109,9 +110,17 @@ export default function Documents() {
     };
 
     const handleFolderUpdate = async (docId, newFolder) => {
-        if (!newFolder) return;
         try {
             await api.put(`/api/documents/${docId}`, { folder: newFolder });
+            
+            // Persist the folder if it's new
+            if (newFolder) {
+                const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
+                if (!savedFolders.includes(newFolder)) {
+                    localStorage.setItem('persistent_folders', JSON.stringify([...savedFolders, newFolder]));
+                }
+            }
+
             setDocuments(documents.map(doc => 
                 doc.id === docId ? { ...doc, folder: newFolder } : doc
             ));
@@ -436,7 +445,7 @@ export default function Documents() {
 
                                 {/* Name */}
                                 <td className="px-3 sm:px-6 py-3.5 sm:py-4 max-w-[160px] sm:max-w-[220px] cursor-pointer">
-                                    <div className="text-sm font-medium text-slate-900 group-hover:text-emerald-600 transition-colors line-clamp-2 leading-snug">
+                                    <div className="text-sm font-medium text-slate-800 group-hover:text-emerald-600 transition-colors line-clamp-2 leading-tight">
                                         {doc.title}
                                     </div>
                                     {/* Show "edited" inline on xs only */}
@@ -467,13 +476,14 @@ export default function Documents() {
                                                 e.stopPropagation();
                                                 setActiveFolderPopover(activeFolderPopover === doc.id ? null : doc.id);
                                             }}
-                                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ml-[-8px] ${
+                                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all ml-[-8px] ${
                                                 doc.folder 
-                                                    ? 'text-slate-600 bg-slate-50 hover:bg-slate-100 font-bold' 
-                                                    : 'text-slate-400 hover:text-slate-600 border border-dashed border-slate-200 hover:border-slate-300'
+                                                    ? 'text-emerald-700 bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 hover:border-emerald-200 font-bold shadow-sm' 
+                                                    : 'text-slate-400 hover:text-emerald-600 border border-dashed border-slate-200 hover:border-emerald-200 hover:bg-emerald-50'
                                             }`}
                                         >
-                                            <span className="text-[13px] font-medium leading-none">
+                                            {doc.folder && <FolderIconSolid className="w-3.5 h-3.5 text-emerald-500/80" />}
+                                            <span className="text-[12px] font-bold leading-none">
                                                 {doc.folder ? doc.folder : '+ Folder'}
                                             </span>
                                         </button>
@@ -534,24 +544,29 @@ export default function Documents() {
                                                     </div>
 
                                                     <div className="max-h-[220px] overflow-y-auto py-1 scrollbar-thin scrollbar-thumb-slate-200">
-                                                        {[...new Set(documents.map(d => d.folder).filter(Boolean))]
-                                                            .filter(f => f.toLowerCase().includes(folderSearch.toLowerCase()))
-                                                            .sort()
-                                                            .map((folder) => (
-                                                            <button 
-                                                                key={folder}
-                                                                onClick={() => handleFolderUpdate(doc.id, folder)}
-                                                                className="w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[13px] text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/item"
-                                                            >
-                                                                <div className="flex items-center gap-2.5">
-                                                                    <FolderIconSolid className={`w-4 h-4 transition-colors ${doc.folder === folder ? 'text-emerald-500' : 'text-slate-400 group-hover/item:text-emerald-500'}`} />
-                                                                    <span className={doc.folder === folder ? 'font-bold' : ''}>{folder}</span>
-                                                                </div>
-                                                                {doc.folder === folder && (
-                                                                    <CheckIcon className="w-4 h-4 text-emerald-500" />
-                                                                )}
-                                                            </button>
-                                                        ))}
+                                                        {(() => {
+                                                            const documentFolders = documents.map(d => d.folder).filter(Boolean);
+                                                            const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
+                                                            const allUniqueFolders = [...new Set([...documentFolders, ...savedFolders])].sort();
+                                                            
+                                                            return allUniqueFolders
+                                                                .filter(f => f.toLowerCase().includes(folderSearch.toLowerCase()))
+                                                                .map((folder) => (
+                                                                <button 
+                                                                    key={folder}
+                                                                    onClick={() => handleFolderUpdate(doc.id, folder === doc.folder ? null : folder)}
+                                                                    className="w-full flex items-center justify-between gap-2.5 px-3 py-2 text-[13px] text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors text-left group/item"
+                                                                >
+                                                                    <div className="flex items-center gap-2.5">
+                                                                        <FolderIconSolid className={`w-4 h-4 transition-colors ${doc.folder === folder ? 'text-emerald-500' : 'text-slate-400 group-hover/item:text-emerald-500'}`} />
+                                                                        <span className={doc.folder === folder ? 'font-bold' : ''}>{folder}</span>
+                                                                    </div>
+                                                                    {doc.folder === folder && (
+                                                                        <CheckIcon className="w-4 h-4 text-emerald-500" />
+                                                                    )}
+                                                                </button>
+                                                            ));
+                                                        })()}
                                                         
                                                         {folderSearch && ![...new Set(documents.map(d => d.folder).filter(Boolean))].some(f => f.toLowerCase() === folderSearch.toLowerCase()) && (
                                                             <div className="px-3 py-4 text-center">
@@ -579,16 +594,16 @@ export default function Documents() {
                                             e.stopPropagation();
                                             setActiveDeadlinePopover(activeDeadlinePopover === doc.id ? null : doc.id);
                                         }}
-                                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md transition-all ml-[-8px] ${
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all ml-[-8px] ${
                                             doc.deadline
-                                                ? 'text-slate-600 bg-slate-50 hover:bg-slate-100 border border-slate-100 font-bold'
+                                                ? 'text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200/60 font-bold shadow-sm'
                                                 : 'text-slate-400 hover:text-slate-600 border border-dashed border-slate-200 hover:border-slate-300 font-bold'
                                         }`}
                                     >
-                                        <span className="text-[13px] font-medium leading-none">
+                                        <span className="text-[12px] font-bold leading-none">
                                             {doc.deadline ? (
                                                 <span className="flex items-center gap-1">
-                                                    <CalendarIconSolid className="w-3.5 h-3.5 text-slate-400" />
+                                                    <CalendarIconSolid className="w-3.5 h-3.5 text-slate-500/80" />
                                                     {new Date(doc.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                                 </span>
                                             ) : '+ Date'}

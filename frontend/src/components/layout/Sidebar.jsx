@@ -74,8 +74,17 @@ const Sidebar = () => {
     const fetchFolders = async () => {
         try {
             const response = await api.get('/api/documents');
-            const uniqueFolders = [...new Set(response.data.map(doc => doc.folder).filter(Boolean))].sort();
-            setFolders(uniqueFolders);
+            const documentFolders = response.data.map(doc => doc.folder).filter(Boolean);
+            
+            // Get already saved folders from localStorage
+            const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
+            
+            // Merge actual folders from docs with saved folders
+            const allUniqueFolders = [...new Set([...documentFolders, ...savedFolders])].sort();
+            
+            // Update state and persistence
+            setFolders(allUniqueFolders);
+            localStorage.setItem('persistent_folders', JSON.stringify(allUniqueFolders));
         } catch (error) {
             console.error('Failed to fetch folders:', error);
         }
@@ -109,6 +118,12 @@ const Sidebar = () => {
 
         try {
             await api.put(`/api/folders/${encodeURIComponent(oldName)}`, { new_name: newName });
+            
+            // Also update localStorage
+            const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
+            const updatedPersistent = savedFolders.map(f => f === oldName ? newName : f);
+            localStorage.setItem('persistent_folders', JSON.stringify(updatedPersistent));
+
             setFolders(prev => prev.map(f => f === oldName ? newName : f));
             dispatchRefresh();
             toast.success('Folder renamed');
@@ -130,6 +145,12 @@ const Sidebar = () => {
         if (!deleteFolderTarget) return;
         try {
             await api.delete(`/api/folders/${encodeURIComponent(deleteFolderTarget)}`);
+            
+            // Also remove from localStorage
+            const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
+            const updatedPersistent = savedFolders.filter(f => f !== deleteFolderTarget);
+            localStorage.setItem('persistent_folders', JSON.stringify(updatedPersistent));
+
             setFolders(prev => prev.filter(f => f !== deleteFolderTarget));
             dispatchRefresh();
             toast.success('Folder deleted');
@@ -159,7 +180,7 @@ const Sidebar = () => {
             initial={false}
             animate={{ width: collapsed ? 88 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
-            className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-white/5"
+            className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-slate-700/30"
             style={{ background: '#1e293b' }}
         >
             <div className="relative flex flex-col h-full">
