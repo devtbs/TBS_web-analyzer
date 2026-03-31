@@ -238,7 +238,7 @@ const NewAnalysis = () => {
                                                     onChange={e => updateUrl(index, e.target.value)}
                                                     onBlur={() => normalizeUrl(index)}
                                                     placeholder={`https://example${index > 0 ? index + 1 : ''}.com`}
-                                                    className="w-full px-5 py-3.5 bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-emerald-500 text-base text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
+                                                    className="w-full px-5 py-3.5 bg-transparent border-b-2 border-transparent hover:border-emerald-100 focus:border-emerald-500 text-base text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
                                                     autoFocus={index === urls.length - 1}
                                                 />
                                             </div>
@@ -322,10 +322,10 @@ const NewAnalysis = () => {
                                 whileTap={{ scale: canAnalyze && !isAnalyzing ? 0.98 : 1 }}
                                 onClick={handleAnalyze}
                                 disabled={isAnalyzing || !canAnalyze}
-                                className={`px-12 sm:px-16 py-4 rounded-xl font-bold text-[16px] sm:text-[17px] transition-all duration-300 flex items-center justify-center gap-3 text-white bg-slate-900 border border-slate-800
+                                className={`px-8 sm:px-10 py-3 rounded-xl font-bold text-[15px] sm:text-[16px] transition-all duration-300 flex items-center justify-center gap-3
                                     ${canAnalyze && !isAnalyzing
-                                        ? 'shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5'
-                                        : 'opacity-60 cursor-not-allowed shadow-none grayscale-[20%]'
+                                        ? 'text-white bg-emerald-600 border border-emerald-500 shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 hover:shadow-xl hover:shadow-emerald-600/30 hover:-translate-y-0.5'
+                                        : 'text-white/50 bg-emerald-600/50 cursor-not-allowed shadow-none'
                                     }`}
                             >
                                 {isAnalyzing ? (

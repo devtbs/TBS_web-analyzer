@@ -39,6 +39,8 @@ const MenuBar = ({ editor }) => {
 
     const ToolbarButton = ({ onClick, isActive, disabled, children }) => (
         <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={onClick}
             disabled={disabled}
             className={`p-1.5 rounded-md hover:bg-slate-100 disabled:opacity-50 transition-colors ${

@@ -6,6 +6,7 @@ import {
     RocketLaunchIcon,
     ClockIcon,
     GlobeAltIcon,
+    Squares2X2Icon,
     ArrowRightIcon,
     ArrowUpRightIcon,
     CheckCircleIcon,
@@ -23,39 +24,53 @@ const RecentRow = ({ analysis, onClick }) => {
     const domain = analysis.urls?.[0] ?? 'Unknown';
     const extra  = (analysis.urls?.length ?? 1) - 1;
     const statusMap = {
-        completed: { dot: 'bg-emerald-500', pill: 'text-emerald-700 bg-emerald-50 ring-1 ring-emerald-200/60' },
-        failed:    { dot: 'bg-rose-500',    pill: 'text-rose-700 bg-rose-50 ring-1 ring-rose-200/60' },
-        processing:{ dot: 'bg-indigo-500',  pill: 'text-indigo-700 bg-indigo-50 ring-1 ring-indigo-200/60 animate-pulse' },
-        scraping:  { dot: 'bg-blue-500',    pill: 'text-blue-700 bg-blue-50 ring-1 ring-blue-200/60 animate-pulse' },
-        fetching:  { dot: 'bg-violet-500',  pill: 'text-violet-700 bg-violet-50 ring-1 ring-violet-200/60 animate-pulse' },
-        default:   { dot: 'bg-amber-500',   pill: 'text-amber-700 bg-amber-50 ring-1 ring-amber-200/60' },
+        completed: { color: 'text-emerald-600', bg: 'bg-emerald-50', dot: 'bg-emerald-500', ring: 'ring-emerald-500/20' },
+        failed:    { color: 'text-rose-600',    bg: 'bg-rose-50',    dot: 'bg-rose-500',    ring: 'ring-rose-500/20'    },
+        processing:{ color: 'text-blue-600',    bg: 'bg-blue-50',    dot: 'bg-blue-500',    ring: 'ring-blue-500/20'    },
+        scraping:  { color: 'text-indigo-600',  bg: 'bg-indigo-50',  dot: 'bg-indigo-500',  ring: 'ring-indigo-500/20'  },
+        fetching:  { color: 'text-violet-600',  bg: 'bg-violet-50',  dot: 'bg-violet-500',  ring: 'ring-violet-500/20'  },
+        default:   { color: 'text-slate-600',   bg: 'bg-slate-50',   dot: 'bg-slate-500',   ring: 'ring-slate-500/20'   },
     };
     const s = statusMap[analysis.status] ?? statusMap.default;
 
     return (
         <button
             onClick={onClick}
-            className="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all text-left group"
+            className="w-full flex items-center gap-4 px-5 py-4 rounded-[20px] hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 border border-transparent hover:border-slate-100 transition-all duration-300 text-left group mb-1"
         >
-            {/* Avatar */}
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:shadow-md group-hover:-translate-y-0.5 transition-all">
-                <GlobeAltIcon className="w-5 h-5 text-white" />
+            {/* Website Icon */}
+            <div className="w-11 h-11 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-50 group-hover:border-emerald-100 transition-all duration-300">
+                <GlobeAltIcon className="w-5 h-5 text-slate-400 group-hover:text-emerald-500 group-hover:scale-110 transition-all duration-300" />
             </div>
 
             {/* Info */}
             <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-slate-800 truncate leading-tight">{domain}</p>
-                <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                    {extra > 0 ? `+${extra} more URL${extra > 1 ? 's' : ''} · ` : ''}{analysis.label || 'auto'}
+                <div className="flex items-center gap-2">
+                    <p className="text-[14px] font-bold text-slate-800 truncate leading-tight group-hover:text-emerald-600 transition-colors">{domain}</p>
+                    {extra > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                            +{extra}
+                        </span>
+                    )}
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 font-medium flex items-center gap-1.5 uppercase tracking-wider">
+                    <span className="w-1 h-1 rounded-full bg-slate-300" />
+                    {analysis.label || 'auto analysis'}
                 </p>
             </div>
 
-            {/* Status */}
-            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${s.pill}`}>
-                {analysis.status}
-            </span>
-
-            <ArrowRightIcon className="w-4 h-4 text-slate-200 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
+            {/* Action/Status */}
+            <div className="flex items-center gap-4">
+                <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full ${s.bg} ring-1 ${s.ring} shadow-sm`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${s.dot} shadow-[0_0_8px_rgba(0,0,0,0.1)] ${analysis.status !== 'completed' && analysis.status !== 'failed' ? 'animate-pulse' : ''}`} />
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${s.color}`}>
+                        {analysis.status}
+                    </span>
+                </div>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center border border-slate-100 group-hover:border-emerald-200 group-hover:bg-emerald-50 transition-all duration-300">
+                    <ArrowRightIcon className="w-3.5 h-3.5 text-slate-300 group-hover:text-emerald-500 transition-colors" />
+                </div>
+            </div>
         </button>
     );
 };
@@ -102,7 +117,7 @@ export default function Dashboard() {
     const stats = [
         {
             label: 'Total Analyses', sub: 'all time', value: total,
-            icon: ChartBarIcon,
+            icon: Squares2X2Icon,
             from: 'from-violet-500', to: 'to-purple-600',
         },
         {
@@ -120,7 +135,7 @@ export default function Dashboard() {
     const quickActions = [
         { icon: RocketLaunchIcon, label: 'New Analysis',  desc: 'Start a fresh audit',       path: '/new-analysis' },
         { icon: DocumentTextIcon, label: 'My Documents',  desc: 'View generated articles',  path: '/documents'    },
-        { icon: SparklesIcon,     label: 'SEO Analytics', desc: 'Search Console insights',   path: '/seo-analytics'},
+        { icon: ChartBarIcon,      label: 'SEO Analytics', desc: 'Search Console insights',   path: '/seo-analytics'},
         { icon: ClockIcon,        label: 'History',       desc: 'All past analyses',          path: '/history'      },
     ];
 
@@ -168,7 +183,7 @@ export default function Dashboard() {
                         <div className="flex items-center gap-2.5 flex-shrink-0">
                             <button
                                 onClick={() => navigate('/new-analysis')}
-                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm transition-all shadow-md shadow-slate-900/20 hover:shadow-lg hover:-translate-y-0.5"
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all shadow-md shadow-emerald-600/20 hover:shadow-lg hover:-translate-y-0.5"
                             >
                                 <RocketLaunchIcon className="w-4 h-4" />
                                 New Analysis
@@ -185,31 +200,38 @@ export default function Dashboard() {
                 </motion.div>
 
                 {/* ── Stat cards ── */}
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                     {stats.map(({ label, sub, value, icon: Icon, from, to }, i) => (
                         <motion.div
                             key={label}
-                            initial={{ opacity: 0, y: 10 }}
+                            initial={{ opacity: 0, y: 15 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.06 + i * 0.05 }}
-                            className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 group hover:shadow-md hover:-translate-y-0.5 transition-all cursor-default"
+                            transition={{ delay: 0.1 + i * 0.08 }}
+                            className="relative overflow-hidden bg-white rounded-[24px] border border-slate-200/70 shadow-sm p-6 group hover:shadow-xl hover:shadow-slate-200/50 hover:-translate-y-1 transition-all duration-300"
                         >
-                            <div className="flex items-start justify-between mb-6">
-                                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${from} ${to} flex items-center justify-center shadow-sm`}>
-                                    <Icon className="w-5 h-5 text-white" />
+                            {/* Glass background decoration */}
+                            <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full bg-gradient-to-br ${from} ${to} opacity-[0.03] group-hover:opacity-[0.06] transition-opacity duration-500`} />
+
+                            <div className="flex items-center justify-between mb-4">
+                                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${from} ${to} flex items-center justify-center shadow-lg shadow-${from.split('-')[1]}-500/20 group-hover:scale-110 transition-transform duration-500`}>
+                                    <Icon className="w-6 h-6 text-white" />
                                 </div>
-                                <ArrowUpRightIcon className="w-4 h-4 text-slate-200 group-hover:text-slate-400 transition-colors mt-0.5" />
+                                <div className="p-2 rounded-full bg-slate-50 text-slate-300 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors duration-300">
+                                    <ArrowUpRightIcon className="w-4 h-4" />
+                                </div>
                             </div>
 
-                            {loading ? (
-                                <div className="h-10 w-16 bg-slate-100 rounded-xl animate-pulse mb-2" />
-                            ) : (
-                                <p className="text-4xl font-black text-slate-900 tracking-tight leading-none">
-                                    {value ?? '—'}
-                                </p>
-                            )}
-                            <p className="text-sm font-semibold text-slate-700 mt-2">{label}</p>
-                            <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
+                            <div className="relative">
+                                {loading ? (
+                                    <div className="h-9 w-20 bg-slate-100 rounded-xl animate-pulse mb-1" />
+                                ) : (
+                                    <h3 className="text-3xl font-black text-slate-900 tracking-tight leading-none mb-1">
+                                        {value ?? '—'}
+                                    </h3>
+                                )}
+                                <p className="text-[13px] font-bold text-slate-800 tracking-tight">{label}</p>
+                                <p className="text-[11px] text-slate-400 font-medium mt-1 uppercase tracking-wider">{sub}</p>
+                            </div>
                         </motion.div>
                     ))}
                 </div>
@@ -219,86 +241,94 @@ export default function Dashboard() {
 
                     {/* Recent Analyses */}
                     <motion.div
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
-                        className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden"
+                        className="bg-white rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                        <div className="flex items-center justify-between px-8 py-6 border-b border-slate-50">
                             <div>
-                                <h2 className="text-[13px] font-bold text-slate-800">Recent Analyses</h2>
-                                <p className="text-[11px] text-slate-400 mt-0.5">Your latest website audits</p>
+                                <h2 className="text-[15px] font-black text-slate-900 tracking-tight">Recent Analyses</h2>
+                                <p className="text-[12px] text-slate-400 font-medium mt-0.5">Track your project growth</p>
                             </div>
                             <Link
                                 to="/history"
-                                className="text-[12px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 transition-colors bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg"
+                                className="text-[12px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1.5 transition-all bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl"
                             >
-                                View all <ArrowRightIcon className="w-3.5 h-3.5" />
+                                View all History <ArrowRightIcon className="w-4 h-4" />
                             </Link>
                         </div>
 
-                        {/* Rows */}
-                        <div className="p-2">
+                        {/* Scrolling Container */}
+                        <div className="p-3">
                             {loading ? (
-                                <div className="space-y-1 p-2">
-                                    {[1,2,3,4,5].map(i => (
-                                        <div key={i} className="h-14 bg-slate-50 rounded-xl animate-pulse" />
+                                <div className="space-y-3 p-3">
+                                    {[1,2,3,4].map(i => (
+                                        <div key={i} className="h-16 bg-slate-50/50 rounded-[20px] animate-pulse" />
                                     ))}
                                 </div>
                             ) : analyses.length === 0 ? (
-                                <div className="py-16 text-center">
-                                    <div className="w-12 h-12 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center mx-auto mb-3">
-                                        <GlobeAltIcon className="w-6 h-6 text-slate-300" />
+                                <div className="py-20 text-center">
+                                    <div className="w-16 h-16 bg-slate-50 rounded-[24px] border border-slate-100 flex items-center justify-center mx-auto mb-4">
+                                        <GlobeAltIcon className="w-8 h-8 text-slate-300" />
                                     </div>
-                                    <p className="text-sm font-semibold text-slate-500">No analyses yet</p>
-                                    <p className="text-xs text-slate-400 mt-1 mb-4">Start your first analysis to see results here</p>
+                                    <p className="text-base font-bold text-slate-800">No project activity yet</p>
+                                    <p className="text-sm text-slate-400 mt-1 mb-6 max-w-[240px] mx-auto leading-relaxed">
+                                        Launch your first SEO audit to start tracking performance.
+                                    </p>
                                     <button
                                         onClick={() => navigate('/new-analysis')}
-                                        className="text-xs font-bold text-emerald-600 hover:text-emerald-700"
+                                        className="px-6 py-2.5 bg-emerald-600 text-white font-bold text-sm rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
                                     >
-                                        Start your first →
+                                        Start First Analysis
                                     </button>
                                 </div>
-                            ) : analyses.map(a => (
-                                <RecentRow
-                                    key={a.analysis_id}
-                                    analysis={a}
-                                    onClick={() => navigate(`/results/${a.analysis_id}`)}
-                                />
-                            ))}
+                            ) : (
+                                <div className="space-y-1">
+                                    {analyses.map(a => (
+                                        <RecentRow
+                                            key={a.analysis_id}
+                                            analysis={a}
+                                            onClick={() => navigate(`/results/${a.analysis_id}`)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </motion.div>
 
                     {/* Right panel */}
-                    <div className="space-y-4">
+                    <div className="space-y-5">
 
                         {/* Quick Actions */}
                         <motion.div
-                            initial={{ opacity: 0, y: 10 }}
+                            initial={{ opacity: 0, y: 15 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.25 }}
-                            className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden"
+                            className="bg-white rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden"
                         >
-                            <div className="px-5 py-4 border-b border-slate-100">
-                                <h2 className="text-[13px] font-bold text-slate-800">Quick Actions</h2>
-                                <p className="text-[11px] text-slate-400 mt-0.5">Common tasks</p>
+                            <div className="px-7 py-6 border-b border-slate-50">
+                                <h2 className="text-[15px] font-black text-slate-900 tracking-tight">Quick Actions</h2>
+                                <p className="text-[12px] text-slate-400 font-medium mt-0.5">Essential tools</p>
                             </div>
-                            <div className="p-2 space-y-0.5">
+                            <div className="p-3 space-y-1.5">
                                 {quickActions.map(({ icon: Icon, label, desc, path }) => (
                                     <button
                                         key={label}
                                         onClick={() => navigate(path)}
-                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-50 transition-all text-left group"
+                                        className="w-full flex items-center gap-4 px-4 py-4 rounded-2xl hover:bg-slate-50 border border-transparent transition-all duration-300 text-left group"
                                     >
-                                        <div className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-50 group-hover:border-emerald-100 transition-colors">
-                                            <Icon className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
+                                        <div className="w-10 h-10 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-600 group-hover:border-emerald-600 group-hover:rotate-6 transition-all duration-500">
+                                            <Icon className="w-5 h-5 text-slate-500 group-hover:text-white transition-all duration-500" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-[13px] font-semibold text-slate-700 group-hover:text-slate-900 transition-colors leading-tight">{label}</p>
-                                            <p className="text-[11px] text-slate-400 mt-0.5 truncate">{desc}</p>
+                                            <p className="text-[14px] font-bold text-slate-800 group-hover:text-emerald-700 transition-colors leading-tight">{label}</p>
+                                            <p className="text-[11px] text-slate-400 font-medium mt-1 truncate group-hover:text-slate-500 transition-colors">{desc}</p>
                                         </div>
-                                        <ArrowRightIcon className="w-3.5 h-3.5 text-slate-200 group-hover:text-slate-400 flex-shrink-0 transition-colors" />
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-50 group-hover:bg-emerald-100 transition-all duration-300">
+                                            <ArrowRightIcon className="w-3 h-3 text-slate-300 group-hover:text-emerald-600 transition-colors" />
+                                        </div>
                                     </button>
                                 ))}
                             </div>

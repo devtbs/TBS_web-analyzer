@@ -148,7 +148,8 @@ const SEOAnalytics = () => {
             } catch (err) {
                 setIsConnected(false);
                 if (err.response?.status !== 404) {
-                    toast.error('Failed to fetch Search Console status');
+                    const message = err.response?.data?.detail || 'Failed to fetch Search Console status';
+                    toast.error(message);
                 }
             }
         };
@@ -178,7 +179,8 @@ const SEOAnalytics = () => {
                 setPages(res.data.pages);
                 setCurrentPage(1); // Reset pagination
             } catch (err) {
-                toast.error('Failed to fetch analytics for this property');
+                const message = err.response?.data?.detail || 'Failed to fetch analytics for this property';
+                toast.error(message);
             } finally {
                 setLoading(false);
             }

@@ -194,12 +194,12 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
             <motion.div
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center py-6 px-6 text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50"
+                className="flex flex-col items-center py-10 px-6 text-center rounded-2xl border-2 border-dashed border-emerald-100 bg-emerald-50/30"
             >
-                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center mb-4 shadow-sm shadow-slate-900/10 border border-slate-800">
+                <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-emerald-600/20 border border-emerald-500">
                     <ShieldCheckIcon className="w-7 h-7 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-800 mb-3">Connect Google Search Console</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Connect Google Search Console</h3>
                 <p className="text-base text-slate-500 mb-8 max-w-sm">
                     Connect your GSC account to select properties and pages for analysis
                 </p>
@@ -208,8 +208,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                     disabled={isConnecting || !isGoogleLoaded}
                     className={`flex items-center gap-2.5 px-8 py-3.5 rounded-xl text-white text-base font-bold transition-all
                         ${isConnecting || !isGoogleLoaded
-                            ? 'bg-slate-300 cursor-not-allowed'
-                            : 'bg-slate-900 shadow-sm shadow-slate-900/20 hover:shadow-md hover:shadow-slate-900/30 border border-slate-800'
+                            ? 'text-white/50 bg-emerald-600/50 cursor-not-allowed shadow-none'
+                            : 'bg-emerald-600 shadow-md shadow-emerald-600/20 hover:bg-emerald-700 hover:shadow-lg hover:shadow-emerald-600/30 border border-emerald-500/50 active:scale-[0.98]'
                         }`}
                 >
                     <LinkIcon className="w-4 h-4" />

@@ -196,10 +196,10 @@ const PageSelector = () => {
                             <button
                                 onClick={analyzeSelected}
                                 disabled={selectedPages.size === 0 || isAtLimit}
-                                className={`px-8 py-3.5 rounded-2xl font-bold text-[15px] transition-all duration-300 flex items-center justify-center gap-2 border whitespace-nowrap min-w-[180px]
+                                className={`px-6 py-3 rounded-2xl font-bold text-[14px] transition-all duration-300 flex items-center justify-center gap-2 border whitespace-nowrap min-w-[160px]
                                     ${selectedPages.size > 0 && !isAtLimit
-                                        ? 'text-white bg-slate-900 border-slate-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] hover:-translate-y-0.5'
-                                        : 'text-slate-400 bg-slate-50 border-slate-200/80 shadow-[0_2px_4px_rgba(0,0,0,0.02)] cursor-not-allowed'
+                                        ? 'text-white bg-emerald-600 border border-emerald-500 shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:bg-emerald-700 hover:-translate-y-0.5'
+                                        : 'text-white/50 bg-emerald-600/50 cursor-not-allowed'
                                     }`}
                             >
                                 Import {selectedPages.size} Page{selectedPages.size !== 1 ? 's' : ''}
