@@ -196,7 +196,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center py-6 px-6 text-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50"
             >
-                <div className="w-14 h-14 bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-purple-300/40">
+                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center mb-4 shadow-sm shadow-slate-900/10 border border-slate-800">
                     <ShieldCheckIcon className="w-7 h-7 text-white" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-800 mb-3">Connect Google Search Console</h3>
@@ -209,7 +209,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                     className={`flex items-center gap-2.5 px-8 py-3.5 rounded-xl text-white text-base font-bold transition-all
                         ${isConnecting || !isGoogleLoaded
                             ? 'bg-slate-300 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-violet-600 to-purple-600 shadow-md shadow-purple-300/40 hover:shadow-lg hover:shadow-purple-400/40'
+                            : 'bg-slate-900 shadow-sm shadow-slate-900/20 hover:shadow-md hover:shadow-slate-900/30 border border-slate-800'
                         }`}
                 >
                     <LinkIcon className="w-4 h-4" />
@@ -255,7 +255,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                         placeholder="Search properties..."
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400 transition-all bg-slate-50"
+                        className="w-full pl-10 pr-10 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all bg-slate-50"
                     />
                     {searchQuery && (
                         <button
@@ -290,7 +290,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                         {searchQuery && (
                             <button
                                 onClick={() => setSearchQuery('')}
-                                className="mt-2 text-xs text-violet-600 font-bold hover:underline"
+                                className="mt-2 text-xs text-emerald-600 font-bold hover:underline"
                             >
                                 Clear search
                             </button>
@@ -314,18 +314,18 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                                         onClick={() => handlePropertyToggle(property)}
                                         className={`flex flex-col sm:flex-row sm:items-center justify-between py-4 mb-3 border cursor-pointer transition-all duration-300 gap-4 group px-5 rounded-2xl
                                             ${isSelected 
-                                                ? 'bg-violet-100 border-violet-400 shadow-md ring-1 ring-violet-500/30' 
-                                                : 'bg-white border-slate-200 shadow-sm hover:border-violet-300 hover:shadow-md hover:bg-violet-50/50 hover:-translate-y-1'}`}
+                                                ? 'bg-emerald-50/50 border-emerald-400 shadow-sm ring-1 ring-emerald-500/20' 
+                                                : 'bg-white border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/30 hover:-translate-y-0.5'}`}
                                     >
                                         <div className="flex items-center gap-4 flex-1 min-w-0">
                                             {/* Favicon / Icon */}
-                                            <div className="w-12 h-12 rounded-xl bg-violet-50 flex flex-shrink-0 items-center justify-center">
+                                            <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100/60 flex flex-shrink-0 items-center justify-center">
                                                 {faviconUrl ? (
                                                     <img src={faviconUrl} alt={domain} className="w-6 h-6 object-contain opacity-90"
                                                         onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'block'; }}
                                                     />
                                                 ) : null}
-                                                <LinkIcon className={`w-6 h-6 text-violet-400 ${faviconUrl ? 'hidden' : ''}`} />
+                                                <LinkIcon className={`w-6 h-6 text-slate-400 ${faviconUrl ? 'hidden' : ''}`} />
                                             </div>
 
                                             {/* Domain & Permission */}
@@ -343,11 +343,11 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                                         {/* Actions */}
                                         <div className="flex items-center justify-end gap-4 flex-shrink-0">
                                             <div className="mr-3 h-5 w-5">
-                                                {isSelected && <CheckCircleIcon className="w-6 h-6 text-violet-600 animate-pulse" />}
+                                                {isSelected && <CheckCircleIcon className="w-6 h-6 text-emerald-600" />}
                                             </div>
                                             <button
                                                 onClick={e => handleSelectPages(property, e)}
-                                                className="px-5 py-2 text-sm font-bold border border-violet-400/80 text-violet-600 rounded-xl bg-white hover:bg-violet-50 hover:text-violet-700 transition-colors shadow-sm"
+                                                className="px-5 py-2 text-sm font-bold border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors shadow-sm"
                                             >
                                                 Select Pages
                                             </button>

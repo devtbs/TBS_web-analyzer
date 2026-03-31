@@ -18,7 +18,7 @@ const Favicon = ({ url, size = 20 }) => {
     const [err, setErr] = useState(false);
     try {
         const host = new URL(url).hostname;
-        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-slate-400 group-hover:text-violet-500 transition-colors" />;
+        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />;
         return (
             <img
                 src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
@@ -30,7 +30,7 @@ const Favicon = ({ url, size = 20 }) => {
             />
         );
     } catch {
-        return <GlobeAltIcon style={{ width: size, height: size }} className="text-slate-400 group-hover:text-violet-500 transition-colors" />;
+        return <GlobeAltIcon style={{ width: size, height: size }} className="text-slate-400 group-hover:text-emerald-500 transition-colors" />;
     }
 };
 
@@ -149,7 +149,7 @@ const NewAnalysis = () => {
     const canAnalyze = totalUrls > 0 && totalUrls <= 5;
 
     return (
-        <div className="flex flex-col items-center justify-center flex-1 min-h-full w-full py-12" style={{ background: '#f5f4fa' }}>
+        <div className="flex flex-col items-center justify-center flex-1 min-h-full w-full py-12 bg-slate-50">
             
             {analysisId && (
                 <ProgressModal
@@ -165,31 +165,31 @@ const NewAnalysis = () => {
                         initial={{ opacity: 0, scale: 0.98, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         transition={{ duration: 0.4, ease: 'easeOut' }}
-                        className="bg-white rounded-[24px] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] overflow-hidden border border-white p-6 sm:p-8 relative"
+                        className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 sm:p-8 relative"
                     >
                         {/* ── Mode Toggle ── */}
                         <div className="flex justify-center mb-6">
-                            <div className="bg-slate-100/80 rounded-full p-1.5 flex relative w-full sm:w-[560px]">
+                            <div className="bg-slate-50/80 rounded-full p-2 flex relative w-full sm:w-[560px]">
                                 {/* Active slider background */}
                                 <motion.div
                                     layout
                                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                                    className="absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500 rounded-full shadow-md"
-                                    style={{ left: useGSC ? '6px' : 'calc(50%)' }}
+                                    className="absolute top-2 bottom-2 w-[calc(50%-8px)] bg-emerald-600 rounded-full shadow-sm"
+                                    style={{ left: useGSC ? '8px' : 'calc(50%)' }}
                                 />
                                 <button
                                     onClick={() => switchTab(true)}
                                     disabled={tabLoading}
-                                    className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-base font-bold relative z-10 transition-colors duration-200 
-                                        ${useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                                    className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-[15px] font-bold relative z-10 transition-colors duration-200 
+                                        ${useGSC ? 'text-white' : 'text-[#64748b] hover:text-slate-800'}`}
                                 >
                                     Search Console
                                 </button>
                                 <button
                                     onClick={() => switchTab(false)}
                                     disabled={tabLoading}
-                                    className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-base font-bold relative z-10 transition-colors duration-200 
-                                        ${!useGSC ? 'text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                                    className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-[15px] font-bold relative z-10 transition-colors duration-200 
+                                        ${!useGSC ? 'text-white' : 'text-[#64748b] hover:text-slate-800'}`}
                                 >
                                     Manual Entry
                                 </button>
@@ -207,7 +207,7 @@ const NewAnalysis = () => {
                                     className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[2px] rounded-2xl"
                                 >
                                     <div className="flex flex-col items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full border-[3px] border-violet-200 border-t-violet-600 animate-spin" />
+                                        <div className="w-8 h-8 rounded-full border-[3px] border-emerald-200 border-t-emerald-600 animate-spin" />
                                         <span className="text-sm font-semibold text-slate-400 tracking-wide">Switching...</span>
                                     </div>
                                 </motion.div>
@@ -228,8 +228,8 @@ const NewAnalysis = () => {
                                             transition={{ delay: index * 0.05 }}
                                             className="flex gap-4 items-center rounded-2xl p-1.5 hover:bg-slate-50 transition-colors"
                                         >
-                                            <div className="flex-none p-3 rounded-2xl bg-violet-100/60 flex items-center justify-center">
-                                                <GlobeAltIcon className="w-6 h-6 text-violet-600" />
+                                            <div className="flex-none p-3 rounded-2xl bg-emerald-50 border border-emerald-100/50 flex items-center justify-center">
+                                                <GlobeAltIcon className="w-6 h-6 text-emerald-600" />
                                             </div>
                                             <div className="flex-1 relative">
                                                 <input
@@ -238,7 +238,7 @@ const NewAnalysis = () => {
                                                     onChange={e => updateUrl(index, e.target.value)}
                                                     onBlur={() => normalizeUrl(index)}
                                                     placeholder={`https://example${index > 0 ? index + 1 : ''}.com`}
-                                                    className="w-full px-5 py-3.5 bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-violet-400 text-base text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
+                                                    className="w-full px-5 py-3.5 bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-emerald-500 text-base text-slate-800 placeholder-slate-400 focus:outline-none transition-all"
                                                     autoFocus={index === urls.length - 1}
                                                 />
                                             </div>
@@ -255,9 +255,9 @@ const NewAnalysis = () => {
                                     {urls.length + selectedPages.length < 5 && (
                                         <button
                                             onClick={addUrlField}
-                                            className="ml-3 mt-6 flex items-center gap-3 text-base font-bold text-violet-600 hover:text-violet-700 transition-colors"
+                                            className="ml-3 mt-6 flex items-center gap-3 text-base font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
                                         >
-                                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-violet-100 text-violet-600">
+                                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-500/20">
                                                 <PlusIcon className="w-5 h-5" />
                                             </div>
                                             Add Another Website
@@ -292,7 +292,7 @@ const NewAnalysis = () => {
                                                 animate={{ opacity: 1, y: 0 }}
                                                 transition={{ delay: i * 0.03 }}
                                                 key={i} 
-                                                className="flex items-center justify-between py-2.5 px-4 bg-white rounded-[14px] border border-slate-200/60 shadow-sm group hover:border-violet-300 hover:shadow-md transition-all"
+                                                className="flex items-center justify-between py-2.5 px-4 bg-white rounded-[14px] border border-slate-200/60 shadow-sm group hover:border-emerald-300 hover:shadow-md transition-all"
                                             >
                                                 <div className="flex items-center gap-3 overflow-hidden">
                                                     <div className="flex-shrink-0 mt-0.5">
@@ -322,9 +322,9 @@ const NewAnalysis = () => {
                                 whileTap={{ scale: canAnalyze && !isAnalyzing ? 0.98 : 1 }}
                                 onClick={handleAnalyze}
                                 disabled={isAnalyzing || !canAnalyze}
-                                className={`px-12 sm:px-16 py-4 rounded-full font-bold text-[16px] sm:text-[17px] transition-all duration-300 flex items-center justify-center gap-3 text-white bg-gradient-to-r from-violet-600 via-purple-500 to-fuchsia-500
+                                className={`px-12 sm:px-16 py-4 rounded-xl font-bold text-[16px] sm:text-[17px] transition-all duration-300 flex items-center justify-center gap-3 text-white bg-slate-900 border border-slate-800
                                     ${canAnalyze && !isAnalyzing
-                                        ? 'shadow-[0_10px_30px_-10px_rgba(168,85,247,0.5)] hover:shadow-[0_15px_35px_-10px_rgba(168,85,247,0.6)] hover:-translate-y-0.5'
+                                        ? 'shadow-lg shadow-slate-900/20 hover:shadow-xl hover:shadow-slate-900/30 hover:-translate-y-0.5'
                                         : 'opacity-60 cursor-not-allowed shadow-none grayscale-[20%]'
                                     }`}
                             >

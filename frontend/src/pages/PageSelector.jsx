@@ -10,7 +10,7 @@ const Favicon = ({ url, size = 20 }) => {
     const [err, setErr] = useState(false);
     try {
         const host = new URL(url).hostname;
-        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-violet-300" />;
+        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-emerald-300" />;
         return (
             <img
                 src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
@@ -22,7 +22,7 @@ const Favicon = ({ url, size = 20 }) => {
             />
         );
     } catch {
-        return <GlobeAltIcon style={{ width: size, height: size }} className="text-violet-300" />;
+        return <GlobeAltIcon style={{ width: size, height: size }} className="text-emerald-300" />;
     }
 };
 
@@ -151,9 +151,9 @@ const PageSelector = () => {
 
     if (loading) {
         return (
-            <div className="flex flex-col flex-1 min-h-[80vh] w-full items-center justify-center" style={{ background: '#f5f4fa' }}>
+            <div className="flex flex-col flex-1 min-h-[80vh] w-full items-center justify-center bg-slate-50">
                 <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 rounded-full border-[3px] border-violet-200 border-t-violet-600 animate-spin" />
+                    <div className="w-12 h-12 rounded-full border-[3px] border-emerald-200 border-t-emerald-600 animate-spin" />
                     <p className="text-sm font-semibold text-slate-500 tracking-wide">Connecting to Google Search Console...</p>
                 </div>
             </div>
@@ -168,64 +168,76 @@ const PageSelector = () => {
     const isAtLimit = remainingSlots === 0;
 
     return (
-        <div className="flex flex-col flex-1 h-full w-full py-4 sm:py-8 px-4 sm:px-6" style={{ background: '#f5f4fa' }}>
+        <div className="flex flex-col flex-1 h-full w-full py-4 sm:py-8 px-4 sm:px-6 bg-slate-50">
             <div className="w-full max-w-[1200px] mx-auto flex flex-col flex-1 relative z-10 min-h-[600px] max-h-[calc(100vh-8rem)]">
                 {/* ── Main Floating Card ── */}
-                <div className="bg-white rounded-[24px] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.05)] overflow-hidden border border-white flex flex-col flex-1">
+                <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 flex flex-col flex-1">
                     
-                    {/* Header Strip */}
-                    <div className="px-6 sm:px-8 py-5 sm:py-6 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div>
-                            <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Select Pages for Analysis</h1>
-                            <div className="flex items-center gap-3 mt-1.5">
-                                <span className="inline-flex items-center rounded-md bg-violet-50 px-2 py-1 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-700/10">
-                                    {propertyUrl}
-                                </span>
-                                {existingPages.length > 0 && (
-                                    <span className="text-sm font-medium text-violet-600">
-                                        {existingPages.length} Pages Already Selected • {remainingSlots} Slots Remaining
+                    {/* Header Strip with Integrated Controls */}
+                    <div className="px-6 sm:px-8 py-6 border-b border-slate-100 flex flex-col gap-6">
+                        {/* Top Row: Title & Action */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h1 className="text-xl sm:text-[22px] font-black text-slate-900 tracking-tight">Select Pages for Analysis</h1>
+                                <div className="flex flex-wrap items-center gap-2.5 mt-2">
+                                    <span className="inline-flex items-center rounded-lg bg-emerald-50/80 px-2.5 py-1 text-xs font-bold text-emerald-800 ring-1 ring-inset ring-emerald-600/20 shadow-sm">
+                                        {propertyUrl}
                                     </span>
-                                )}
+                                    {existingPages.length > 0 && (
+                                        <>
+                                            <span className="text-slate-300 text-xs">•</span>
+                                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50/50 px-2.5 py-1 rounded-lg border border-emerald-100/50">
+                                                {existingPages.length} Pages Already Selected • {remainingSlots} Slots Remaining
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
                             </div>
+                            <button
+                                onClick={analyzeSelected}
+                                disabled={selectedPages.size === 0 || isAtLimit}
+                                className={`px-8 py-3.5 rounded-2xl font-bold text-[15px] transition-all duration-300 flex items-center justify-center gap-2 border whitespace-nowrap min-w-[180px]
+                                    ${selectedPages.size > 0 && !isAtLimit
+                                        ? 'text-white bg-slate-900 border-slate-800 shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:shadow-[0_6px_16px_rgba(0,0,0,0.12)] hover:-translate-y-0.5'
+                                        : 'text-slate-400 bg-slate-50 border-slate-200/80 shadow-[0_2px_4px_rgba(0,0,0,0.02)] cursor-not-allowed'
+                                    }`}
+                            >
+                                Import {selectedPages.size} Page{selectedPages.size !== 1 ? 's' : ''}
+                            </button>
                         </div>
-                        <button
-                            onClick={analyzeSelected}
-                            disabled={selectedPages.size === 0 || isAtLimit}
-                            className={`px-8 py-3 rounded-full font-bold text-sm transition-all duration-300 flex items-center gap-2
-                                ${selectedPages.size > 0 && !isAtLimit
-                                    ? 'text-white bg-gradient-to-r from-violet-600 to-fuchsia-600 shadow-md hover:shadow-lg hover:-translate-y-0.5'
-                                    : 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                }`}
-                        >
-                            Import {selectedPages.size} Page{selectedPages.size !== 1 ? 's' : ''}
-                        </button>
-                    </div>
 
-                    {/* Filters & Content Area */}
-                    <div className="p-6 sm:p-8 flex flex-col flex-1 overflow-hidden bg-white">
-                        
-                        {/* Search and Sort Controls */}
-                        <div className="flex gap-4 items-center mb-6">
-                            <div className="flex-1 relative">
-                                <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        {/* Bottom Row: Search & Sort Controls */}
+                        <div className="flex flex-col sm:flex-row gap-3 items-center w-full">
+                            <div className="flex-1 w-full relative group">
+                                <MagnifyingGlassIcon className="absolute left-4 top-1/2 transform -translate-y-1/2 w-[18px] h-[18px] text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
                                 <input
                                     type="text"
                                     placeholder="Search pages or queries (e.g., 'tax', 'mortgage')..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-11 pr-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 focus:bg-white text-slate-700 transition-all font-medium placeholder:font-normal placeholder-slate-400"
+                                    className="w-full pl-11 pr-5 py-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 focus:bg-white text-slate-700 transition-all font-semibold placeholder:font-medium placeholder-slate-400 shadow-[0_2px_4px_rgba(0,0,0,0.02)]"
                                 />
                             </div>
                             <select
                                 value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value)}
-                                className="px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 focus:bg-white text-slate-700 font-medium transition-all cursor-pointer min-w-[200px]"
+                                className="w-full sm:w-auto px-5 py-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl focus:outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 focus:bg-white text-slate-700 font-bold transition-all cursor-pointer min-w-[200px] shadow-[0_2px_4px_rgba(0,0,0,0.02)] appearance-none"
+                                style={{
+                                    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M5 7l5 5 5-5'/%3e%3c/svg%3e")`,
+                                    backgroundPosition: `right 1rem center`,
+                                    backgroundRepeat: `no-repeat`,
+                                    backgroundSize: `1.2em 1.2em`
+                                }}
                             >
                                 <option value="clicks">Sort by Clicks</option>
                                 <option value="impressions">Sort by Impressions</option>
                                 <option value="position">Sort by Position</option>
                             </select>
                         </div>
+                    </div>
+
+                    {/* Content Area */}
+                    <div className="p-6 flex flex-col flex-1 overflow-hidden bg-white">
 
                         {/* List Metadata */}
                         <div className="flex items-center justify-between mb-4 px-1">
@@ -234,9 +246,9 @@ const PageSelector = () => {
                             </span>
                             <button
                                 onClick={toggleAll}
-                                className="text-sm font-bold text-violet-600 hover:text-violet-700 transition-colors flex items-center gap-2"
+                                className="text-sm font-bold text-emerald-600 hover:text-emerald-700 transition-colors flex items-center gap-2"
                             >
-                                <div className={`w-5 h-5 rounded md flex items-center justify-center transition-colors border ${selectedPages.size === filteredPages.length && filteredPages.length > 0 ? 'bg-violet-600 border-violet-600' : 'bg-white border-slate-300'}`}>
+                                <div className={`w-5 h-5 rounded md flex items-center justify-center transition-colors border ${selectedPages.size === filteredPages.length && filteredPages.length > 0 ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-300'}`}>
                                     {selectedPages.size === filteredPages.length && filteredPages.length > 0 && <CheckIcon className="w-3.5 h-3.5 text-white" />}
                                 </div>
                                 {selectedPages.size === filteredPages.length && filteredPages.length > 0 ? 'Deselect All' : 'Select All Filtered'}
@@ -256,13 +268,13 @@ const PageSelector = () => {
                                         onClick={() => togglePage(page.url)}
                                         className={`flex flex-col lg:flex-row lg:items-center justify-between p-4 sm:p-5 border cursor-pointer transition-all duration-300 gap-4 group rounded-[20px]
                                             ${isSelected 
-                                                ? 'bg-violet-50/60 border-violet-400 shadow-sm ring-1 ring-violet-500/20' 
-                                                : 'bg-white border-slate-200 shadow-sm hover:border-violet-300 hover:shadow-md hover:bg-violet-50/30 hover:-translate-y-0.5'}`}
+                                                ? 'bg-emerald-50/40 border-emerald-400 shadow-sm ring-1 ring-emerald-500/20' 
+                                                : 'bg-white border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/30 hover:-translate-y-0.5'}`}
                                     >
                                         <div className="flex items-start gap-4 flex-1 min-w-0">
                                             {/* Custom Checkbox */}
                                             <div className="pt-0.5 sm:pt-1">
-                                                <div className={`w-5 h-5 rounded-[6px] border flex items-center justify-center transition-all ${isSelected ? 'bg-violet-600 border-violet-600 shadow-md shadow-violet-400/30' : 'bg-white border-slate-300 group-hover:border-violet-400'}`}>
+                                                <div className={`w-5 h-5 rounded-[6px] border flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-400/30' : 'bg-white border-slate-300 group-hover:border-emerald-400'}`}>
                                                     {isSelected && <CheckIcon className="w-3.5 h-3.5 text-white stroke-[3px]" />}
                                                 </div>
                                             </div>
@@ -273,7 +285,7 @@ const PageSelector = () => {
                                                     <div className="flex-shrink-0 mt-0.5">
                                                         <Favicon url={page.url} size={16} />
                                                     </div>
-                                                    <div className="text-[15px] sm:text-[16px] text-slate-800 font-bold truncate tracking-tight transition-colors group-hover:text-violet-900" title={page.url}>
+                                                    <div className="text-[15px] sm:text-[16px] text-slate-800 font-bold truncate tracking-tight transition-colors group-hover:text-emerald-900" title={page.url}>
                                                         {page.url.replace('https://', '').replace('http://', '').replace('www.', '')}
                                                     </div>
                                                 </div>
@@ -284,7 +296,7 @@ const PageSelector = () => {
                                                             key={idx}
                                                             className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[12px] font-semibold border shadow-sm transition-all
                                                                 ${isSelected 
-                                                                    ? 'bg-white border-violet-200 text-violet-700' 
+                                                                    ? 'bg-white border-emerald-200 text-emerald-700' 
                                                                     : 'bg-slate-50 border-slate-200/80 text-slate-600 group-hover:bg-white'}`}
                                                         >
                                                             {query.query}
