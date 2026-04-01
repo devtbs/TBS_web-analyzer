@@ -14,11 +14,13 @@ import {
     ChartBarIcon,
     DocumentTextIcon,
     ChevronDownIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
     EllipsisHorizontalIcon 
 } from '@heroicons/react/20/solid';
+import Favicon from '../ui/Favicon';
 import api from '../../api/axios';
 
 const NAV_GROUPS = [
@@ -44,7 +46,7 @@ const NAV_GROUPS = [
     },
 ];
 
-const Sidebar = () => {
+const Sidebar = ({ mobileOpen, onMobileClose }) => {
     const [collapsed, setCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar_collapsed');
         return saved === 'true';
@@ -61,6 +63,7 @@ const Sidebar = () => {
         localStorage.setItem('sidebar_folders_open', isFoldersOpen);
         setIsMenuTransitioning(true);
     }, [isFoldersOpen]);
+
 
     const [activeFolderMenu, setActiveFolderMenu] = useState(null);
     const [editingFolder, setEditingFolder] = useState(null);
@@ -176,11 +179,26 @@ const Sidebar = () => {
 
     return (
         <>
+        {/* Mobile overlay backdrop */}
+        <AnimatePresence>
+            {mobileOpen && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                    onClick={onMobileClose}
+                />
+            )}
+        </AnimatePresence>
+
+        {/* Desktop sidebar */}
         <motion.aside
             initial={false}
             animate={{ width: collapsed ? 88 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
-            className="relative flex flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-slate-700/30"
+            className="hidden md:flex relative flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-slate-700/30"
             style={{ background: '#1e293b' }}
         >
             <div className="relative flex flex-col h-full">
@@ -267,7 +285,7 @@ const Sidebar = () => {
                                                     style={{ 
                                                         background: active ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
                                                         boxShadow: active ? '0 0 15px rgba(16, 185, 129, 0.1)' : 'none'
-                                                    }}
+                                                     }}
                                                 >
                                                     <Icon className="flex-shrink-0" style={{ width: 20, height: 20, color: active ? '#10b981' : 'inherit' }} />
                                                 </div>
@@ -397,10 +415,14 @@ const Sidebar = () => {
                                                                 }}
                                                             >
                                                                 <div className="flex items-center gap-3 min-w-0">
-                                                                    <FolderIconSolid 
-                                                                        className={`flex-shrink-0 transition-colors ${active ? 'text-emerald-500' : 'text-slate-500 group-hover/item:text-slate-300'}`} 
-                                                                        style={{ width: 18, height: 18 }} 
-                                                                    />
+                                                                    {folder && (folder.startsWith('http') || folder.includes('.')) ? (
+                                                                        <Favicon url={folder} size={18} className={`flex-shrink-0 ${active ? '' : 'grayscale opacity-70'}`} />
+                                                                    ) : (
+                                                                        <FolderIconSolid 
+                                                                            className={`flex-shrink-0 transition-colors ${active ? 'text-emerald-500' : 'text-slate-500 group-hover/item:text-slate-300'}`} 
+                                                                            style={{ width: 18, height: 18 }} 
+                                                                        />
+                                                                    )}
                                                                     <span className={`text-[13px] truncate ${active ? 'font-semibold' : 'font-medium'}`}>
                                                                         {folder}
                                                                     </span>
@@ -533,6 +555,119 @@ const Sidebar = () => {
                 </div>
             </div>
         </motion.aside>
+
+        {/* Mobile sidebar drawer */}
+        <AnimatePresence>
+            {mobileOpen && (
+                <motion.aside
+                    initial={{ x: '-100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '-100%' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+                    className="fixed top-0 left-0 w-72 flex flex-col z-50 md:hidden overflow-hidden border-r border-slate-700/30"
+                    style={{ background: '#1e293b', height: '100dvh' }}
+                >
+                    <div className="relative flex flex-col h-full">
+                        {/* Mobile top bar */}
+                        <div className="flex items-center justify-between h-16 px-4 flex-shrink-0" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                            <img src="/TBS-Logo.webp" alt="TBS Logo" className="h-10 w-auto object-contain" />
+                            <button
+                                onClick={onMobileClose}
+                                className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-all"
+                            >
+                                <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Nav groups */}
+                        <nav className="flex-1 py-4 px-2 overflow-y-auto space-y-6" style={{ scrollbarWidth: 'none' }}>
+                            {NAV_GROUPS.map(({ section, items }) => (
+                                <div key={section} className="space-y-1.5">
+                                    <p className="px-3 mb-1.5 text-[11px] font-bold tracking-[0.14em] uppercase" style={{ color: '#6b7280' }}>
+                                        {section}
+                                    </p>
+                                    <div className="space-y-0.5">
+                                        {items.map(({ label, path, icon: Icon }) => {
+                                            const active = isActive(path);
+                                            return (
+                                                <Link
+                                                    key={path}
+                                                    to={path}
+                                                    onClick={onMobileClose}
+                                                    className="relative flex items-center gap-3.5 rounded-lg px-3 py-2.5 transition-all duration-150 outline-none"
+                                                    style={{
+                                                        color: active ? '#10b981' : '#9ca3af',
+                                                        background: active ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
+                                                    }}
+                                                >
+                                                    <Icon style={{ width: 20, height: 20 }} className="flex-shrink-0" />
+                                                    <span className={`text-[15px] whitespace-nowrap ${active ? 'font-bold' : 'font-medium'}`}>{label}</span>
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {folders.length > 0 && (
+                                <div className="space-y-1 pt-2">
+                                    <p className="px-3 text-[11px] font-bold tracking-[0.14em] uppercase mb-2" style={{ color: '#6b7280' }}>Folders</p>
+                                    {folders.map((folder) => {
+                                        const folderPath = `/documents?folder=${encodeURIComponent(folder)}`;
+                                        const active = isActive(folderPath);
+                                        return (
+                                            <Link
+                                                key={folder}
+                                                to={folderPath}
+                                                onClick={onMobileClose}
+                                                className="flex items-center gap-3 px-3 py-2 rounded-lg transition-all"
+                                                style={{ color: active ? '#10b981' : '#94a3b8', background: active ? 'rgba(16, 185, 129, 0.08)' : 'transparent' }}
+                                            >
+                                                <FolderIconSolid style={{ width: 18, height: 18 }} className="flex-shrink-0" />
+                                                <span className="text-[13px] truncate font-medium">{folder}</span>
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </nav>
+
+                        {/* Bottom user card */}
+                        {user && (
+                            <div
+                                className="flex-shrink-0 px-3 pt-3 space-y-3"
+                                style={{
+                                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                                    paddingBottom: 'max(20px, env(safe-area-inset-bottom, 20px))',
+                                }}
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    {user.picture ? (
+                                        <img src={user.picture} alt={user.name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" style={{ border: '1.5px solid rgba(255,255,255,0.2)' }} />
+                                    ) : (
+                                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}>
+                                            {user.name?.[0] ?? 'U'}
+                                        </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-white truncate">{user.name}</p>
+                                        <p className="text-[10px] truncate" style={{ color: '#6b7280' }}>{user.email}</p>
+                                    </div>
+                                </div>
+                                {/* Logout button */}
+                                <button
+                                    onClick={logout}
+                                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-all touch-manipulation"
+                                >
+                                    <ArrowRightEndOnRectangleIcon style={{ width: 18, height: 18 }} className="flex-shrink-0" />
+                                    <span className="text-[13px] font-semibold">Log out</span>
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </motion.aside>
+            )}
+        </AnimatePresence>
 
         <ConfirmDialog
             isOpen={!!deleteFolderTarget}

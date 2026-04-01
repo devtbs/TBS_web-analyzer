@@ -5,26 +5,7 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 
-/* ── Favicon helper ─────────────────────────────────────────── */
-const Favicon = ({ url, size = 20 }) => {
-    const [err, setErr] = useState(false);
-    try {
-        const host = new URL(url).hostname;
-        if (err) return <GlobeAltIcon style={{ width: size, height: size }} className="text-emerald-300" />;
-        return (
-            <img
-                src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
-                alt=""
-                width={size}
-                height={size}
-                className="rounded-sm object-contain"
-                onError={() => setErr(true)}
-            />
-        );
-    } catch {
-        return <GlobeAltIcon style={{ width: size, height: size }} className="text-emerald-300" />;
-    }
-};
+import Favicon from '../components/ui/Favicon';
 
 const PageSelector = () => {
     const [searchParams] = useSearchParams();

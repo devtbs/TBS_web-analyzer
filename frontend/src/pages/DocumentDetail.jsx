@@ -128,6 +128,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                     onSave={handleSave}
                     isSaving={isSaving}
                     onClose={() => navigate('/documents')}
+                    lastSavedAt={documentData.updated_at}
                 />
             </div>
         );

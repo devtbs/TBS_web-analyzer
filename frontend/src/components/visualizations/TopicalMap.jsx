@@ -6,6 +6,7 @@ import api from '../../api/axios';
 import {
     ChevronDownIcon,
     ChevronUpIcon,
+    ChevronUpDownIcon,
     GlobeAltIcon,
     UserGroupIcon,
     LightBulbIcon,
@@ -19,6 +20,7 @@ import {
     WrenchScrewdriverIcon,
     ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
+import Favicon from '../ui/Favicon';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
@@ -84,7 +86,13 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         try {
             // Filter function to remove the export buttons entirely from the final shot
             const filter = (node) => {
+                // Ignore elements specifically marked
                 if (node?.hasAttribute && node.hasAttribute('data-html2canvas-ignore')) {
+                    return false;
+                }
+                // Ignore favicons strictly during export to prevent CORS security errors
+                // that would otherwise crash the PDF generation.
+                if (node?.tagName === 'IMG' && node.src?.includes('s2/favicons')) {
                     return false;
                 }
                 return true;
@@ -93,6 +101,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             const dataUrl = await toPng(element, {
                 quality: 1.0,
                 pixelRatio: 2, // High resolution output
+                cacheBust: true,
+                includeQueryParams: true,
                 backgroundColor: '#ffffff',
                 filter: filter,
                 style: {
@@ -116,7 +126,13 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         
         try {
             const filter = (node) => {
+                // Ignore elements specifically marked
                 if (node?.hasAttribute && node.hasAttribute('data-html2canvas-ignore')) {
+                    return false;
+                }
+                // Ignore favicons strictly during export to prevent CORS security errors
+                // that would otherwise crash the PDF generation.
+                if (node?.tagName === 'IMG' && node.src?.includes('s2/favicons')) {
                     return false;
                 }
                 return true;
@@ -125,6 +141,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             const dataUrl = await toPng(element, {
                 quality: 1.0,
                 pixelRatio: 2, 
+                cacheBust: true,
+                includeQueryParams: true,
                 backgroundColor: '#ffffff',
                 filter: filter,
                 style: {
@@ -285,29 +303,31 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
         <div className="space-y-6" id="export-full-topical-map">
             {/* URL Selector & Global Export */}
-            <div className="flex items-center justify-between w-full gap-4 flex-wrap mb-2" data-html2canvas-ignore="true">
-                <div className="flex gap-2 flex-wrap">
-                    {topicalMaps.length > 1 && topicalMaps.map((map, index) => {
-                        const domain = new URL(map.url).hostname.replace('www.', '');
-                        return (
-                            <button
-                                key={index}
-                                onClick={() => setActiveIndex(index)}
-                                className={`px-4 py-2 rounded-md font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeIndex === index
-                                    ? 'bg-emerald-600 text-white shadow-emerald-200'
-                                    : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
-                                    }`}
-                            >
-                                <GlobeAltIcon className={`w-4 h-4 inline mr-2 ${activeIndex === index ? 'text-white' : 'text-slate-400'}`} />
-                                {domain}
-                            </button>
-                        );
-                    })}
-                </div>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3 mb-2" data-html2canvas-ignore="true">
+                {topicalMaps.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 flex-nowrap" style={{ scrollbarWidth: 'none' }}>
+                        {topicalMaps.map((map, index) => {
+                            const domain = new URL(map.url).hostname.replace('www.', '');
+                            return (
+                                <button
+                                    key={index}
+                                    onClick={() => setActiveIndex(index)}
+                                    className={`flex-shrink-0 px-3 sm:px-4 py-2 rounded-md font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeIndex === index
+                                        ? 'bg-emerald-600 text-white shadow-emerald-200'
+                                        : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
+                                        }`}
+                                >
+                                    <Favicon url={map.url} size={16} className="flex-shrink-0" />
+                                    {domain}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
                 
                 <button
                     onClick={exportAllToPDF}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all ml-auto"
+                    className="self-start sm:self-auto sm:ml-auto flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
                 >
                     <ArrowDownTrayIcon className="w-4 h-4" />
                     Export Map to PDF
@@ -321,7 +341,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                     <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl -mr-32 -mt-32 pointer-events-none" />
                     <h1 className="text-3xl font-black text-white mb-2 tracking-tight relative z-10">{activeMap.central_entity}</h1>
                     <div className="flex items-center gap-2 text-emerald-400/90 text-sm font-semibold relative z-10">
-                        <GlobeAltIcon className="w-4 h-4" />
+                        <Favicon url={activeMap.url} size={16} className="rounded-sm" />
                         {activeMap.url}
                     </div>
                 </div>
@@ -906,16 +926,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200">
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Article Title ↕
+                                                Article Title <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Section ↕
+                                                Section <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Article Type ↕
+                                                Article Type <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Level 1 ↕
+                                                Level 1 <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-8 text-center">
                                                 Actions

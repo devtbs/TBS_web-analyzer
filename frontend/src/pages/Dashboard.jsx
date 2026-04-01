@@ -204,7 +204,7 @@ export default function Dashboard() {
                 </motion.div>
 
                 {/* ── Stat cards ── */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                     {stats.map(({ label, sub, value, icon: Icon, glow }, i) => (
                         <motion.div
                             key={label}
@@ -246,7 +246,7 @@ export default function Dashboard() {
                         className="bg-white rounded-3xl border border-slate-200/70 shadow-sm overflow-hidden"
                     >
                         {/* Header */}
-                        <div className="flex items-center justify-between px-8 py-6 border-b border-slate-50">
+                        <div className="flex items-center justify-between px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-50">
                             <div>
                                 <h2 className="text-[15px] font-black text-slate-900 tracking-tight">Recent Analyses</h2>
                                 <p className="text-[12px] text-slate-400 font-medium mt-0.5">Track your project growth</p>
@@ -316,17 +316,17 @@ export default function Dashboard() {
                                     <button
                                         key={label}
                                         onClick={() => navigate(path)}
-                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 border border-transparent transition-all duration-300 text-left group"
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 active:bg-slate-100 border border-transparent hover:border-slate-100 active:border-slate-200 transition-all duration-200 text-left group touch-manipulation"
                                     >
-                                        <div className="w-9 h-9 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-600 group-hover:border-emerald-600 group-hover:rotate-6 transition-all duration-500">
-                                            <Icon className="w-4.5 h-4.5 text-slate-500 group-hover:text-white transition-all duration-500" />
+                                        <div className="w-9 h-9 rounded-xl bg-white border border-slate-100 shadow-sm flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-600 group-hover:border-emerald-600 group-active:bg-emerald-600 group-active:border-emerald-600 transition-all duration-300">
+                                            <Icon className="w-[18px] h-[18px] text-slate-500 group-hover:text-white group-active:text-white transition-all duration-300" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <p className="text-[13px] font-bold text-slate-800 group-hover:text-emerald-700 transition-colors leading-tight">{label}</p>
-                                            <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate group-hover:text-slate-500 transition-colors">{desc}</p>
+                                            <p className="text-[13px] font-bold text-slate-800 group-hover:text-emerald-700 group-active:text-emerald-700 transition-colors leading-tight">{label}</p>
+                                            <p className="text-[10px] text-slate-400 font-medium mt-0.5 truncate">{desc}</p>
                                         </div>
-                                        <div className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-50 group-hover:bg-emerald-100 transition-all duration-300">
-                                            <ArrowRightIcon className="w-3 h-3 text-slate-300 group-hover:text-emerald-600 transition-colors" />
+                                        <div className="w-6 h-6 rounded-full flex items-center justify-center bg-slate-50 group-hover:bg-emerald-100 group-active:bg-emerald-100 transition-all duration-200">
+                                            <ArrowRightIcon className="w-3 h-3 text-slate-300 group-hover:text-emerald-600 group-active:text-emerald-600 transition-colors" />
                                         </div>
                                     </button>
                                 ))}

@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { Bars3Icon } from '@heroicons/react/24/outline';
 
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
@@ -23,13 +24,26 @@ import DocumentDetail from './pages/DocumentDetail';
 const ProtectedLayout = () => {
     const { user, loading } = useAuth();
     const location = useLocation();
+    const [mobileOpen, setMobileOpen] = useState(false);
+    const mainRef = useRef(null);
+
+    // iOS Safari ignores overflow:hidden on nested elements — must block touchmove directly
+    useEffect(() => {
+        const el = mainRef.current;
+        if (!el) return;
+        const prevent = (e) => e.preventDefault();
+        if (mobileOpen) {
+            el.addEventListener('touchmove', prevent, { passive: false });
+        }
+        return () => el.removeEventListener('touchmove', prevent);
+    }, [mobileOpen]);
 
     // If loading, render the sidebar and a spinner in the content area
     // This maintains layout stability and prevents "flashing" on reload
     if (loading) {
         return (
             <div className="flex h-screen overflow-hidden bg-[#1a1d2e]">
-                <Sidebar />
+                <Sidebar mobileOpen={false} onMobileClose={() => {}} />
                 <div className="flex-1 bg-slate-50 flex items-center justify-center">
                     <div className="flex flex-col items-center gap-6 max-w-xs text-center p-8">
                         <div className="relative">
@@ -71,18 +85,31 @@ const ProtectedLayout = () => {
 
     return (
         <div className="flex h-screen overflow-hidden bg-slate-50">
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto">
-                <motion.div
-                    key={location.pathname}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeOut' }}
-                    className="min-h-full"
-                >
-                    <Outlet />
-                </motion.div>
-            </main>
+            <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+            <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Mobile top bar — only shown on small screens */}
+                <div className="md:hidden flex items-center justify-between px-4 h-14 bg-[#1e293b] flex-shrink-0 z-30 sticky top-0">
+                    <button
+                        onClick={() => setMobileOpen(true)}
+                        className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 text-slate-300 hover:bg-white/20 transition-colors"
+                    >
+                        <Bars3Icon className="w-5 h-5" />
+                    </button>
+                    <img src="/TBS-Logo.webp" alt="TBS Logo" className="h-8 w-auto object-contain" />
+                    <div className="w-9" /> {/* spacer to center logo */}
+                </div>
+                <main ref={mainRef} className={`flex-1 ${mobileOpen ? 'overflow-y-hidden' : 'overflow-y-auto'}`}>
+                    <motion.div
+                        key={location.pathname}
+                        initial={{ opacity: 0, y: 15 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, ease: 'easeOut' }}
+                        className="min-h-full"
+                    >
+                        <Outlet />
+                    </motion.div>
+                </main>
+            </div>
         </div>
     );
 };

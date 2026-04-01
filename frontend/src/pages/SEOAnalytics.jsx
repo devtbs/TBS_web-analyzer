@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import Favicon from '../components/ui/Favicon';
 
 /* ── Custom Chart Tooltip ──────────────────────────────────── */
 const CustomTooltip = ({ active, payload, label, activeMetric }) => {
@@ -126,6 +127,11 @@ const SEOAnalytics = () => {
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     // Load Properties on Component Mount
     useEffect(() => {
@@ -462,120 +468,131 @@ const SEOAnalytics = () => {
     }
 
     return (
-        <div className="p-6 max-w-[1600px] mx-auto min-h-screen bg-white">
+        <div className="p-3 sm:p-6 max-w-[1600px] mx-auto min-h-screen bg-white">
             
             {/* ── Top Header and Filters ── */}
-            <header className="flex flex-wrap items-center gap-4 pb-8 border-b border-slate-100">
-                {/* Domain Selector Picker */}
-                <div className="relative">
-                    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm">
-                        <div className="px-4 bg-slate-50 text-slate-500 font-bold border-r border-slate-200 h-full flex items-center text-[12px] tracking-wide uppercase">
-                            Domain
+            <header className="flex flex-wrap items-center gap-3 pb-6 border-b border-slate-100">
+                    {/* Domain Selector Picker */}
+                    <div className="relative w-full sm:w-auto">
+                        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm w-full sm:w-auto">
+                            <div className="px-3 bg-slate-50 text-slate-500 font-bold border-r border-slate-200 h-full flex items-center text-[12px] tracking-wide uppercase flex-shrink-0">
+                                Domain
+                            </div>
+                            <button 
+                                onClick={() => setIsDomainPickerOpen(!isDomainPickerOpen)}
+                                className="bg-white px-3 flex items-center justify-between gap-3 h-full flex-1 sm:min-w-[14rem] hover:bg-slate-50 transition-colors text-left group/btn"
+                            >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    {selectedProperty ? (
+                                        <Favicon url={selectedProperty} size={18} className="rounded-sm shadow-sm border border-slate-100" />
+                                    ) : (
+                                        <LinkIcon className="w-[18px] h-[18px] text-slate-400" />
+                                    )}
+                                    <span className="text-slate-700 font-bold text-[13px] truncate">
+                                        {selectedProperty ? getDomain(selectedProperty) : 'Select Domain'}
+                                    </span>
+                                </div>
+                                <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isDomainPickerOpen ? 'rotate-180' : ''}`} />
+                            </button>
                         </div>
-                        <button 
-                            onClick={() => setIsDomainPickerOpen(!isDomainPickerOpen)}
-                            className="bg-white px-3 flex items-center justify-between gap-3 h-full min-w-[14rem] hover:bg-slate-50 transition-colors text-left"
-                        >
-                            <span className="text-slate-700 font-bold text-[13px] truncate">
-                                {selectedProperty ? getDomain(selectedProperty) : 'Select Domain'}
-                            </span>
-                            <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isDomainPickerOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                    </div>
 
-                    <AnimatePresence>
-                        {isDomainPickerOpen && (
-                            <>
-                                {/* Click Backdrop */}
-                                <div 
-                                    className="fixed inset-0 z-40" 
-                                    onClick={() => {
-                                        setIsDomainPickerOpen(false);
-                                        setDomainSearch('');
-                                    }} 
-                                />
-                                
-                                <motion.div 
-                                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                                    transition={{ duration: 0.15, ease: "easeOut" }}
-                                    className="absolute left-0 top-[calc(100%+8px)] w-[320px] bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden"
-                                >
-                                    {/* Search Bar */}
-                                    <div className="p-3 border-b border-slate-50 sticky top-0 bg-white/80 backdrop-blur-md z-10">
-                                        <div className="relative group">
-                                            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                                            <input 
-                                                autoFocus
-                                                type="text"
-                                                placeholder="Search properties..."
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-lg pl-9 pr-8 py-2 text-[13px] outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500/30 transition-all font-medium"
-                                                value={domainSearch}
-                                                onChange={(e) => setDomainSearch(e.target.value)}
-                                            />
-                                            {domainSearch && (
-                                                <button 
-                                                    onClick={() => setDomainSearch('')}
-                                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                                                >
-                                                    <XMarkIcon className="w-3.5 h-3.5" />
-                                                </button>
+                        <AnimatePresence>
+                            {isDomainPickerOpen && (
+                                <>
+                                    {/* Click Backdrop */}
+                                    <div 
+                                        className="fixed inset-0 z-40" 
+                                        onClick={() => {
+                                            setIsDomainPickerOpen(false);
+                                            setDomainSearch('');
+                                        }} 
+                                    />
+                                    
+                                    <motion.div 
+                                        initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                                        transition={{ duration: 0.15, ease: "easeOut" }}
+                                        className="absolute left-0 top-[calc(100%+8px)] w-full sm:w-[320px] bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden"
+                                    >
+                                        {/* Search Bar */}
+                                        <div className="p-3 border-b border-slate-50 sticky top-0 bg-white/80 backdrop-blur-md z-10">
+                                            <div className="relative group">
+                                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                                                <input 
+                                                    autoFocus
+                                                    type="text"
+                                                    placeholder="Search properties..."
+                                                    className="w-full bg-slate-50 border border-slate-100 rounded-lg pl-9 pr-8 py-2 text-[13px] outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500/30 transition-all font-medium"
+                                                    value={domainSearch}
+                                                    onChange={(e) => setDomainSearch(e.target.value)}
+                                                />
+                                                {domainSearch && (
+                                                    <button 
+                                                        onClick={() => setDomainSearch('')}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                                                    >
+                                                        <XMarkIcon className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Domain List */}
+                                        <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
+                                            {properties.length === 0 ? (
+                                                <div className="px-4 py-8 text-center">
+                                                    <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                                                        <LinkIcon className="w-5 h-5 text-slate-300" />
+                                                    </div>
+                                                    <p className="text-[13px] font-medium text-slate-400">No properties found</p>
+                                                </div>
+                                            ) : properties.filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase())).length === 0 ? (
+                                                <div className="px-4 py-8 text-center text-[13px] text-slate-400 font-medium">
+                                                    No results for "{domainSearch}"
+                                                </div>
+                                            ) : (
+                                                properties
+                                                    .filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase()))
+                                                    .map(p => (
+                                                         <button 
+                                                            key={p.url}
+                                                            onClick={() => {
+                                                                setSelectedProperty(p.url);
+                                                                setIsDomainPickerOpen(false);
+                                                                setDomainSearch('');
+                                                            }}
+                                                            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
+                                                                selectedProperty === p.url 
+                                                                    ? 'bg-emerald-50 text-emerald-700' 
+                                                                    : 'text-slate-600 hover:bg-slate-50'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <Favicon url={p.url} size={20} className="rounded shadow-sm border border-slate-100" />
+                                                                <div className="flex flex-col min-w-0">
+                                                                    <span className={`text-[13px] font-bold truncate ${selectedProperty === p.url ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                                                        {getDomain(p.url)}
+                                                                    </span>
+                                                                    <span className="text-[11px] text-slate-400 truncate mt-0.5">
+                                                                        {p.url.replace(/^https?:\/\//, '')}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            {selectedProperty === p.url && (
+                                                                <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                            )}
+                                                        </button>
+                                                    ))
                                             )}
                                         </div>
-                                    </div>
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
 
-                                    {/* Domain List */}
-                                    <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
-                                        {properties.length === 0 ? (
-                                            <div className="px-4 py-8 text-center">
-                                                <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                                    <LinkIcon className="w-5 h-5 text-slate-300" />
-                                                </div>
-                                                <p className="text-[13px] font-medium text-slate-400">No properties found</p>
-                                            </div>
-                                        ) : properties.filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase())).length === 0 ? (
-                                            <div className="px-4 py-8 text-center text-[13px] text-slate-400 font-medium">
-                                                No results for "{domainSearch}"
-                                            </div>
-                                        ) : (
-                                            properties
-                                                .filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase()))
-                                                .map(p => (
-                                                    <button 
-                                                        key={p.url}
-                                                        onClick={() => {
-                                                            setSelectedProperty(p.url);
-                                                            setIsDomainPickerOpen(false);
-                                                            setDomainSearch('');
-                                                        }}
-                                                        className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                                                            selectedProperty === p.url 
-                                                                ? 'bg-emerald-50 text-emerald-700' 
-                                                                : 'text-slate-600 hover:bg-slate-50'
-                                                        }`}
-                                                    >
-                                                        <div className="flex flex-col min-w-0">
-                                                            <span className={`text-[13px] font-bold truncate ${selectedProperty === p.url ? 'text-emerald-700' : 'text-slate-700'}`}>
-                                                                {getDomain(p.url)}
-                                                            </span>
-                                                            <span className="text-[11px] text-slate-400 truncate mt-0.5">
-                                                                {p.url.replace(/^https?:\/\//, '')}
-                                                            </span>
-                                                        </div>
-                                                        {selectedProperty === p.url && (
-                                                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                        )}
-                                                    </button>
-                                                ))
-                                        )}
-                                    </div>
-                                </motion.div>
-                            </>
-                        )}
-                    </AnimatePresence>
-                </div>
-
+                {/* Query Filter */}
                 <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
                     <PencilIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                     <span className="text-slate-500 font-bold text-[13px]">Query:</span>
@@ -588,7 +605,7 @@ const SEOAnalytics = () => {
                     />
                 </div>
 
-                {/* Page Filter Pill */}
+                {/* Page Filter */}
                 <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
                     <PencilIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                     <span className="text-slate-500 font-bold text-[13px]">Page:</span>
@@ -601,11 +618,10 @@ const SEOAnalytics = () => {
                     />
                 </div>
 
-
-                <div className="ml-auto flex items-center">
+                <div className="ml-auto">
                     <button 
                         onClick={handleLogoutGSC}
-                        className="text-slate-400 hover:text-rose-500 font-bold text-[13px] transition-colors tracking-tight"
+                        className="text-slate-400 hover:text-rose-500 font-bold text-[13px] transition-colors tracking-tight whitespace-nowrap"
                     >
                         Log out of Search Console
                     </button>
@@ -623,14 +639,14 @@ const SEOAnalytics = () => {
                 <AnimatePresence>
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
                         {/* ── Stats Row ── */}
-                        <div className="py-8 grid grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="py-4 sm:py-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
                             {statsData.map((stat, i) => {
                                 const isInteractive = !!stat.id;
                                 return (
                                     <div
                                         key={i}
                                         onClick={() => isInteractive && setActiveMetric(stat.id)}
-                                        className={`flex flex-col items-center justify-center py-6 px-4 rounded-xl transition-all duration-200 border ${
+                                        className={`flex flex-col items-center justify-center py-4 sm:py-6 px-2 sm:px-4 rounded-xl transition-all duration-200 border ${
                                             isInteractive 
                                                 ? 'hover:shadow-md cursor-pointer' 
                                                 : 'cursor-default'
@@ -640,10 +656,10 @@ const SEOAnalytics = () => {
                                                 : 'bg-white border-slate-100 text-slate-400'
                                         }`}
                                     >
-                                        <span className={`text-[11px] font-extrabold uppercase tracking-wider mb-2 ${stat.active ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                        <span className={`text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider mb-1.5 sm:mb-2 text-center leading-tight ${stat.active ? 'text-emerald-700' : 'text-slate-500'}`}>
                                             {stat.label}
                                         </span>
-                                        <span className={`text-2xl font-black ${stat.active ? 'text-emerald-800' : 'text-slate-700'}`}>
+                                        <span className={`text-xl sm:text-2xl font-black ${stat.active ? 'text-emerald-800' : 'text-slate-700'}`}>
                                             {stat.value}
                                         </span>
                                     </div>
@@ -652,9 +668,9 @@ const SEOAnalytics = () => {
                         </div>
 
                         {/* ── Bar Chart ── */}
-                        <div className="flex justify-between items-center px-4 mt-6 -mb-4 relative z-10">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center px-2 sm:px-4 mt-4 sm:mt-6 -mb-4 relative z-10 gap-2">
                             <h3 className="text-[13px] font-bold text-slate-400 uppercase tracking-widest">Performance Graph</h3>
-                            <div className="relative flex items-center">
+                            <div className="relative flex items-center self-start sm:self-auto">
                                 <select 
                                     value={chartGrouping}
                                     onChange={(e) => setChartGrouping(e.target.value)}
@@ -668,7 +684,8 @@ const SEOAnalytics = () => {
                             </div>
                         </div>
                         <div className="h-[260px] w-full mt-2 mb-12 bg-white px-2">
-                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                            {isMounted && (
+                                <ResponsiveContainer width="100%" height={260}>
                                 <BarChart 
                                     data={enrichedChartData} 
                                     margin={{ top: 20, right: 20, left: -10, bottom: 0 }}
@@ -720,19 +737,20 @@ const SEOAnalytics = () => {
                                     </Bar>
                                 </BarChart>
                             </ResponsiveContainer>
-                        </div>
+                        )}
+                    </div>
 
                         {/* ── Data Table Section ── */}
                         <div className="bg-white mt-8">
                             
                             {/* Top Tabs & Download */}
-                            <div className="flex flex-wrap items-center gap-4 mb-6">
-                                <div className="flex gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-4 mb-4 sm:mb-6">
+                                <div className="flex gap-1.5 sm:gap-2">
                                     {['Pages', 'Queries', 'Clusters'].map(tab => (
                                         <button 
                                             key={tab}
                                             onClick={() => { setActiveTab(tab); setCurrentPage(1); }}
-                                            className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                                            className={`px-3 sm:px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${
                                                 activeTab === tab 
                                                     ? 'bg-white text-slate-800 border-slate-300 border shadow-sm' 
                                                     : 'bg-slate-50 border border-transparent text-slate-800 hover:bg-slate-100'
@@ -744,23 +762,24 @@ const SEOAnalytics = () => {
                                 </div>
                                 <button 
                                     onClick={handleDownloadReport}
-                                    className="text-xs text-slate-800 border border-slate-300 rounded-md px-4 py-1.5 hover:bg-slate-50 transition-all bg-white font-bold shadow-sm"
+                                    className="text-xs text-slate-800 border border-slate-300 rounded-md px-3 sm:px-4 py-1.5 hover:bg-slate-50 transition-all bg-white font-bold shadow-sm whitespace-nowrap"
                                 >
-                                    Download Report
+                                    <span className="hidden sm:inline">Download Report</span>
+                                    <span className="sm:hidden">Download</span>
                                 </button>
                             </div>
 
                             {/* Secondary Filters & Pagination Row */}
-                            <div className="flex justify-between items-center mb-4">
-                                <div className="flex items-center gap-4">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0 mb-4">
+                                <div className="flex items-center gap-2 sm:gap-4">
                                     <div className="relative">
                                         <select 
                                             value={statusFilter}
                                             onChange={(e) => {
                                                 setStatusFilter(e.target.value);
-                                                setCurrentPage(1); // Reset to first page on filter change
+                                                setCurrentPage(1);
                                             }}
-                                            className="appearance-none bg-white border border-slate-200 text-slate-700 text-[13px] font-bold rounded-md px-3 py-1.5 pr-8 focus:outline-none focus:border-emerald-400 cursor-pointer shadow-sm hover:border-slate-300 transition-colors"
+                                            className="appearance-none bg-white border border-slate-200 text-slate-700 text-[12px] sm:text-[13px] font-bold rounded-md px-2.5 sm:px-3 py-1.5 pr-7 sm:pr-8 focus:outline-none focus:border-emerald-400 cursor-pointer shadow-sm hover:border-slate-300 transition-colors"
                                         >
                                             <option value="All">All {activeTab}</option>
                                             <option value="Top result">Top Results</option>
@@ -771,30 +790,31 @@ const SEOAnalytics = () => {
                                             <option value="Unranked">Unranked</option>
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                                            <ChevronDownIcon className="w-4 h-4" />
+                                            <ChevronDownIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                         </div>
                                     </div>
                                     
-                                    <span className="text-[13px] text-slate-500">
+                                    <span className="text-[12px] sm:text-[13px] text-slate-500">
                                         {(filteredPages.length).toLocaleString()} {activeTab === 'Pages' ? 'pages' : activeTab === 'Clusters' ? 'clusters' : 'queries'}
                                     </span>
                                 </div>
 
                                 {/* Pagination Controls */}
                                 {filteredPages.length > 0 && (
-                                    <div className="flex items-center gap-2 text-[13px]">
+                                    <div className="flex items-center gap-1.5 sm:gap-2 text-[12px] sm:text-[13px]">
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                             disabled={currentPage === 1}
-                                            className="px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
+                                            className="px-2.5 sm:px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
                                         >
-                                            Previous
+                                            <span className="hidden sm:inline">Previous</span>
+                                            <span className="sm:hidden">Prev</span>
                                         </button>
-                                        <span className="text-slate-500 px-2 font-bold">{currentPage} / {totalPagesCount}</span>
+                                        <span className="text-slate-500 px-1 sm:px-2 font-bold">{currentPage} / {totalPagesCount}</span>
                                         <button 
                                             onClick={() => setCurrentPage(prev => Math.min(totalPagesCount, prev + 1))}
                                             disabled={currentPage >= totalPagesCount}
-                                            className="px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
+                                            className="px-2.5 sm:px-3 py-1 border border-slate-200 rounded text-slate-700 font-bold hover:bg-slate-50 disabled:opacity-40"
                                         >
                                             Next
                                         </button>
@@ -803,8 +823,9 @@ const SEOAnalytics = () => {
                             </div>
 
                             {/* Table */}
-                            <div className="overflow-x-auto border-t border-slate-200 pt-2">
-                                <table className="w-full text-left text-sm whitespace-nowrap">
+                            <div className="-mx-3 sm:mx-0">
+                                <div className="overflow-x-auto border-t border-slate-200 pt-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+                                    <table className={`text-left text-sm whitespace-nowrap ${activeTab === 'Clusters' ? 'min-w-[860px]' : 'min-w-[700px]'} w-full`}>
                                     <thead className="text-slate-500 text-[12px] font-bold uppercase tracking-wider bg-white border-b border-slate-100">
                                         <tr>
                                             <th className="py-4 px-4 text-slate-700">
@@ -868,13 +889,21 @@ const SEOAnalytics = () => {
                                                 >
                                                     <td className="py-4 px-4 text-slate-600 font-medium text-[13px]">
                                                         <div className="flex items-start gap-3">
-                                                            <ArrowTopRightOnSquareIcon className="w-4 h-4 text-slate-300 mt-0.5 flex-shrink-0" />
-                                                            {activeTab === 'Clusters' ? (
-                                                                <span className="font-bold text-slate-800 capitalize leading-relaxed">{row.label}</span>
+                                                            {activeTab === 'Pages' ? (
+                                                                <Favicon url={row.url} size={16} className="mt-0.5 rounded-sm flex-shrink-0" />
+                                                            ) : activeTab === 'Queries' ? (
+                                                                <MagnifyingGlassIcon className="w-4 h-4 text-slate-300 mt-0.5 flex-shrink-0" />
                                                             ) : (
+                                                                <ArrowTopRightOnSquareIcon className="w-4 h-4 text-slate-300 mt-0.5 flex-shrink-0" />
+                                                            )}
+                                                            {activeTab === 'Pages' ? (
                                                                 <a href={row.url} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors leading-relaxed break-all">
                                                                     {(row.url || '').replace(/^https?:\/\/(www\.)?/, '')}
                                                                 </a>
+                                                            ) : (
+                                                                <span className="font-bold text-slate-800 capitalize leading-relaxed">
+                                                                    {row.url || row.label}
+                                                                </span>
                                                             )}
                                                         </div>
                                                     </td>
@@ -909,7 +938,8 @@ const SEOAnalytics = () => {
                                             </tr>
                                         )}
                                     </tbody>
-                                </table>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </motion.div>

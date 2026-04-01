@@ -344,7 +344,7 @@ const KnowledgeGraph = ({ graphData }) => {
                     {/* Help Text */}
                     <div className="text-center py-3 bg-slate-50 border-t border-slate-100">
                         <p className="text-sm text-slate-500">
-                            💡 <span className="font-medium">Click and drag</span> nodes • <span className="font-medium">Scroll</span> to zoom • <span className="font-medium">Click</span> for details
+                            <span className="hidden sm:inline">💡 </span><span className="font-medium">Click and drag</span> nodes • <span className="font-medium">Scroll</span> to zoom • <span className="font-medium">Click</span> for details
                         </p>
                     </div>
                 </div>

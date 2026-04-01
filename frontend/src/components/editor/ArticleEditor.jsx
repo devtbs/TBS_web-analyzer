@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import { marked } from 'marked';
 import { 
@@ -163,18 +162,32 @@ const MenuBar = ({ editor }) => {
     );
 };
 
-export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving, onClose, documentId }) {
+const parseDate = (date) => {
+    if (!date) return null;
+    if (date instanceof Date) return date;
+    if (typeof date === 'string') {
+        // If it's an ISO string without timezone, assume UTC
+        const utcDate = date.endsWith('Z') || date.includes('+') ? date : `${date}Z`;
+        return new Date(utcDate);
+    }
+    return new Date(date);
+};
+
+const extensions = [
+    StarterKit,
+    TextAlign.configure({
+        types: ['heading', 'paragraph'],
+    }),
+];
+
+export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving, onClose, documentId, lastSavedAt }) {
     const [wordCount, setWordCount] = useState(0);
+    const [lastSaved, setLastSaved] = useState(parseDate(lastSavedAt));
+    const [isDirty, setIsDirty] = useState(false);
     const lastDocId = useRef(null);
 
     const editor = useEditor({
-        extensions: [
-            StarterKit,
-            Underline,
-            TextAlign.configure({
-                types: ['heading', 'paragraph'],
-            }),
-        ],
+        extensions,
         content: '',
         editorProps: {
             attributes: {
@@ -185,8 +198,24 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving
             const text = editor.getText();
             const words = text.trim().split(/\s+/).filter(word => word.length > 0).length;
             setWordCount(words);
+            setIsDirty(true);
         }
     });
+
+    useEffect(() => {
+        if (!isSaving && lastSaved === null && !isDirty) {
+            // Initial load
+        } else if (!isSaving && isSaving === false) {
+            setLastSaved(new Date());
+            setIsDirty(false);
+        }
+    }, [isSaving]);
+
+    useEffect(() => {
+        if (lastSavedAt && !isDirty) {
+            setLastSaved(parseDate(lastSavedAt));
+        }
+    }, [lastSavedAt, isDirty]);
 
     useEffect(() => {
         if (!editor || editor.isDestroyed) return;
@@ -202,6 +231,8 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving
                 editor.commands.setContent('', false);
             }
             lastDocId.current = documentId;
+            setIsDirty(false);
+            setLastSaved(parseDate(lastSavedAt));
             
             // Focus the editor automatically only if it's a new (empty) document
             if (!contentMarkdown.trim()) {
@@ -215,7 +246,25 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving
                 setWordCount(words);
             }, 50);
         }
-    }, [editor, initialMarkdown, title, documentId]);
+    }, [editor, initialMarkdown, title, documentId, lastSavedAt]);
+
+    const formatTime = (date) => {
+        if (!date) return '';
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const formatStatus = () => {
+        if (isSaving) return 'Saving...';
+        if (isDirty) return 'Unsaved changes';
+        if (!lastSaved) return 'Ready to edit';
+        
+        const now = new Date();
+        const diffInSeconds = Math.floor((now - lastSaved) / 1000);
+        
+        if (diffInSeconds < 60) return 'Saved just now';
+        
+        return `Saved at ${formatTime(lastSaved)}`;
+    };
 
     return (
         <div className="flex flex-col h-full bg-white relative">
@@ -244,7 +293,9 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, isSaving
                             {isSaving ? 'Saving...' : 'Save Changes'}
                         </button>
                     )}
-                    <span className="text-xs text-slate-400 font-medium">Saved just now</span>
+                    <span className="text-xs text-slate-400 font-medium">
+                        {formatStatus()}
+                    </span>
                 </div>
             </div>
 

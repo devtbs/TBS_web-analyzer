@@ -9,6 +9,7 @@ import {
     ChevronDownIcon,
     ChevronUpIcon
 } from '@heroicons/react/24/outline';
+import Favicon from '../ui/Favicon';
 
 const Comparison = ({ comparisonData }) => {
     const [expandedSections, setExpandedSections] = useState({
@@ -78,7 +79,7 @@ const Comparison = ({ comparisonData }) => {
         >
             <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shadow-inner">
-                    {Icon && <Icon className="w-4.5 h-4.5 text-emerald-400" />}
+                    {Icon && <Icon className="w-[18px] h-[18px] text-emerald-400" />}
                 </div>
                 <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
                 {count !== undefined && (
@@ -124,7 +125,10 @@ const Comparison = ({ comparisonData }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {Object.entries(comparisonData.business_models).map(([url, model]) => (
                                 <div key={url} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all group">
-                                    <span className="text-[11px] font-black uppercase text-slate-400 group-hover:text-emerald-600 transition-colors tracking-wider">{getDomain(url)}</span>
+                                    <div className="flex items-center gap-2">
+                                        <Favicon url={url} size={14} className="rounded-sm flex-shrink-0" />
+                                        <span className="text-[11px] font-black uppercase text-slate-400 group-hover:text-emerald-600 transition-colors tracking-wider">{getDomain(url)}</span>
+                                    </div>
                                     <span className="text-sm text-slate-900 font-bold">
                                         {model}
                                     </span>

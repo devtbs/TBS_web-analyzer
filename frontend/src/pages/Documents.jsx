@@ -376,8 +376,8 @@ export default function Documents() {
             </div>
 
             {/* ── Table (scrollable on small screens) ── */}
-            <div className="flex-1 overflow-x-auto">
-                <table className="w-full text-left border-collapse" style={{ minWidth: '520px' }}>
+            <div className="flex-1 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                <table className="w-full text-left border-collapse" style={{ minWidth: '380px' }}>
                     <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/50">
                             {/* Select-All Checkbox */}
@@ -426,10 +426,10 @@ export default function Documents() {
                             <tr 
                                 key={doc.id} 
                                 onClick={() => navigate(`/documents/${doc.id}`)}
-                                className={`transition-colors group cursor-pointer border-b border-slate-50 ${
+                                className={`transition-colors group cursor-pointer border-b border-slate-50 touch-manipulation ${
                                     selectedIds.has(doc.id)
                                         ? 'bg-emerald-50/60'
-                                        : 'hover:bg-slate-50/80'
+                                        : 'hover:bg-slate-50/80 active:bg-slate-100'
                                 }`}
                             >
                                 {/* Checkbox */}
@@ -670,7 +670,7 @@ export default function Documents() {
                                                 e.stopPropagation();
                                                 setActiveActionsMenu(activeActionsMenu === doc.id ? null : doc.id);
                                             }}
-                                            className={`p-1 transition-colors cursor-pointer rounded-lg ${activeActionsMenu === doc.id ? 'text-slate-900 bg-slate-100' : 'text-slate-400 hover:text-slate-900'}`}
+                                            className={`p-2 touch-manipulation transition-colors cursor-pointer rounded-lg ${activeActionsMenu === doc.id ? 'text-slate-900 bg-slate-100' : 'text-slate-400 hover:text-slate-900 active:bg-slate-100'}`}
                                         >
                                             <EllipsisHorizontalIcon className="w-5 h-5" />
                                         </button>
@@ -681,7 +681,7 @@ export default function Documents() {
                                                     initial={{ opacity: 0, scale: 0.95, y: -5 }}
                                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                                     exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                                                    className="absolute right-0 top-full mt-0.5 w-[155px] bg-white rounded-2xl shadow-[0_10px_38px_-10px_rgba(22,23,24,0.35),0_10px_20px_-15px_rgba(22,23,24,0.2)] border border-slate-100 z-[110] overflow-hidden p-1 text-left"
+                                                    className="absolute right-0 top-full mt-0.5 w-[160px] bg-white rounded-2xl shadow-[0_10px_38px_-10px_rgba(22,23,24,0.35),0_10px_20px_-15px_rgba(22,23,24,0.2)] border border-slate-100 z-[110] overflow-hidden p-1 text-left"
                                                 >
                                                     <button 
                                                         onClick={(e) => {
@@ -689,7 +689,7 @@ export default function Documents() {
                                                             window.open(`/documents/${doc.id}`, '_blank');
                                                             setActiveActionsMenu(null);
                                                         }}
-                                                        className="w-full flex items-center px-2 py-1.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition-colors text-left"
+                                                        className="w-full flex items-center px-2 py-2 sm:py-1.5 text-[13px] font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 rounded-xl transition-colors text-left touch-manipulation"
                                                     >
                                                         Open in new tab
                                                     </button>
@@ -698,7 +698,7 @@ export default function Documents() {
 
                                                     <button 
                                                         onClick={(e) => handleDelete(e, doc)}
-                                                        className="w-full flex items-center gap-2 px-2 py-1.5 text-[13px] font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors text-left"
+                                                        className="w-full flex items-center gap-2 px-2 py-2 sm:py-1.5 text-[13px] font-bold text-red-500 hover:bg-red-50 active:bg-red-100 rounded-xl transition-colors text-left touch-manipulation"
                                                     >
                                                         <TrashIcon className="w-4 h-4" />
                                                         Delete document
