@@ -20,8 +20,6 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
         percentage: 0
     });
     const [isVisible, setIsVisible] = useState(true);
-    const [startTime] = useState(Date.now());
-    const [estimatedTime, setEstimatedTime] = useState(null);
 
     useEffect(() => {
         if (!analysisId) return;
@@ -42,13 +40,6 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
             try {
                 const data = JSON.parse(event.data);
                 setProgress(data);
-
-                if (data.current_step > 0 && data.current_step < data.total_steps) {
-                    const elapsed = (Date.now() - startTime) / 1000;
-                    const avgTimePerStep = elapsed / data.current_step;
-                    const remainingSteps = data.total_steps - data.current_step;
-                    setEstimatedTime(Math.ceil(avgTimePerStep * remainingSteps));
-                }
 
                 if (data.status === 'complete') {
                     setTimeout(() => {
@@ -75,7 +66,7 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
         };
 
         return () => eventSource.close();
-    }, [analysisId, onComplete, onError, startTime]);
+    }, [analysisId, onComplete, onError]);
 
     const steps = [
         { id: 1, label: 'Scraping',        icon: GlobeAltIcon,        description: 'Extracting website content' },
@@ -84,12 +75,6 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
         { id: 4, label: 'Comparison',      icon: ArrowsRightLeftIcon,  description: 'Analyzing competitors' },
         { id: 5, label: 'Finalizing',      icon: CheckIcon,            description: 'Saving results' },
     ];
-
-    const formatTime = (seconds) => {
-        if (!seconds) return '';
-        if (seconds < 60) return `~${seconds}s`;
-        return `~${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-    };
 
     if (!isVisible) return null;
 
@@ -221,20 +206,6 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
                                 </p>
                             </div>
                         </div>
-
-                        {/* Time estimate */}
-                        {!isComplete && !isFailed && estimatedTime && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="mt-2.5 flex items-center gap-1.5"
-                            >
-                                <ClockIcon className="w-3.5 h-3.5 text-slate-400" />
-                                <span className="text-[12px] text-slate-400 font-medium">
-                                    {formatTime(estimatedTime)} remaining
-                                </span>
-                            </motion.div>
-                        )}
                     </div>
 
                     {/* ── Divider ── */}

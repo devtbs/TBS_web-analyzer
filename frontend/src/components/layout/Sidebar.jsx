@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     ClockIcon,
     ArrowRightEndOnRectangleIcon,
-    ChevronLeftIcon,
     RocketLaunchIcon,
     Squares2X2Icon,
     ChartBarIcon,
