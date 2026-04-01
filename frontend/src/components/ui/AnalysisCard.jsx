@@ -9,7 +9,6 @@ import {
     PencilIcon,
     CheckIcon,
     XMarkIcon,
-    ArrowRightIcon,
 } from '@heroicons/react/24/outline';
 import { CheckCircleIcon as SolidCheckCircle, ExclamationCircleIcon } from '@heroicons/react/24/solid';
 import api from '../../api/axios';

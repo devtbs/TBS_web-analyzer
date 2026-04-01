@@ -14,7 +14,6 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     MagnifyingGlassIcon,
-    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -368,8 +367,8 @@ export default function Documents() {
                         onClick={handleNewDocument}
                         className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm whitespace-nowrap flex-shrink-0"
                     >
-                        <PlusIcon className="w-4 h-4 sm:hidden" />
-                        <span className="hidden sm:inline">New document</span>
+                        <PlusIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">New</span>
                         <span className="sm:hidden">New</span>
                     </button>
                 </div>

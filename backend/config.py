@@ -4,7 +4,7 @@ from typing import List
 
 class Settings(BaseSettings):
     # Database
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/web_analysis"
+    DATABASE_URL: str = "postgresql://tbs_user:tbs_secure_2024@localhost:5432/tbs_marketing"
     
     # Google OAuth
     GOOGLE_CLIENT_ID: str
@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = (
         "http://localhost:5173,http://localhost:3000,"
         "https://analysis.phyominthein.com,https://analysis.phyominthein.com/,"
-        "https://www.analysis.phyominthein.com,https://api.phyominthein.com"
+        "https://api.phyominthein.com,https://api.phyominthein.com/"
     )
     
     @property

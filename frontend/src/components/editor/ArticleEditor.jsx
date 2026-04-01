@@ -11,7 +11,6 @@ import {
     Bars3Icon,
     Bars3BottomLeftIcon,
     Bars3BottomRightIcon,
-    LinkIcon,
     CodeBracketIcon,
     CheckIcon,
     CloudArrowUpIcon,
@@ -188,6 +187,7 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, onTitleC
     const [isDirty, setIsDirty] = useState(false);
     const [localTitle, setLocalTitle] = useState(title || 'Untitled document');
     const lastDocId = useRef(null);
+    const wasSaving = useRef(false);
 
     const editor = useEditor({
         extensions,
@@ -205,20 +205,17 @@ export default function ArticleEditor({ initialMarkdown, title, onSave, onTitleC
         }
     });
 
+    // Only update lastSaved when a real save completes (true → false transition)
     useEffect(() => {
-        if (!isSaving && lastSaved === null && !isDirty) {
-            // Initial load
-        } else if (!isSaving && isSaving === false) {
+        if (isSaving) {
+            wasSaving.current = true;
+        } else if (wasSaving.current) {
+            wasSaving.current = false;
             setLastSaved(new Date());
             setIsDirty(false);
         }
     }, [isSaving]);
 
-    useEffect(() => {
-        if (lastSavedAt && !isDirty) {
-            setLastSaved(parseDate(lastSavedAt));
-        }
-    }, [lastSavedAt, isDirty]);
 
     useEffect(() => {
         if (!editor || editor.isDestroyed) return;
