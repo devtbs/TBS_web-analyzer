@@ -196,7 +196,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
         {/* Desktop sidebar */}
         <motion.aside
             initial={false}
-            animate={{ width: collapsed ? 88 : 260 }}
+            animate={{ width: collapsed ? 76 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
             className="hidden md:flex relative flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-slate-700/30"
             style={{ background: '#1e293b' }}
@@ -209,32 +209,23 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                         <img
                             src="/TBS-Logo.webp"
                             alt="TBS Logo"
-                            className="w-12 h-12 object-contain cursor-pointer transition-transform hover:scale-105"
-                            onClick={() => setCollapsed(false)}
-                            title="Expand Sidebar"
+                            className="w-11 h-11 object-contain"
                         />
                     ) : (
-                        <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center w-full">
                             <img
                                 src="/TBS-Logo.webp"
                                 alt="TBS Logo"
-                                className="h-16 w-auto object-contain flex-shrink-0"
+                                className="h-[52px] w-auto object-contain flex-shrink-0"
                             />
-                            <button
-                                onClick={() => setCollapsed(true)}
-                                className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-[#6b7280] hover:text-white transition-all outline-none"
-                                title="Collapse Sidebar"
-                            >
-                                <ChevronLeftIcon className="w-4 h-4 stroke-[2.5px]" />
-                            </button>
                         </div>
                     )}
                 </div>
 
                 {/* ── Nav groups ── */}
-                <nav className={`flex-1 py-2 overflow-y-auto overflow-x-hidden space-y-6 ${ collapsed ? 'px-0' : 'px-2' } scrollbar-hide`} style={{ scrollbarWidth: 'none' }}>
+                <nav className={`flex-1 overflow-y-auto overflow-x-hidden ${ collapsed ? 'px-0 space-y-1.5 pt-4' : 'px-2 py-2 space-y-6' } scrollbar-hide`} style={{ scrollbarWidth: 'none' }}>
                     {NAV_GROUPS.map(({ section, items }) => (
-                        <div key={section} className="space-y-1.5">
+                        <div key={section} className={collapsed ? 'space-y-0' : 'space-y-1.5'}>
                             {/* Section label */}
                             <AnimatePresence initial={false}>
                                 {!collapsed && (
@@ -252,7 +243,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                             </AnimatePresence>
 
                             {/* Items */}
-                            <div className="space-y-0.5">
+                            <div className={collapsed ? 'space-y-1.5' : 'space-y-0.5'}>
                                 {items.map(({ label, path, icon: Icon }) => {
                                     const active = isActive(path);
                                     return (
@@ -281,7 +272,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
 
                                             {collapsed ? (
                                                 <div
-                                                    className="w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150"
+                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 ${active ? '' : 'group-hover:bg-white/5'}`}
                                                     style={{ 
                                                         background: active ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
                                                         boxShadow: active ? '0 0 15px rgba(16, 185, 129, 0.1)' : 'none'
@@ -314,7 +305,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
 
                     {/* ── Dynamic Folders Section ── */}
                     {folders.length > 0 && (
-                        <div className="space-y-1 pt-2">
+                        <div className={collapsed ? "space-y-1.5 pt-1.5" : "space-y-1 pt-2"}>
                             <AnimatePresence initial={false}>
                                 {!collapsed && (
                                     <motion.div
@@ -340,7 +331,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                                         exit={{ height: 0, opacity: 0 }}
                                         transition={{ duration: 0.2 }}
                                         onAnimationComplete={() => setIsMenuTransitioning(false)}
-                                        className="space-y-0.5"
+                                        className={collapsed ? "space-y-1.5" : "space-y-0.5"}
                                         style={{ overflow: isFoldersOpen && !isMenuTransitioning ? 'visible' : 'hidden' }}
                                     >
                                         {folders.map((folder) => {
@@ -353,18 +344,18 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                                                         key={folder}
                                                         to={folderPath}
                                                         title={folder}
-                                                        className="flex items-center justify-center py-2 group-item"
+                                                        className="flex items-center justify-center py-1.5 group"
                                                     >
                                                         <div
-                                                            className="w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-150"
+                                                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 ${active ? '' : 'group-hover:bg-white/5'}`}
                                                             style={{ 
                                                                 background: active ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
                                                                 boxShadow: active ? '0 0 15px rgba(16, 185, 129, 0.1)' : 'none'
                                                             }}
                                                         >
                                                             <FolderIconSolid 
-                                                                className="flex-shrink-0" 
-                                                                style={{ width: 19, height: 19, color: active ? '#10b981' : '#475569' }} 
+                                                                className={`flex-shrink-0 transition-colors ${active ? 'text-emerald-500' : 'text-slate-500 group-hover:text-slate-300'}`} 
+                                                                style={{ width: 19, height: 19 }} 
                                                             />
                                                         </div>
                                                     </Link>
@@ -485,10 +476,37 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                 </nav>
 
                 {/* ── Bottom ── */}
-                <div className="flex-shrink-0 px-2 pb-4 space-y-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className={`flex-shrink-0 pb-4 ${collapsed ? 'px-0 space-y-3' : 'px-2 space-y-1'}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                    
+                    {/* Expand/Collapse Toggle */}
+                    <button
+                        onClick={() => setCollapsed(!collapsed)}
+                        className={`flex items-center gap-2.5 transition-all duration-150 outline-none text-[#9ca3af] hover:text-white group ${
+                            collapsed ? 'justify-center w-8 h-8 rounded-lg mx-auto hover:bg-white/5' : 'w-full rounded-md px-2.5 py-2 hover:bg-white/5'
+                        }`}
+                        title={collapsed ? "Expand Sidebar" : "Collapse"}
+                    >
+                        {collapsed ? (
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 transition-colors text-slate-400 group-hover:text-slate-200">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                <line x1="9" y1="3" x2="9" y2="21"/>
+                                <path d="M13 9l3 3-3 3"/>
+                            </svg>
+                        ) : (
+                            <>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0 transition-colors">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                                    <line x1="9" y1="3" x2="9" y2="21"/>
+                                    <path d="M15 15l-3-3 3-3"/>
+                                </svg>
+                                <span className="text-[13.5px] font-medium tracking-wide">Collapse</span>
+                            </>
+                        )}
+                    </button>
+
                     {/* User card + Logout */}
                     {user && (
-                        <div className={`flex items-center gap-2.5 py-2.5 rounded-sm ${ collapsed ? 'justify-center px-0' : 'px-2' }`}>
+                        <div className={`flex items-center gap-2.5 rounded-sm ${ collapsed ? 'justify-center px-0 py-0' : 'px-2 py-2.5' }`}>
                             <div className="relative flex-shrink-0 group/avatar">
                                 {user.picture ? (
                                     <img
@@ -539,15 +557,9 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                                     exit={{ opacity: 0 }}
                                     onClick={logout}
                                     title="Logout"
-                                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center outline-none transition-all duration-150 group/btn"
-                                    style={{ background: '#252840' }}
-                                    onMouseEnter={e => e.currentTarget.style.background = '#3d1f1f'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#252840'}
+                                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center outline-none transition-all duration-150 text-slate-400 hover:text-white hover:bg-white/10"
                                 >
-                                    <ArrowRightEndOnRectangleIcon
-                                        className="text-[#888] group-hover/btn:text-red-400 transition-colors"
-                                        style={{ width: 15, height: 15 }}
-                                    />
+                                    <ArrowRightEndOnRectangleIcon style={{ width: 16, height: 16 }} />
                                 </motion.button>
                             )}
                         </div>

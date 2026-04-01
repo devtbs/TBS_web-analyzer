@@ -902,7 +902,7 @@ const SEOAnalytics = () => {
                                                                 </a>
                                                             ) : (
                                                                 <span className="font-bold text-slate-800 capitalize leading-relaxed">
-                                                                    {row.url || row.label}
+                                                                    {row.label || row.url}
                                                                 </span>
                                                             )}
                                                         </div>
