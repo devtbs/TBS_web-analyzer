@@ -102,6 +102,17 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
         }
     };
 
+    const handleTitleChange = async (newTitle) => {
+        try {
+            await api.put(`/api/documents/${documentId}`, { title: newTitle });
+            setDocumentData(prev => ({ ...prev, title: newTitle }));
+            window.dispatchEvent(new CustomEvent('documents-updated'));
+        } catch (error) {
+            console.error('Failed to update title:', error);
+            toast.error('Failed to save title');
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex justify-center items-center h-full min-h-screen">
@@ -126,6 +137,7 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                     title={documentData.title}
                     initialMarkdown={briefData.article_markdown}
                     onSave={handleSave}
+                    onTitleChange={handleTitleChange}
                     isSaving={isSaving}
                     onClose={() => navigate('/documents')}
                     lastSavedAt={documentData.updated_at}
