@@ -80,7 +80,7 @@ const Sidebar = () => {
             const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
             
             // Merge actual folders from docs with saved folders
-            const allUniqueFolders = [...new Set([...documentFolders, ...savedFolders])].sort();
+            const allUniqueFolders = [...new Set([...documentFolders, ...savedFolders])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
             
             // Update state and persistence
             setFolders(allUniqueFolders);
@@ -356,7 +356,7 @@ const Sidebar = () => {
                                             return (
                                                 <div 
                                                     key={folder}
-                                                    className="relative group/item"
+                                                    className={`relative group/item ${activeFolderMenu === folder ? 'z-[50]' : 'z-[10]'}`}
                                                 >
                                                     {editingFolder === folder ? (
                                                         <div className="flex items-center gap-3 px-3 py-1.5 rounded-md bg-white/10 border border-emerald-500/30 mx-1">
@@ -407,11 +407,15 @@ const Sidebar = () => {
                                                                 </div>
                                                                 <div className="w-6" />
                                                             </Link>
-
+                                                            
                                                             {/* Ellipsis menu outside of Link */}
                                                             <div className="absolute right-1 top-1/2 -translate-y-1/2 z-[20]">
                                                                 <button
-                                                                    className="opacity-0 group-hover/item:opacity-100 p-1 hover:bg-white/10 rounded transition-all"
+                                                                    className={`p-1 hover:bg-white/10 rounded transition-all ${
+                                                                        activeFolderMenu === folder 
+                                                                            ? 'opacity-100' 
+                                                                            : (activeFolderMenu ? 'opacity-0' : 'opacity-0 group-hover/item:opacity-100')
+                                                                    }`}
                                                                     onClick={(e) => {
                                                                         e.preventDefault();
                                                                         e.stopPropagation();
