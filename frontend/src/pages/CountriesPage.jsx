@@ -9,12 +9,24 @@ import {
     ChevronDownIcon,
     ArrowUpIcon,
     ArrowDownIcon,
-    MinusIcon,
 } from '@heroicons/react/24/outline';
 import { ChartBarIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
-import Favicon from '../components/ui/Favicon';
+
+/* ── sessionStorage cache (15-min TTL) ────────────────── */
+const ssGet = (key) => {
+    try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts > 15 * 60 * 1000) return null;
+        return data;
+    } catch { return null; }
+};
+const ssSet = (key, data) => {
+    try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+};
 
 /* ── Country code → Full name map ────────────────────── */
 const COUNTRY_NAMES = {
@@ -38,33 +50,26 @@ const COUNTRY_NAMES = {
     pry: 'Paraguay', ury: 'Uruguay', gtm: 'Guatemala', cri: 'Costa Rica',
     pan: 'Panama', dom: 'Dominican Republic', cub: 'Cuba', jam: 'Jamaica',
     tto: 'Trinidad and Tobago', hti: 'Haiti', blz: 'Belize', nic: 'Nicaragua',
-    hnd: 'Honduras', slv: 'El Salvador', mys2: 'Malaysia', idn: 'Indonesia',
+    hnd: 'Honduras', slv: 'El Salvador', idn: 'Indonesia',
     tha: 'Thailand', vnm: 'Vietnam', mmr: 'Myanmar', khm: 'Cambodia',
     lao: 'Laos', brn: 'Brunei', tls: 'Timor-Leste', png: 'Papua New Guinea',
-    fji: 'Fiji', wsm: 'Samoa', ton: 'Tonga', slb: 'Solomon Islands',
-    vut: 'Vanuatu', kir: 'Kiribati', mhl: 'Marshall Islands', plw: 'Palau',
-    fsm: 'Micronesia', nru: 'Nauru', tuv: 'Tuvalu', chn: 'China',
+    fji: 'Fiji', wsm: 'Samoa', ton: 'Tonga', chn: 'China',
     twn: 'Taiwan', hkg: 'Hong Kong', mac: 'Macao', mng: 'Mongolia',
-    prk: 'North Korea', kaz: 'Kazakhstan', uzb: 'Uzbekistan', tkm: 'Turkmenistan',
-    kgz: 'Kyrgyzstan', tjk: 'Tajikistan', afg: 'Afghanistan', irn: 'Iran',
+    kaz: 'Kazakhstan', uzb: 'Uzbekistan', afg: 'Afghanistan', irn: 'Iran',
     irq: 'Iraq', syr: 'Syria', lbn: 'Lebanon', jor: 'Jordan',
     isr: 'Israel', pse: 'Palestine', sau: 'Saudi Arabia', are: 'United Arab Emirates',
     kwt: 'Kuwait', bhr: 'Bahrain', qat: 'Qatar', omn: 'Oman',
     yem: 'Yemen', tur: 'Turkey', arm: 'Armenia', aze: 'Azerbaijan',
-    geo: 'Georgia', alb: 'Albania', mne: 'Montenegro', mkd: 'North Macedonia',
-    bih: 'Bosnia and Herzegovina', xkx: 'Kosovo', mlt: 'Malta', cyp: 'Cyprus',
-    lux: 'Luxembourg', lie: 'Liechtenstein', and: 'Andorra', mco: 'Monaco',
-    smr: 'San Marino', vat: 'Vatican City', isl: 'Iceland', mld: 'Maldives',
-    lka2: 'Sri Lanka', npl: 'Nepal', btn: 'Bhutan', mdv: 'Maldives',
-    mus: 'Mauritius', syc: 'Seychelles', cpv: 'Cape Verde', stp: 'São Tomé',
-    com: 'Comoros', dji: 'Djibouti', eri: 'Eritrea', som: 'Somalia',
-    ssd: 'South Sudan', sdn: 'Sudan', lby: 'Libya', mrt: 'Mauritania',
-    mli: 'Mali', ner: 'Niger', tcd: 'Chad', caf: 'Central African Republic',
-    cod: 'DR Congo', cog: 'Republic of Congo', gab: 'Gabon', gnq: 'Equatorial Guinea',
-    sle: 'Sierra Leone', lbr: 'Liberia', gin: 'Guinea', gnb: 'Guinea-Bissau',
-    gmb: 'Gambia', bfa: 'Burkina Faso', tgo: 'Togo', ben: 'Benin',
-    swz: 'Eswatini', lso: 'Lesotho', bwa: 'Botswana', nam: 'Namibia',
-    zwe: 'Zimbabwe', grl: 'Greenland',
+    geo: 'Georgia', alb: 'Albania', mlt: 'Malta', cyp: 'Cyprus',
+    lux: 'Luxembourg', isl: 'Iceland', mdv: 'Maldives', npl: 'Nepal',
+    btn: 'Bhutan', mus: 'Mauritius', syc: 'Seychelles', dji: 'Djibouti',
+    som: 'Somalia', ssd: 'South Sudan', sdn: 'Sudan', lby: 'Libya',
+    mrt: 'Mauritania', mli: 'Mali', ner: 'Niger', tcd: 'Chad',
+    cod: 'DR Congo', cog: 'Republic of Congo', gab: 'Gabon', sle: 'Sierra Leone',
+    lbr: 'Liberia', gin: 'Guinea', gmb: 'Gambia', bfa: 'Burkina Faso',
+    tgo: 'Togo', ben: 'Benin', swz: 'Eswatini', lso: 'Lesotho',
+    bwa: 'Botswana', nam: 'Namibia', zwe: 'Zimbabwe', grl: 'Greenland',
+    mmr2: 'Myanmar',
 };
 
 const getCountryName = (code) => {
@@ -98,6 +103,24 @@ const presetToDays = (p) => {
 };
 const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+/* ── Skeleton row ──────────────────────────────────── */
+const SkeletonRow = ({ i }) => (
+    <tr className="border-b border-slate-50">
+        <td className="py-3.5 pr-4">
+            <div className="flex items-center gap-3">
+                <div className="w-8 h-3 bg-slate-100 rounded animate-pulse" style={{ animationDelay: `${i * 40}ms` }} />
+                <div className="h-3 bg-slate-100 rounded animate-pulse w-28" style={{ animationDelay: `${i * 40}ms` }} />
+            </div>
+        </td>
+        <td className="py-3.5 px-4 text-right">
+            <div className="h-3 bg-slate-100 rounded animate-pulse w-12 ml-auto" style={{ animationDelay: `${i * 40 + 20}ms` }} />
+        </td>
+        <td className="py-3.5 pl-4 text-right">
+            <div className="h-3 bg-slate-100 rounded animate-pulse w-16 ml-auto" style={{ animationDelay: `${i * 40 + 40}ms` }} />
+        </td>
+    </tr>
+);
+
 /* ══════════════════════════════════════════════════════
    CountriesPage
    ══════════════════════════════════════════════════════ */
@@ -106,22 +129,40 @@ export default function CountriesPage() {
     const selectedProperty = localStorage.getItem('gsc_selected_property') || '';
 
     const [countries, setCountries] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [tab, setTab] = useState('All');           // All | Winning | Losing
+    const [loading, setLoading] = useState(true);       // true only on first load (no cache)
+    const [isUpdating, setIsUpdating] = useState(false); // true on date-change refetch
+    const [tab, setTab] = useState('All');
     const [preset, setPreset] = useState('Last 28 days');
     const [days, setDays] = useState(28);
     const [isPresetOpen, setIsPresetOpen] = useState(false);
     const [sortKey, setSortKey] = useState('clicks');
     const [sortDir, setSortDir] = useState('desc');
 
-    /* ── Fetch ── */
+    /* ── Fetch with caching ── */
     useEffect(() => {
         if (!selectedProperty) { setLoading(false); return; }
-        setLoading(true);
+
+        const cacheKey = `countries_${selectedProperty}_${days}`;
+        const cached = ssGet(cacheKey);
+
+        if (cached) {
+            setCountries(cached);
+            setLoading(false);
+            return;
+        }
+
+        // First load → show skeletons; subsequent → inline fade
+        if (countries.length === 0) setLoading(true);
+        else setIsUpdating(true);
+
         api.get(`/auth/gsc/countries/${encodeURIComponent(selectedProperty)}`, { params: { days } })
-            .then(res => setCountries(res.data.countries || []))
+            .then(res => {
+                const data = res.data.countries || [];
+                ssSet(cacheKey, data);
+                setCountries(data);
+            })
             .catch(err => toast.error(err.response?.data?.detail || 'Failed to load countries'))
-            .finally(() => setLoading(false));
+            .finally(() => { setLoading(false); setIsUpdating(false); });
     }, [selectedProperty, days]);
 
     /* ── Filter + sort ── */
@@ -192,7 +233,6 @@ export default function CountriesPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Filter */}
                     <button className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-[13px] font-semibold text-slate-600 bg-white shadow-sm hover:bg-slate-50 transition-colors">
                         <FunnelIcon className="w-4 h-4 text-slate-400" />
                         Filter
@@ -202,9 +242,13 @@ export default function CountriesPage() {
                     <div className="relative">
                         <button
                             onClick={() => setIsPresetOpen(!isPresetOpen)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-[13px] font-semibold text-slate-600 bg-white shadow-sm hover:bg-slate-50 transition-colors"
+                            disabled={isUpdating}
+                            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-[13px] font-semibold text-slate-600 bg-white shadow-sm hover:bg-slate-50 transition-colors disabled:opacity-70"
                         >
-                            <ClockIcon className="w-4 h-4 text-slate-400" />
+                            {isUpdating
+                                ? <div className="w-4 h-4 border-[2px] border-slate-300 border-t-emerald-500 rounded-full animate-spin" />
+                                : <ClockIcon className="w-4 h-4 text-slate-400" />
+                            }
                             {preset}
                             <ChevronDownIcon className="w-3.5 h-3.5 text-slate-400" />
                         </button>
@@ -233,7 +277,6 @@ export default function CountriesPage() {
                             )}
                         </AnimatePresence>
                     </div>
-
                 </div>
             </div>
 
@@ -263,76 +306,66 @@ export default function CountriesPage() {
             </div>
 
             {/* ── Table ── */}
-            <div className="px-6 pt-2">
-                {loading ? (
-                    <div className="py-20 flex flex-col items-center gap-4">
-                        <div className="w-8 h-8 border-4 border-slate-100 border-t-emerald-500 rounded-full animate-spin" />
-                        <p className="text-slate-400 font-medium text-sm animate-pulse">Loading country data…</p>
-                    </div>
-                ) : (
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="border-b border-slate-100">
-                                <th className="py-3 pr-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider w-1/2">
-                                    <button onClick={() => handleSort('name')} className="flex items-center hover:text-slate-600 transition-colors">
-                                        Country <SortIcon col="name" />
-                                    </button>
-                                </th>
-                                <th className="py-3 px-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">
-                                    <button onClick={() => handleSort('clicks')} className="flex items-center justify-end w-full hover:text-slate-600 transition-colors">
-                                        Clicks <SortIcon col="clicks" />
-                                    </button>
-                                </th>
-                                <th className="py-3 pl-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">
-                                    <button onClick={() => handleSort('impressions')} className="flex items-center justify-end w-full hover:text-slate-600 transition-colors">
-                                        Impressions <SortIcon col="impressions" />
-                                    </button>
-                                </th>
+            <div className={`px-6 pt-2 transition-opacity duration-300 ${isUpdating ? 'opacity-50 pointer-events-none' : ''}`}>
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="border-b border-slate-100">
+                            <th className="py-3 pr-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider w-1/2">
+                                <button onClick={() => handleSort('name')} className="flex items-center hover:text-slate-600 transition-colors">
+                                    Country <SortIcon col="name" />
+                                </button>
+                            </th>
+                            <th className="py-3 px-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">
+                                <button onClick={() => handleSort('clicks')} className="flex items-center justify-end w-full hover:text-slate-600 transition-colors">
+                                    Clicks <SortIcon col="clicks" />
+                                </button>
+                            </th>
+                            <th className="py-3 pl-4 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">
+                                <button onClick={() => handleSort('impressions')} className="flex items-center justify-end w-full hover:text-slate-600 transition-colors">
+                                    Impressions <SortIcon col="impressions" />
+                                </button>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {loading ? (
+                            Array.from({ length: 10 }).map((_, i) => <SkeletonRow key={i} i={i} />)
+                        ) : displayed.length === 0 ? (
+                            <tr>
+                                <td colSpan={3} className="py-16 text-center text-slate-400 font-medium">
+                                    No countries match the current filter.
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            {displayed.length === 0 ? (
-                                <tr>
-                                    <td colSpan={3} className="py-16 text-center text-slate-400 font-medium">
-                                        No countries match the current filter.
-                                    </td>
-                                </tr>
-                            ) : displayed.map((row, idx) => (
-                                <motion.tr
-                                    key={row.name}
-                                    initial={{ opacity: 0, y: 4 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.12, delay: Math.min(idx * 0.018, 0.4) }}
-                                    className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors group"
-                                >
-                                    {/* Country */}
-                                    <td className="py-3.5 pr-4">
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-[11px] font-black text-slate-400 tracking-widest uppercase w-8 flex-shrink-0">
-                                                {row.name?.substring(0, 3).toUpperCase()}
-                                            </span>
-                                            <span className="text-[13px] font-semibold text-slate-800">
-                                                {getCountryName(row.name)}
-                                            </span>
-                                        </div>
-                                    </td>
-
-                                    {/* Clicks */}
-                                    <td className="py-3.5 px-4 text-right">
-                                        <span className="text-[13px] font-bold text-slate-800">{row.clicks.toLocaleString()}</span>
-                                        <DeltaBadge value={row.clicks_delta} />
-                                    </td>
-
-                                    {/* Impressions */}
-                                    <td className="py-3.5 pl-4 text-right">
-                                        <span className="text-[13px] font-bold text-slate-700">{row.impressions.toLocaleString()}</span>
-                                        <DeltaBadge value={row.impressions_delta} />
-                                    </td>
-                                </motion.tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
+                        ) : displayed.map((row, idx) => (
+                            <motion.tr
+                                key={row.name}
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.12, delay: Math.min(idx * 0.018, 0.4) }}
+                                className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors group"
+                            >
+                                <td className="py-3.5 pr-4">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[11px] font-black text-slate-400 tracking-widest uppercase w-8 flex-shrink-0">
+                                            {row.name?.substring(0, 3).toUpperCase()}
+                                        </span>
+                                        <span className="text-[13px] font-semibold text-slate-800">
+                                            {getCountryName(row.name)}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                    <span className="text-[13px] font-bold text-slate-800">{row.clicks.toLocaleString()}</span>
+                                    <DeltaBadge value={row.clicks_delta} />
+                                </td>
+                                <td className="py-3.5 pl-4 text-right">
+                                    <span className="text-[13px] font-bold text-slate-700">{row.impressions.toLocaleString()}</span>
+                                    <DeltaBadge value={row.impressions_delta} />
+                                </td>
+                            </motion.tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </div>
     );

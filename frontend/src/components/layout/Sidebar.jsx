@@ -41,12 +41,12 @@ const PROPERTY_NAV = [
         collapsible: false,
         items: [
             { label: 'GSC Dashboard',       path: '/seo-analytics',                    icon: Squares2X2Icon },
-            { label: 'Queries',             path: '/seo-analytics?tab=queries',        icon: MagnifyingGlassIcon },
-            { label: 'Pages',               path: '/seo-analytics?tab=pages',          icon: DocumentTextIcon },
+            { label: 'Queries',             path: '/seo-analytics/queries',        icon: MagnifyingGlassIcon },
+            { label: 'Pages',               path: '/seo-analytics/pages',          icon: DocumentTextIcon },
             { label: 'Countries',           path: '/seo-analytics/countries',         icon: GlobeAltIcon },
-            { label: 'New & Lost Rankings', path: '/seo-analytics?tab=rankings',       icon: ArrowTrendingUpIcon },
-            { label: 'Rank Changes',        path: '/seo-analytics?tab=rank-changes',   icon: ArrowsUpDownIcon },
-            { label: 'Topic Clusters',      path: '/seo-analytics?tab=clusters',       icon: CircleStackIcon },
+            { label: 'New & Lost Rankings', path: '/seo-analytics/new-lost-rankings',       icon: ArrowTrendingUpIcon },
+            { label: 'Rank Changes',        path: '/seo-analytics/rank-changes',   icon: ArrowsUpDownIcon },
+            { label: 'Topic Clusters',      path: '/seo-analytics/clusters',       icon: CircleStackIcon },
         ],
     },
     {

@@ -18,6 +18,9 @@ import Results from './pages/Results';
 import PageSelector from './pages/PageSelector';
 import SEOAnalytics from './pages/SEOAnalytics';
 import CountriesPage from './pages/CountriesPage';
+import NewLostRankingsPage from './pages/NewLostRankingsPage';
+import PagesPage from './pages/PagesPage';
+import QueriesPage from './pages/QueriesPage';
 import GlobalReports from './pages/GlobalReports';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
@@ -150,6 +153,9 @@ function AppContent() {
                     <Route path="/global-reports" element={<GlobalReports />} />
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />
                     <Route path="/seo-analytics/countries" element={<CountriesPage />} />
+                    <Route path="/seo-analytics/new-lost-rankings" element={<NewLostRankingsPage />} />
+                    <Route path="/seo-analytics/pages" element={<PagesPage />} />
+                    <Route path="/seo-analytics/queries" element={<QueriesPage />} />
                     <Route path="/new-analysis" element={<NewAnalysis />} />
                     <Route path="/history" element={<History />} />
                     <Route path="/select-pages" element={<PageSelector />} />

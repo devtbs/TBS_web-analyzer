@@ -206,46 +206,6 @@ async def disconnect_gsc(
         )
 
 
-@router.get("/auth/gsc/pages/{property_url:path}")
-async def get_gsc_pages(
-    property_url: str,
-    days: int = 90,
-    current_user: UserInfo = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get all pages from a GSC property with their ranking queries
-    Used for cluster analysis and page selection
-    """
-    from services.gsc_service import GSCService
-    from utils.user_manager import get_user_gsc_token
-    from urllib.parse import unquote
-    
-    property_url = unquote(property_url)
-    
-    # Get token from database (returns tuple: token, is_refresh_token)
-    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
-    
-    if not gsc_token:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="GSC not connected. Please connect your Google Search Console account first."
-        )
-    
-    try:
-        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        pages = await service.get_pages_with_queries(property_url, days)
-        return {
-            "property_url": property_url,
-            "pages": pages,
-            "total_pages": len(pages)
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch pages: {str(e)}"
-        )
-
 
 # ============= Analytics Routes =============
 
@@ -277,8 +237,8 @@ async def get_gsc_analytics(
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
         # Fetch chart data and totals
         analytics_data = await service.get_search_analytics(property_url, days, group_by)
-        # Fetch pages (90 days is standard)
-        pages = await service.get_pages_with_queries(property_url, 90)
+        # Fetch pages using the same days window as analytics
+        pages = await service.get_pages_with_queries(property_url, days)
         
         return {
             "property_url": property_url,
@@ -333,6 +293,52 @@ async def get_gsc_countries(
         )
 
 
+@router.get("/auth/gsc/pages/{property_url:path}")
+async def get_gsc_pages(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Return top pages with clicks/impressions/ctr/position for a GSC property."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        pages = await service.get_top_pages(property_url, days)
+        return {"pages": pages, "total": len(pages)}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch pages: {str(e)}")
+
+
+@router.get("/auth/gsc/queries/{property_url:path}")
+async def get_gsc_queries(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Return top queries with clicks/impressions/ctr/position for a GSC property."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        queries = await service.get_top_queries(property_url, days)
+        return {"queries": queries, "total": len(queries)}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch queries: {str(e)}")
+
+
 @router.get("/auth/gsc/devices/{property_url:path}")
 async def get_gsc_devices(
     property_url: str,
@@ -360,6 +366,66 @@ async def get_gsc_devices(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch devices: {str(e)}"
+        )
+
+
+@router.get("/auth/gsc/daily-stats/{property_url:path}")
+async def get_gsc_daily_stats(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get per-day unique query/page counts and position-bucket impressions for charts."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GSC not connected. Please connect your Google Search Console account first."
+        )
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        daily_stats = await service.get_daily_stats(property_url, days)
+        return {"daily_stats": daily_stats}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch daily stats: {str(e)}"
+        )
+
+
+@router.get("/auth/gsc/new-lost-rankings/{property_url:path}")
+async def get_gsc_new_lost_rankings(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Compare current vs previous period to return new and lost queries/pages."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GSC not connected."
+        )
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        data = await service.get_new_lost_rankings(property_url, days)
+        return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch new/lost rankings: {str(e)}"
         )
 
 

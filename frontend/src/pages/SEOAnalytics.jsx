@@ -164,6 +164,7 @@ const SEOAnalytics = () => {
     
     // Data states
     const [loading, setLoading] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
     const [analytics, setAnalytics] = useState(null);
     const [deltas, setDeltas] = useState(null);
     const [pages, setPages] = useState([]);
@@ -202,6 +203,7 @@ const SEOAnalytics = () => {
     // Real GSC breakdown data
     const [realCountries, setRealCountries] = useState([]);
     const [realDevices, setRealDevices] = useState([]);
+    const [realDailyStats, setRealDailyStats] = useState([]);
     const [countriesTotal, setCountriesTotal] = useState(0);
     const countriesSectionRef = useRef(null);
 
@@ -261,7 +263,12 @@ const SEOAnalytics = () => {
         if (!selectedProperty) return;
 
         const fetchAnalytics = async () => {
-            setLoading(true);
+            // First load → full spinner; subsequent (date/property change) → inline updating
+            if (!analytics) {
+                setLoading(true);
+            } else {
+                setIsUpdating(true);
+            }
             try {
                 const authToken = localStorage.getItem('access_token');
                 const res = await api.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, { 
@@ -271,12 +278,13 @@ const SEOAnalytics = () => {
                 setDeltas(res.data.analytics.deltas || null);
                 setChartData(res.data.analytics.chart_data);
                 setPages(res.data.pages);
-                setCurrentPage(1); // Reset pagination
+                setCurrentPage(1);
             } catch (err) {
                 const message = err.response?.data?.detail || 'Failed to fetch analytics for this property';
                 toast.error(message);
             } finally {
                 setLoading(false);
+                setIsUpdating(false);
             }
         };
 
@@ -288,15 +296,17 @@ const SEOAnalytics = () => {
         if (!selectedProperty) return;
         const fetchBreakdowns = async () => {
             try {
-                const [cRes, dRes] = await Promise.all([
+                const [cRes, dRes, dsRes] = await Promise.all([
                     api.get(`/auth/gsc/countries/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
                     api.get(`/auth/gsc/devices/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
+                    api.get(`/auth/gsc/daily-stats/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
                 ]);
                 setRealCountries(cRes.data.countries || []);
                 setCountriesTotal(cRes.data.total || 0);
                 setRealDevices(dRes.data.devices || []);
+                setRealDailyStats(dsRes.data.daily_stats || []);
             } catch (err) {
-                console.warn('Could not load country/device breakdown:', err.message);
+                console.warn('Could not load country/device/daily breakdown:', err.message);
             }
         };
         fetchBreakdowns();
@@ -432,47 +442,59 @@ const SEOAnalytics = () => {
         if (!pages || pages.length === 0 || !chartData || chartData.length === 0) return null;
 
         // 1. Impressions by Position
-        const posBuckets = [
-            { name: '1-3', count: 0, percent: '0' },
-            { name: '4-10', count: 0, percent: '0' },
-            { name: '11-20', count: 0, percent: '0' },
-            { name: '21+', count: 0, percent: '0' }
-        ];
-        let totalImp = 0;
-        pages.forEach(p => {
-            p.queries?.forEach(q => {
-                totalImp += q.impressions;
-                if (q.position <= 3) posBuckets[0].count += q.impressions;
-                else if (q.position <= 10) posBuckets[1].count += q.impressions;
-                else if (q.position <= 20) posBuckets[2].count += q.impressions;
-                else posBuckets[3].count += q.impressions;
+        // Prefer realDailyStats (date×query dimension — more complete, less truncated)
+        // than pages.queries (page×query — blows up row count and gets truncated)
+        let posBuckets;
+        if (realDailyStats.length > 0) {
+            const totals = { p1: 0, p2: 0, p3: 0, p4: 0 };
+            realDailyStats.forEach(d => {
+                totals.p1 += d['1-3']   || 0;
+                totals.p2 += d['4-10']  || 0;
+                totals.p3 += d['11-20'] || 0;
+                totals.p4 += d['21+']   || 0;
             });
-        });
-        if (totalImp > 0) {
-            posBuckets.forEach(b => b.percent = ((b.count / totalImp) * 100).toFixed(1));
+            const totalImp = totals.p1 + totals.p2 + totals.p3 + totals.p4;
+            posBuckets = [
+                { name: '1-3',   count: totals.p1, percent: totalImp > 0 ? ((totals.p1 / totalImp) * 100).toFixed(1) : '0' },
+                { name: '4-10',  count: totals.p2, percent: totalImp > 0 ? ((totals.p2 / totalImp) * 100).toFixed(1) : '0' },
+                { name: '11-20', count: totals.p3, percent: totalImp > 0 ? ((totals.p3 / totalImp) * 100).toFixed(1) : '0' },
+                { name: '21+',   count: totals.p4, percent: totalImp > 0 ? ((totals.p4 / totalImp) * 100).toFixed(1) : '0' },
+            ];
+        } else {
+            // Fallback while daily stats are loading
+            posBuckets = [
+                { name: '1-3',   count: 0, percent: '0' },
+                { name: '4-10',  count: 0, percent: '0' },
+                { name: '11-20', count: 0, percent: '0' },
+                { name: '21+',   count: 0, percent: '0' },
+            ];
+            let totalImp = 0;
+            pages.forEach(p => {
+                p.queries?.forEach(q => {
+                    totalImp += q.impressions;
+                    if (q.position <= 3)       posBuckets[0].count += q.impressions;
+                    else if (q.position <= 10) posBuckets[1].count += q.impressions;
+                    else if (q.position <= 20) posBuckets[2].count += q.impressions;
+                    else                       posBuckets[3].count += q.impressions;
+                });
+            });
+            if (totalImp > 0) {
+                posBuckets.forEach(b => b.percent = ((b.count / totalImp) * 100).toFixed(1));
+            }
         }
         
-        // 2. Query Counting / Pages Ranking (Stacked Area)
-        const stackedQueryData = chartData.map((d, i) => {
-            const base = d.impressions || 0;
-            const b1 = Math.floor(base * (0.05 + Math.sin(i) * 0.02));
-            const b2 = Math.floor(base * (0.8 + Math.cos(i) * 0.05));
-            const b3 = Math.floor(base * (0.1 + Math.sin(i*2) * 0.02));
-            const b4 = Math.max(0, base - b1 - b2 - b3);
-            
-            const totalQ = Math.floor(15 + Math.sin(i * 0.5) * 10 + Math.cos(i * 0.2) * 5);
-            const totalP = Math.floor(2 + Math.sin(i * 0.3) * 1.5);
-            
-            return {
+        // 2. Daily stats for Query Counting & Pages Ranking charts (real data)
+        const stackedQueryData = realDailyStats.length > 0
+            ? realDailyStats
+            : chartData.map((d) => ({
                 name: d.month || d.date || '',
-                '1-3': b1,
-                '4-10': b2,
-                '11-20': b3,
-                '21+': b4,
-                totalQueries: Math.max(2, totalQ),
-                totalPages: Math.max(1, totalP)
-            };
-        });
+                totalQueries: 0,
+                totalPages: 0,
+                '1-3': 0,
+                '4-10': 0,
+                '11-20': 0,
+                '21+': 0,
+            }));
 
         // 3. Devices Table (real data via realDevices state, fallback shape)
         const devicesData = realDevices.length > 0
@@ -516,8 +538,39 @@ const SEOAnalytics = () => {
             imp: p.total_impressions || 0
         }));
 
-        return { posBuckets, stackedQueryData, devicesData, countriesData, newRankingsQueries, newRankingsPages };
-    }, [pages, chartData, analytics, realCountries, realDevices]);
+        // 6. Pages Ranking by position buckets — computed from actual pages[] avg_position
+        //    Each page is placed in a bucket based on its avg_position. We aggregate counts
+        //    across all pages so the chart shows how many pages sit in each position bucket.
+        const pageBuckets = { 'p1-3': 0, 'p4-10': 0, 'p11-20': 0, 'p21+': 0 };
+        pages.forEach(p => {
+            const pos = p.avg_position ?? 0;
+            if (pos > 0 && pos <= 3)        pageBuckets['p1-3']++;
+            else if (pos <= 10)             pageBuckets['p4-10']++;
+            else if (pos <= 20)             pageBuckets['p11-20']++;
+            else if (pos > 20)             pageBuckets['p21+']++;
+        });
+
+        // Build a single-bar data point so the chart has something to render
+        // (we don't have daily page-position history, so show aggregate snapshot)
+        const pagesRankingData = stackedQueryData.map((d, i, arr) => ({
+            name: d.name,
+            // Distribute pages proportionally across dates (static snapshot)
+            '1-3':   i === arr.length - 1 ? pageBuckets['p1-3']   : null,
+            '4-10':  i === arr.length - 1 ? pageBuckets['p4-10']  : null,
+            '11-20': i === arr.length - 1 ? pageBuckets['p11-20'] : null,
+            '21+':   i === arr.length - 1 ? pageBuckets['p21+']  : null,
+        }));
+
+        // Simpler: just a flat summary array for a bar chart
+        const pagesRankingSummary = [
+            { name: 'Pos 1-3',   count: pageBuckets['p1-3'],   fill: '#0f766e' },
+            { name: 'Pos 4-10',  count: pageBuckets['p4-10'],  fill: '#115e59' },
+            { name: 'Pos 11-20', count: pageBuckets['p11-20'], fill: '#34d399' },
+            { name: 'Pos 21+',  count: pageBuckets['p21+'],  fill: '#a7f3d0' },
+        ];
+
+        return { posBuckets, stackedQueryData, pagesRankingSummary, devicesData, countriesData, newRankingsQueries, newRankingsPages };
+    }, [pages, chartData, analytics, realCountries, realDevices, realDailyStats]);
 
     const toggleMetric = (id) => {
         setActiveMetrics(prev => ({ ...prev, [id]: !prev[id] }));
@@ -848,7 +901,9 @@ const SEOAnalytics = () => {
                 </div>
             ) : (
                 <AnimatePresence>
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
+                        className={`transition-opacity duration-300 ${isUpdating ? 'opacity-60 pointer-events-none' : ''}`}
+                    >
                         {/* ── Top Header Context (Mocked to match screenshot) ── */}
                         <div className="flex flex-col mb-8 px-1">
                             {/* Row 1: Date Range (computed from selected days) */}
@@ -890,11 +945,11 @@ const SEOAnalytics = () => {
                                 <div className="flex items-center gap-3">
                                     <div className="relative" ref={datePickerRef}>
                                         <button 
-                                            disabled={loading}
+                                            disabled={isUpdating}
                                             onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
                                             className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-[13px] font-semibold text-slate-600 bg-white shadow-sm hover:bg-slate-50 transition-colors disabled:opacity-70 disabled:cursor-wait"
                                         >
-                                            {loading ? (
+                                            {isUpdating ? (
                                                 <div className="w-4 h-4 border-[2px] border-slate-400 border-t-transparent rounded-full animate-spin shrink-0"></div>
                                             ) : (
                                                 <ClockIcon className="w-4 h-4 text-slate-400 shrink-0" />
@@ -1088,23 +1143,7 @@ const SEOAnalytics = () => {
                                         </div>
                                         {queryViewMode === 'By Ranking' ? (
                                             <>
-                                                {/* Legend Checkboxes */}
-                                                <div className="flex flex-wrap items-center gap-4 mb-4">
-                                                    {['1-3', '4-10', '11-20', '21+'].map((label, i) => {
-                                                        const colors = ['#0f766e', '#115e59', '#34d399', '#a7f3d0'];
-                                                        return (
-                                                            <label key={label} className="flex items-center gap-1.5 cursor-pointer group">
-                                                                <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                                                <span className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900">{label}</span>
-                                                                <span className="text-[11px] text-slate-400">~0/day</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                    <div className="ml-auto flex items-center gap-1.5">
-                                                        <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600" />
-                                                        <span className="text-[11px] font-bold text-slate-700">Stacked View</span>
-                                                    </div>
-                                                </div>
+
                                                 {/* Chart */}
                                                 <div className="h-[200px] mt-auto">
                                                     <ResponsiveContainer width="100%" height="100%">
@@ -1231,38 +1270,33 @@ const SEOAnalytics = () => {
                                         </div>
                                         {pagesViewMode === 'By Ranking' ? (
                                             <>
-                                                {/* Legend Checkboxes */}
+                                                {/* Summary counts */}
                                                 <div className="flex flex-wrap items-center gap-4 mb-4">
-                                                    {['1-3', '4-10', '11-20', '21+'].map((label, i) => {
-                                                        const colors = ['#0f766e', '#115e59', '#34d399', '#a7f3d0'];
-                                                        return (
-                                                            <label key={label} className="flex items-center gap-1.5 cursor-pointer group">
-                                                                <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                                                                <span className="text-[11px] font-bold text-slate-700 group-hover:text-slate-900">{label}</span>
-                                                                <span className="text-[11px] text-slate-400">~0/day (prev: ~0)</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                    <div className="ml-auto flex items-center gap-1.5">
-                                                        <input type="checkbox" defaultChecked className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600" />
-                                                        <span className="text-[11px] font-bold text-slate-700">Stacked View</span>
-                                                    </div>
+                                                    {computedWidgets.pagesRankingSummary.map(b => (
+                                                        <div key={b.name} className="flex items-center gap-1.5">
+                                                            <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: b.fill }} />
+                                                            <span className="text-[11px] font-bold text-slate-700">{b.name}</span>
+                                                            <span className="text-[11px] text-slate-400">{b.count} pages</span>
+                                                        </div>
+                                                    ))}
                                                 </div>
-                                                {/* Chart */}
+                                                {/* Bar chart — page counts per position bucket */}
                                                 <div className="h-[240px] mt-auto">
                                                     <ResponsiveContainer width="100%" height="100%">
-                                                        <AreaChart data={computedWidgets.stackedQueryData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                                                        <BarChart data={computedWidgets.pagesRankingSummary} margin={{ top: 10, right: 0, left: -20, bottom: 0 }} barSize={40}>
                                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} minTickGap={30} />
-                                                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                                            <Tooltip />
-                                                            <Area type="monotone" dataKey="1-3" stackId="1" stroke="#0f766e" fill="#0f766e" fillOpacity={0.6} />
-                                                            <Area type="monotone" dataKey="4-10" stackId="1" stroke="#115e59" fill="#115e59" fillOpacity={0.6} />
-                                                            <Area type="monotone" dataKey="11-20" stackId="1" stroke="#34d399" fill="#34d399" fillOpacity={0.6} />
-                                                            <Area type="monotone" dataKey="21+" stackId="1" stroke="#a7f3d0" fill="#a7f3d0" fillOpacity={0.6} />
-                                                        </AreaChart>
+                                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                                                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} allowDecimals={false} />
+                                                            <Tooltip formatter={(v) => [`${v} pages`, 'Pages']} />
+                                                            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                                                                {computedWidgets.pagesRankingSummary.map((entry, i) => (
+                                                                    <Cell key={i} fill={entry.fill} />
+                                                                ))}
+                                                            </Bar>
+                                                        </BarChart>
                                                     </ResponsiveContainer>
                                                 </div>
+                                                <p className="text-[11px] text-slate-400 text-center mt-2">Number of pages ranked in each position bucket</p>
                                             </>
                                         ) : (
                                             <>
@@ -1398,13 +1432,11 @@ const SEOAnalytics = () => {
                                                             <td className="py-3.5 text-[13px] font-bold text-slate-800 text-right">
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     <span>{row.clicks.toLocaleString()}</span>
-                                                                    <span className="text-[11px] text-emerald-600 font-bold tracking-tight">▲ ∞%</span>
                                                                 </div>
                                                             </td>
                                                             <td className="py-3.5 text-[13px] font-bold text-slate-800 text-right">
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     <span>{row.imp.toLocaleString()}</span>
-                                                                    <span className="text-[11px] text-emerald-600 font-bold tracking-tight">▲ ∞%</span>
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -1413,7 +1445,10 @@ const SEOAnalytics = () => {
                                             </table>
                                         </div>
                                         <div className="mt-auto pt-4 flex items-center justify-center">
-                                            <button className="text-[12px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5">
+                                            <button
+                                                onClick={() => navigate('/seo-analytics/new-lost-rankings')}
+                                                className="text-[12px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5"
+                                            >
                                                 Show All <span className="text-[14px]">→</span>
                                             </button>
                                         </div>

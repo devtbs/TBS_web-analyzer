@@ -403,6 +403,143 @@ class GSCService:
             logger.error(f"Unexpected error fetching countries: {str(e)}")
             raise Exception(f"Failed to fetch countries: {str(e)}")
 
+    async def get_top_pages(self, property_url: str, days: int = 28) -> List[Dict]:
+        """Return top pages with clicks/impressions/ctr/position + delta vs prior period. Cached 15 min."""
+        cache_key = (self.user_email, 'top_pages', property_url, days)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Cache HIT: top_pages {property_url}")
+            return cached
+    
+        try:
+            from datetime import datetime, timedelta
+            end_date   = datetime.now().date()
+            start_date = end_date - timedelta(days=days)
+            prev_end   = start_date - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=days)
+
+            def _fetch(start, end):
+                resp = self.service.searchanalytics().query(
+                    siteUrl=property_url,
+                    body={
+                        'startDate': start.strftime('%Y-%m-%d'),
+                        'endDate':   end.strftime('%Y-%m-%d'),
+                        'dimensions': ['page'],
+                        'rowLimit':   25000,
+                        'dataState':  'all',
+                    }
+                ).execute()
+                result = {}
+                for row in resp.get('rows', []):
+                    key = row['keys'][0].rstrip('/')
+                    result[key] = {
+                        'clicks':      row.get('clicks', 0),
+                        'impressions': row.get('impressions', 0),
+                        'ctr':         round(row.get('ctr', 0) * 100, 2),
+                        'position':    round(row.get('position', 0), 1),
+                    }
+                return result
+
+            current  = _fetch(start_date, end_date)
+            previous = _fetch(prev_start, prev_end)
+
+            result = []
+            for url, cur in current.items():
+                prev = previous.get(url, {})
+                prev_clicks = prev.get('clicks', 0)
+                clicks_delta = None
+                if prev_clicks > 0:
+                    clicks_delta = round(((cur['clicks'] - prev_clicks) / prev_clicks) * 100, 1)
+                result.append({
+                    'url':          url,
+                    'clicks':       cur['clicks'],
+                    'impressions':  cur['impressions'],
+                    'ctr':          cur['ctr'],
+                    'position':     cur['position'],
+                    'clicks_delta': clicks_delta,
+                })
+
+            result.sort(key=lambda x: x['clicks'], reverse=True)
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+
+        except HttpError as e:
+            logger.error(f"HTTP Error {e.resp.status} fetching top_pages: {str(e)}")
+            raise Exception(f"Failed to fetch pages: HTTP {e.resp.status}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching top_pages: {str(e)}")
+            raise Exception(f"Failed to fetch pages: {str(e)}")
+
+    async def get_top_queries(self, property_url: str, days: int = 28) -> List[Dict]:
+        """Return top queries with clicks/impressions/ctr/position + delta vs prior period. Cached 15 min."""
+        cache_key = (self.user_email, 'top_queries', property_url, days)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Cache HIT: top_queries {property_url}")
+            return cached
+
+        try:
+            from datetime import datetime, timedelta
+            end_date   = datetime.now().date()
+            start_date = end_date - timedelta(days=days)
+            prev_end   = start_date - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=days)
+
+            def _fetch(start, end):
+                resp = self.service.searchanalytics().query(
+                    siteUrl=property_url,
+                    body={
+                        'startDate': start.strftime('%Y-%m-%d'),
+                        'endDate':   end.strftime('%Y-%m-%d'),
+                        'dimensions': ['query'],
+                        'rowLimit':   25000,
+                        'dataState':  'all',
+                    }
+                ).execute()
+                result = {}
+                for row in resp.get('rows', []):
+                    # Use the raw query string as key — do NOT normalize to lowercase.
+                    # GSC already returns normalized queries; applying .lower() here merges
+                    # distinct queries that differ only by case/unicode, dropping rows.
+                    key = row['keys'][0]
+                    result[key] = {
+                        'clicks':      row.get('clicks', 0),
+                        'impressions': row.get('impressions', 0),
+                        'ctr':         round(row.get('ctr', 0) * 100, 2),
+                        'position':    round(row.get('position', 0), 1),
+                    }
+                return result
+
+            current  = _fetch(start_date, end_date)
+            previous = _fetch(prev_start, prev_end)
+
+            result = []
+            for query_text, cur in current.items():
+                prev = previous.get(query_text, {})
+                prev_clicks = prev.get('clicks', 0)
+                clicks_delta = None
+                if prev_clicks > 0:
+                    clicks_delta = round(((cur['clicks'] - prev_clicks) / prev_clicks) * 100, 1)
+                result.append({
+                    'query':        query_text,
+                    'clicks':       cur['clicks'],
+                    'impressions':  cur['impressions'],
+                    'ctr':          cur['ctr'],
+                    'position':     cur['position'],
+                    'clicks_delta': clicks_delta,
+                })
+
+            result.sort(key=lambda x: x['clicks'], reverse=True)
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+
+        except HttpError as e:
+            logger.error(f"HTTP Error {e.resp.status} fetching top_queries: {str(e)}")
+            raise Exception(f"Failed to fetch queries: HTTP {e.resp.status}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching top_queries: {str(e)}")
+            raise Exception(f"Failed to fetch queries: {str(e)}")
+
     async def get_devices(self, property_url: str, days: int = 28) -> List[Dict]:
         """Fetch clicks/impressions/ctr/position broken down by device. Cached 15 min."""
         cache_key = (self.user_email, 'devices', property_url, days)
@@ -475,6 +612,215 @@ class GSCService:
         except Exception as e:
             logger.error(f"Unexpected error fetching devices: {str(e)}")
             raise Exception(f"Failed to fetch devices: {str(e)}")
+
+    async def get_daily_stats(self, property_url: str, days: int = 28) -> List[Dict]:
+        """
+        Return per-day unique query counts, page counts, and position-bucket impressions.
+        Used to power the Query Counting and Pages Ranking charts.
+        Cached 15 min.
+        """
+        cache_key = (self.user_email, 'daily_stats', property_url, days)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Cache HIT: daily_stats {property_url}")
+            return cached
+
+        try:
+            from datetime import datetime, timedelta
+
+            end_date = datetime.now().date()
+            start_date = end_date - timedelta(days=days)
+
+            # --- Query-level rows (date × query) to count unique queries/day and position buckets ---
+            query_resp = self.service.searchanalytics().query(
+                siteUrl=property_url,
+                body={
+                    'startDate': start_date.strftime('%Y-%m-%d'),
+                    'endDate': end_date.strftime('%Y-%m-%d'),
+                    'dimensions': ['date', 'query'],
+                    'rowLimit': 25000,
+                    'dataState': 'all',
+                }
+            ).execute()
+
+            # --- Page-level rows (date × page) to count unique pages/day ---
+            page_resp = self.service.searchanalytics().query(
+                siteUrl=property_url,
+                body={
+                    'startDate': start_date.strftime('%Y-%m-%d'),
+                    'endDate': end_date.strftime('%Y-%m-%d'),
+                    'dimensions': ['date', 'page'],
+                    'rowLimit': 25000,
+                    'dataState': 'all',
+                }
+            ).execute()
+
+            # Aggregate by date
+            date_map: Dict[str, Dict] = {}
+
+            for row in query_resp.get('rows', []):
+                date_str = row['keys'][0]
+                position = row.get('position', 0)
+                impressions = row.get('impressions', 0)
+                if date_str not in date_map:
+                    date_map[date_str] = {
+                        'totalQueries': 0, 'totalPages': 0,
+                        'pos_1_3': 0, 'pos_4_10': 0, 'pos_11_20': 0, 'pos_21_plus': 0,
+                    }
+                date_map[date_str]['totalQueries'] += 1
+                if position <= 3:
+                    date_map[date_str]['pos_1_3'] += impressions
+                elif position <= 10:
+                    date_map[date_str]['pos_4_10'] += impressions
+                elif position <= 20:
+                    date_map[date_str]['pos_11_20'] += impressions
+                else:
+                    date_map[date_str]['pos_21_plus'] += impressions
+
+            for row in page_resp.get('rows', []):
+                date_str = row['keys'][0]
+                if date_str not in date_map:
+                    date_map[date_str] = {
+                        'totalQueries': 0, 'totalPages': 0,
+                        'pos_1_3': 0, 'pos_4_10': 0, 'pos_11_20': 0, 'pos_21_plus': 0,
+                    }
+                date_map[date_str]['totalPages'] += 1
+
+            # Sort by date and format for the chart
+            result = []
+            for date_str in sorted(date_map.keys()):
+                d = date_map[date_str]
+                # Format date as "Apr 10" style for X-axis labels
+                try:
+                    dt = datetime.strptime(date_str, '%Y-%m-%d')
+                    label = dt.strftime('%b %-d')  # e.g. "Apr 10"
+                except Exception:
+                    label = date_str
+                result.append({
+                    'date': date_str,
+                    'name': label,
+                    'totalQueries': d['totalQueries'],
+                    'totalPages': d['totalPages'],
+                    '1-3': d['pos_1_3'],
+                    '4-10': d['pos_4_10'],
+                    '11-20': d['pos_11_20'],
+                    '21+': d['pos_21_plus'],
+                })
+
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+
+        except HttpError as e:
+            logger.error(f"HTTP Error {e.resp.status} fetching daily_stats: {str(e)}")
+            raise Exception(f"Failed to fetch daily stats: HTTP {e.resp.status}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching daily_stats: {str(e)}")
+            raise Exception(f"Failed to fetch daily stats: {str(e)}")
+
+    async def get_new_lost_rankings(self, property_url: str, days: int = 28) -> Dict:
+        """
+        Compare current vs previous period to find:
+        - New queries/pages  (appear in current, absent in previous)
+        - Lost queries/pages (appear in previous, absent in current)
+        Cached 15 min.
+        """
+        cache_key = (self.user_email, 'new_lost_rankings', property_url, days)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Cache HIT: new_lost_rankings {property_url}")
+            return cached
+
+        try:
+            from datetime import datetime, timedelta
+
+            end_date   = datetime.now().date()
+            start_date = end_date - timedelta(days=days)
+            prev_end   = start_date - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=days)
+
+            def _fetch(dimension: str, start, end) -> Dict[str, Dict]:
+                resp = self.service.searchanalytics().query(
+                    siteUrl=property_url,
+                    body={
+                        'startDate': start.strftime('%Y-%m-%d'),
+                        'endDate':   end.strftime('%Y-%m-%d'),
+                        'dimensions': [dimension],
+                        'rowLimit':   25000,
+                        'dataState':  'all',
+                    }
+                ).execute()
+                result = {}
+                for row in resp.get('rows', []):
+                    raw_key = row['keys'][0]
+                    # Normalize to avoid false new/lost due to trailing slash differences
+                    if dimension == 'page':
+                        norm_key = raw_key.rstrip('/')
+                    else:
+                        norm_key = raw_key.strip().lower()
+                    cur_clicks = row.get('clicks', 0)
+                    # On normalization collision keep the entry with more clicks
+                    existing = result.get(norm_key)
+                    if existing and existing['clicks'] >= cur_clicks:
+                        continue
+                    result[norm_key] = {
+                        'name':        raw_key,
+                        'clicks':      cur_clicks,
+                        'impressions': row.get('impressions', 0),
+                        'position':    round(row.get('position', 0), 1),
+                    }
+                return result
+
+            # Fetch current & previous periods for both dimensions
+            cur_queries  = _fetch('query', start_date, end_date)
+            prev_queries = _fetch('query', prev_start,  prev_end)
+            cur_pages    = _fetch('page',  start_date, end_date)
+            prev_pages   = _fetch('page',  prev_start,  prev_end)
+
+            def _classify(current: Dict, previous: Dict):
+                new_items  = []
+                lost_items = []
+                for norm_key, data in current.items():
+                    if norm_key not in previous:
+                        new_items.append(data)
+                for norm_key, data in previous.items():
+                    if norm_key not in current:
+                        lost_items.append(data)
+                new_items.sort(key=lambda x: x['clicks'], reverse=True)
+                lost_items.sort(key=lambda x: x['clicks'], reverse=True)
+                return new_items, lost_items
+
+            new_queries,  lost_queries  = _classify(cur_queries, prev_queries)
+            new_pages,    lost_pages    = _classify(cur_pages,   prev_pages)
+
+            result = {
+                'new_queries':  new_queries,
+                'lost_queries': lost_queries,
+                'new_pages':    new_pages,
+                'lost_pages':   lost_pages,
+                'period': {
+                    'current_start': start_date.strftime('%Y-%m-%d'),
+                    'current_end':   end_date.strftime('%Y-%m-%d'),
+                    'prev_start':    prev_start.strftime('%Y-%m-%d'),
+                    'prev_end':      prev_end.strftime('%Y-%m-%d'),
+                },
+                'counts': {
+                    'new_queries':  len(new_queries),
+                    'lost_queries': len(lost_queries),
+                    'new_pages':    len(new_pages),
+                    'lost_pages':   len(lost_pages),
+                }
+            }
+
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+
+        except HttpError as e:
+            logger.error(f"HTTP Error {e.resp.status} fetching new_lost_rankings: {str(e)}")
+            raise Exception(f"Failed to fetch new/lost rankings: HTTP {e.resp.status}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching new_lost_rankings: {str(e)}")
+            raise Exception(f"Failed to fetch new/lost rankings: {str(e)}")
+
 
 
 async def get_user_properties(stored_token: str, is_refresh_token: bool = False) -> List[Dict[str, str]]:
