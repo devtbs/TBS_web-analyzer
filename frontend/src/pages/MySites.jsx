@@ -117,7 +117,44 @@ const SparkTooltip = ({ active, payload, label }) => {
     );
 };
 
-/* ── Property Card ────────────────────────────────────────── */
+/* ── Skeleton property card — mirrors PropertyCard layout exactly ── */
+const SkeletonPropertyCard = ({ i = 0 }) => (
+    <div
+        className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col overflow-hidden"
+        style={{ animationDelay: `${i * 60}ms` }}
+    >
+        {/* header: favicon + pill + url */}
+        <div className="px-4 pt-4 pb-3 flex items-center gap-2">
+            <div className="w-5 h-5 rounded bg-slate-100 animate-pulse shrink-0" style={{ animationDelay: `${i * 60}ms` }} />
+            <div className="w-12 h-4 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 30}ms` }} />
+            <div className="flex-1 h-4 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 60}ms` }} />
+        </div>
+
+        {/* metrics */}
+        <div className="px-4 pb-3 space-y-2">
+            <div className="flex items-center justify-between">
+                <div className="w-16 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 40}ms` }} />
+                <div className="w-20 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 55}ms` }} />
+            </div>
+            <div className="flex items-center justify-between">
+                <div className="w-20 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 70}ms` }} />
+                <div className="w-24 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 85}ms` }} />
+            </div>
+        </div>
+
+        {/* sparkline area */}
+        <div className="px-4 pt-1 pb-4 h-[80px]">
+            <div className="w-full h-full rounded-lg bg-slate-50 animate-pulse" style={{ animationDelay: `${i * 60 + 100}ms` }} />
+        </div>
+
+        {/* tags footer */}
+        <div className="mx-4 py-2.5 mb-1 border-t border-slate-100 flex justify-center">
+            <div className="w-16 h-3 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 120}ms` }} />
+        </div>
+    </div>
+);
+
+
 const PropertyCard = ({ property, data, loading, index, onClick }) => {
     const scheme = getScheme(property.url);
     const styles = SCHEME_STYLES[scheme] || SCHEME_STYLES['Domain'];
@@ -431,84 +468,85 @@ export default function MySites() {
         <div className="min-h-screen bg-[#f5f6f8]">
 
             {/* ── Page Header ── */}
-            <div className="px-8 pt-8 pb-6 bg-white border-b border-slate-200 shadow-[0_4px_20px_rgb(0,0,0,0.02)]">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-[24px] font-black text-slate-800 tracking-tight mb-1 flex items-center gap-3">
+            <div className="px-8 pt-7 pb-5 bg-white border-b border-slate-200">
+                <div className="flex items-center justify-between gap-6">
+
+                    {/* Left: title + date */}
+                    <div className="min-w-0">
+                        <h1 className="text-[22px] font-black text-slate-800 tracking-tight leading-none mb-1.5">
                             My Sites
-                            <button
-                                onClick={handleRefresh}
-                                disabled={isRefreshing || loadingData}
-                                title="Refresh data"
-                                className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors disabled:opacity-50 shadow-sm"
-                            >
-                                <ArrowPathIcon className={`w-4 h-4 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
-                            </button>
                         </h1>
-                        <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-500">
+                        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-500">
+                            <ClockIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span>{fmt(periodStart)} – {fmt(periodEnd)}</span>
-                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                            <span className="text-slate-300">·</span>
                             <span className="text-slate-400">vs {fmt(prevStart)} – {fmt(prevEnd)}</span>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    {/* Right: all controls in one row */}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Sort */}
+                        <button className="flex items-center gap-1.5 h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-600 transition-colors shadow-sm">
+                            A to Z
+                            <ChevronDownIcon className="w-3.5 h-3.5 text-slate-400" />
+                        </button>
+
+                        {/* Filter */}
+                        <button className="flex items-center gap-1.5 h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-600 transition-colors shadow-sm">
+                            <FunnelIcon className="w-3.5 h-3.5 text-slate-400" />
+                            Filter
+                        </button>
+
+                        {/* Tags */}
+                        <button className="flex items-center gap-1.5 h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-600 transition-colors shadow-sm">
+                            <TagIcon className="w-3.5 h-3.5 text-slate-400" />
+                            Tags
+                        </button>
+
+                        {/* Divider */}
+                        <div className="w-px h-5 bg-slate-200 mx-1" />
+
+                        {/* Search */}
                         <div className="relative">
-                            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                             <input
                                 type="text"
                                 placeholder="Search properties..."
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
-                                className="pl-9 pr-4 py-2.5 text-[13px] font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-[#10705a] focus:ring-1 focus:ring-[#10705a] transition-all w-64 placeholder:text-slate-400 placeholder:font-medium shadow-sm"
+                                style={{ outline: 'none', boxShadow: 'none' }}
+                                className="pl-9 pr-4 h-9 text-[13px] font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-[#10705a] transition-all w-56 placeholder:text-slate-400"
                             />
                         </div>
-                        <button className="flex items-center gap-2 px-4 py-2.5 bg-[#10705a] hover:bg-[#0d5e4b] text-white rounded-xl text-[13px] font-bold transition-colors shadow-sm whitespace-nowrap">
-                            <PlusIcon className="w-4 h-4" />
-                            Add Property
+
+                        {/* Count */}
+                        <span className="text-[12px] font-bold text-slate-400 whitespace-nowrap">
+                            {loadingProps ? '…' : `${filtered.length} ${filtered.length === 1 ? 'site' : 'sites'}`}
+                        </span>
+
+                        {/* Divider */}
+                        <div className="w-px h-5 bg-slate-200 mx-1" />
+
+                        {/* Refresh */}
+                        <button
+                            onClick={handleRefresh}
+                            disabled={isRefreshing || loadingData}
+                            title="Refresh data"
+                            className="flex items-center justify-center w-9 h-9 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors disabled:opacity-40 shadow-sm"
+                        >
+                            <ArrowPathIcon className={`w-4 h-4 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
                         </button>
                     </div>
-                </div>
-                
-                {/* ── Sub Toolbar ── */}
-                <div className="flex items-center gap-3 mt-6">
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-700 transition-colors shadow-sm">
-                        A to Z
-                        <ChevronDownIcon className="w-3.5 h-3.5 text-slate-400" />
-                    </button>
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-700 transition-colors shadow-sm">
-                        <FunnelIcon className="w-3 h-3 text-slate-400" />
-                        Filter
-                    </button>
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-700 transition-colors shadow-sm">
-                        <TagIcon className="w-3 h-3 text-slate-400" />
-                        Tags
-                    </button>
-                    <div className="flex-1" />
-                    <span className="text-[12px] font-semibold text-slate-400 flex items-center gap-1.5">
-                        {loadingProps ? 'Loading...' : `${filtered.length} properties`}
-                    </span>
                 </div>
             </div>
 
             {/* ── Cards grid ── */}
             <div className="p-8">
                 {loadingProps ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                            <div key={i} className="bg-white border border-slate-200 rounded-2xl overflow-hidden animate-pulse shadow-sm h-[200px]">
-                                <div className="p-5 flex items-start gap-3">
-                                    <div className="w-10 h-10 bg-slate-100 rounded-xl" />
-                                    <div className="flex-1 space-y-2 mt-1">
-                                        <div className="h-4 w-32 bg-slate-100 rounded" />
-                                        <div className="h-3 w-12 bg-slate-100 rounded" />
-                                    </div>
-                                </div>
-                                <div className="px-5 grid grid-cols-2 gap-4 mt-2">
-                                    <div className="h-8 bg-slate-100 rounded w-full" />
-                                    <div className="h-8 bg-slate-100 rounded w-full" />
-                                </div>
-                            </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                            <SkeletonPropertyCard key={i} i={i} />
                         ))}
                     </div>
                 ) : filtered.length === 0 ? (

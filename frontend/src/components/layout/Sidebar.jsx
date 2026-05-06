@@ -45,24 +45,6 @@ const PROPERTY_NAV = [
             { label: 'Pages',               path: '/seo-analytics/pages',          icon: DocumentTextIcon },
             { label: 'Countries',           path: '/seo-analytics/countries',         icon: GlobeAltIcon },
             { label: 'New & Lost Rankings', path: '/seo-analytics/new-lost-rankings',       icon: ArrowTrendingUpIcon },
-            { label: 'Rank Changes',        path: '/seo-analytics/rank-changes',   icon: ArrowsUpDownIcon },
-            { label: 'Topic Clusters',      path: '/seo-analytics/clusters',       icon: CircleStackIcon },
-        ],
-    },
-    {
-        section: 'OPTIMIZATION',
-        collapsible: true,
-        items: [
-            { label: 'Content Groups',      path: '/seo-analytics?tab=content-groups', icon: RectangleGroupIcon },
-            { label: 'Page Performance',    path: '/seo-analytics?tab=page-perf',      icon: PresentationChartLineIcon },
-        ],
-    },
-    {
-        section: 'SITE ANALYSIS',
-        collapsible: true,
-        items: [
-            { label: 'Sitemap',             path: '/seo-analytics?tab=sitemap',        icon: MapIcon },
-            { label: 'Subdomain & Folder',  path: '/seo-analytics?tab=subdomain',      icon: FolderOpenIcon },
         ],
     },
 ];

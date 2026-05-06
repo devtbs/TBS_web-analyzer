@@ -27,6 +27,60 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Favicon from '../components/ui/Favicon';
 
+/* ── sessionStorage cache (15-min TTL) ────────────────────── */
+const ssGet = (key) => {
+    try {
+        const raw = sessionStorage.getItem(key);
+        if (!raw) return null;
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts > 15 * 60 * 1000) return null;
+        return data;
+    } catch { return null; }
+};
+const ssSet = (key, data) => {
+    try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
+};
+
+/* ── Skeleton primitives ───────────────────────────────── */
+const Shimmer = ({ className = '' }) => (
+    <div className={`bg-slate-100 rounded-lg animate-pulse ${className}`} />
+);
+
+const SkeletonStatCard = () => (
+    <div className="flex items-center gap-3">
+        <Shimmer className="w-12 h-12 rounded-2xl" />
+        <div className="flex flex-col gap-2">
+            <Shimmer className="w-20 h-6" />
+            <Shimmer className="w-14 h-3" />
+        </div>
+    </div>
+);
+
+const SkeletonChart = () => (
+    <div className="mb-10 bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
+        <div className="flex gap-4 mb-6">
+            {[140, 100, 120, 90].map((w, i) => <Shimmer key={i} className={`h-4`} style={{ width: w }} />)}
+        </div>
+        <Shimmer className="w-full h-[320px] rounded-2xl" />
+    </div>
+);
+
+const SkeletonTableRow = ({ i }) => (
+    <tr className="border-b border-slate-50">
+        <td className="py-3.5 px-4"><Shimmer className="h-3" style={{ width: `${160 + (i % 5) * 40}px`, animationDelay: `${i * 40}ms` }} /></td>
+        {[0,1,2,3].map(j => (
+            <td key={j} className="py-3.5 px-4 text-right"><Shimmer className="h-3 w-14 ml-auto" style={{ animationDelay: `${i * 40 + j * 15}ms` }} /></td>
+        ))}
+    </tr>
+);
+
+const SkeletonWidget = ({ height = 'h-48' }) => (
+    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+        <Shimmer className="w-32 h-4 mb-4" />
+        <Shimmer className={`w-full ${height} rounded-xl`} />
+    </div>
+);
+
 /* ── Custom Chart Tooltip ──────────────────────────────────── */
 const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -262,22 +316,39 @@ const SEOAnalytics = () => {
     useEffect(() => {
         if (!selectedProperty) return;
 
+        const cacheKey = `seo_analytics_${selectedProperty}_${chartGrouping}_${days}`;
+        const cached = ssGet(cacheKey);
+        if (cached) {
+            setAnalytics(cached.totals);
+            setDeltas(cached.deltas || null);
+            setChartData(cached.chart_data);
+            setPages(cached.pages);
+            setCurrentPage(1);
+            setLoading(false);
+            return;
+        }
+
         const fetchAnalytics = async () => {
-            // First load → full spinner; subsequent (date/property change) → inline updating
             if (!analytics) {
                 setLoading(true);
             } else {
                 setIsUpdating(true);
             }
             try {
-                const authToken = localStorage.getItem('access_token');
                 const res = await api.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, { 
                     params: { group_by: chartGrouping, days: days }
                 });
-                setAnalytics(res.data.analytics.totals);
-                setDeltas(res.data.analytics.deltas || null);
-                setChartData(res.data.analytics.chart_data);
-                setPages(res.data.pages);
+                const payload = {
+                    totals:     res.data.analytics.totals,
+                    deltas:     res.data.analytics.deltas || null,
+                    chart_data: res.data.analytics.chart_data,
+                    pages:      res.data.pages,
+                };
+                ssSet(cacheKey, payload);
+                setAnalytics(payload.totals);
+                setDeltas(payload.deltas);
+                setChartData(payload.chart_data);
+                setPages(payload.pages);
                 setCurrentPage(1);
             } catch (err) {
                 const message = err.response?.data?.detail || 'Failed to fetch analytics for this property';
@@ -295,16 +366,32 @@ const SEOAnalytics = () => {
     useEffect(() => {
         if (!selectedProperty) return;
         const fetchBreakdowns = async () => {
+            const bdKey = `seo_breakdowns_${selectedProperty}_${days}`;
+            const bdCached = ssGet(bdKey);
+            if (bdCached) {
+                setRealCountries(bdCached.countries || []);
+                setCountriesTotal(bdCached.total || 0);
+                setRealDevices(bdCached.devices || []);
+                setRealDailyStats(bdCached.daily_stats || []);
+                return;
+            }
             try {
                 const [cRes, dRes, dsRes] = await Promise.all([
                     api.get(`/auth/gsc/countries/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
                     api.get(`/auth/gsc/devices/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
                     api.get(`/auth/gsc/daily-stats/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
                 ]);
-                setRealCountries(cRes.data.countries || []);
-                setCountriesTotal(cRes.data.total || 0);
-                setRealDevices(dRes.data.devices || []);
-                setRealDailyStats(dsRes.data.daily_stats || []);
+                const bd = {
+                    countries:   cRes.data.countries || [],
+                    total:       cRes.data.total || 0,
+                    devices:     dRes.data.devices || [],
+                    daily_stats: dsRes.data.daily_stats || [],
+                };
+                ssSet(bdKey, bd);
+                setRealCountries(bd.countries);
+                setCountriesTotal(bd.total);
+                setRealDevices(bd.devices);
+                setRealDailyStats(bd.daily_stats);
             } catch (err) {
                 console.warn('Could not load country/device/daily breakdown:', err.message);
             }
@@ -893,10 +980,42 @@ const SEOAnalytics = () => {
             </header>
 
             {loading ? (
-                <div className="py-20 flex justify-center items-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <ArrowPathIcon className="w-8 h-8 text-emerald-500 animate-spin" />
-                        <p className="text-slate-500 font-medium animate-pulse">Fetching Search Console Data...</p>
+                // ── Skeleton layout matching the real page ──────────────────
+                <div className="animate-in fade-in duration-300">
+                    {/* Date range bar */}
+                    <div className="flex items-center gap-3 mb-8 px-1">
+                        <Shimmer className="w-52 h-4" />
+                        <Shimmer className="w-40 h-4" />
+                    </div>
+                    {/* Stat cards */}
+                    <div className="flex flex-wrap items-center gap-x-12 gap-y-6 mb-8 px-2">
+                        {[0,1,2,3].map(i => <SkeletonStatCard key={i} />)}
+                    </div>
+                    {/* Chart */}
+                    <SkeletonChart />
+                    {/* Widget grid row 1 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                        <SkeletonWidget height="h-56" />
+                        <SkeletonWidget height="h-56" />
+                    </div>
+                    {/* Widget grid row 2 */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-8">
+                        <SkeletonWidget height="h-40" />
+                        <SkeletonWidget height="h-56" />
+                    </div>
+                    {/* Table skeleton */}
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 flex gap-3">
+                            {[80,60,60].map((w,i) => <Shimmer key={i} className="h-8 rounded-lg" style={{width:w}} />)}
+                        </div>
+                        <table className="w-full">
+                            <thead><tr className="bg-slate-50">
+                                {['w-48','w-16','w-16','w-12','w-12'].map((w,i) => (
+                                    <th key={i} className="py-3 px-4"><Shimmer className={`h-3 ${w}`} /></th>
+                                ))}
+                            </tr></thead>
+                            <tbody>{Array.from({length:8}).map((_,i) => <SkeletonTableRow key={i} i={i} />)}</tbody>
+                        </table>
                     </div>
                 </div>
             ) : (
