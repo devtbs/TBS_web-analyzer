@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ui/ConfirmDialog';
  
@@ -14,6 +14,18 @@ import {
     DocumentTextIcon,
     ChevronDownIcon,
     XMarkIcon,
+    MagnifyingGlassIcon,
+    DocumentDuplicateIcon,
+    GlobeAltIcon,
+    ArrowTrendingUpIcon,
+    ArrowsUpDownIcon,
+    PresentationChartLineIcon,
+    MapIcon,
+    FolderOpenIcon,
+    RectangleGroupIcon,
+    CircleStackIcon,
+    ArrowLeftIcon,
+    ChartPieIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -22,11 +34,58 @@ import {
 import Favicon from '../ui/Favicon';
 import api from '../../api/axios';
 
+/* ── GSC Wizard-style property nav config ────────────────── */
+const PROPERTY_NAV = [
+    {
+        section: 'ANALYTICS',
+        collapsible: false,
+        items: [
+            { label: 'GSC Dashboard',       path: '/seo-analytics',                    icon: Squares2X2Icon },
+            { label: 'Queries',             path: '/seo-analytics?tab=queries',        icon: MagnifyingGlassIcon },
+            { label: 'Pages',               path: '/seo-analytics?tab=pages',          icon: DocumentTextIcon },
+            { label: 'Countries',           path: '/seo-analytics/countries',         icon: GlobeAltIcon },
+            { label: 'New & Lost Rankings', path: '/seo-analytics?tab=rankings',       icon: ArrowTrendingUpIcon },
+            { label: 'Rank Changes',        path: '/seo-analytics?tab=rank-changes',   icon: ArrowsUpDownIcon },
+            { label: 'Topic Clusters',      path: '/seo-analytics?tab=clusters',       icon: CircleStackIcon },
+        ],
+    },
+    {
+        section: 'OPTIMIZATION',
+        collapsible: true,
+        items: [
+            { label: 'Content Groups',      path: '/seo-analytics?tab=content-groups', icon: RectangleGroupIcon },
+            { label: 'Page Performance',    path: '/seo-analytics?tab=page-perf',      icon: PresentationChartLineIcon },
+        ],
+    },
+    {
+        section: 'SITE ANALYSIS',
+        collapsible: true,
+        items: [
+            { label: 'Sitemap',             path: '/seo-analytics?tab=sitemap',        icon: MapIcon },
+            { label: 'Subdomain & Folder',  path: '/seo-analytics?tab=subdomain',      icon: FolderOpenIcon },
+        ],
+    },
+];
+
+/* ── Helper to read stored property ────────────────────────────── */
+const getScheme = (url) => {
+    if (!url) return 'Domain';
+    if (url.startsWith('sc-domain:')) return 'Domain';
+    try { return new URL(url).protocol === 'https:' ? 'HTTPS' : 'HTTP'; }
+    catch { return 'Domain'; }
+};
+const SCHEME_PILL = {
+    'HTTPS':  'bg-emerald-100 text-emerald-700',
+    'HTTP':   'bg-red-100 text-red-600',
+    'Domain': 'bg-amber-100 text-amber-700',
+};
+
+
 const NAV_GROUPS = [
     {
         section: 'Overview',
         items: [
-            { label: 'Dashboard',    path: '/dashboard',    icon: Squares2X2Icon },
+            { label: 'My Sites',     path: '/my-sites',    icon: Squares2X2Icon },
         ],
     },
     {
@@ -34,7 +93,7 @@ const NAV_GROUPS = [
         items: [
             { label: 'New Analysis', path: '/new-analysis', icon: RocketLaunchIcon },
             { label: 'History',      path: '/history',      icon: ClockIcon },
-            { label: 'SEO Analytics', path: '/seo-analytics', icon: ChartBarIcon },
+            { label: 'Global Reports', path: '/global-reports', icon: ChartBarIcon },
         ],
     },
     {
@@ -46,6 +105,7 @@ const NAV_GROUPS = [
 ];
 
 const Sidebar = ({ mobileOpen, onMobileClose }) => {
+    const navigate = useNavigate();
     const [collapsed, setCollapsed] = useState(() => {
         const saved = localStorage.getItem('sidebar_collapsed');
         return saved === 'true';
@@ -169,6 +229,20 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
 
     const { user, logout } = useAuth();
     const location = useLocation();
+
+    /* ── Determine if we are in property/analytics mode ── */
+    const isPropertyMode = location.pathname === '/seo-analytics' || location.pathname.startsWith('/seo-analytics/');
+    const selectedProperty = localStorage.getItem('gsc_selected_property') || '';
+    const scheme = getScheme(selectedProperty);
+    const schemeStyle = SCHEME_PILL[scheme] || SCHEME_PILL['Domain'];
+    const displayUrl = selectedProperty
+        ? selectedProperty.replace(/^https?:\/\//, '').replace(/^sc-domain:/, '')
+        : '';
+
+    /* ── Collapsible section state for property nav ── */
+    const [openSections, setOpenSections] = useState({ 'OPTIMIZATION': true, 'SITE ANALYSIS': false });
+    const toggleSection = (section) => setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+
     const isActive = (path) => {
         if (path.includes('?')) {
             return location.pathname + location.search === path;
@@ -205,24 +279,114 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                 {/* ── Top bar: logo ── */}
                 <div className={`flex items-center h-[96px] flex-shrink-0 ${ collapsed ? 'justify-center px-0' : 'px-5' }`} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     {collapsed ? (
-                        <img
-                            src="/TBS-Logo.webp"
-                            alt="TBS Logo"
-                            className="w-11 h-11 object-contain"
-                        />
+                        <img src="/TBS-Logo.webp" alt="TBS Logo" className="w-11 h-11 object-contain" />
                     ) : (
                         <div className="flex items-center w-full">
-                            <img
-                                src="/TBS-Logo.webp"
-                                alt="TBS Logo"
-                                className="h-[52px] w-auto object-contain flex-shrink-0"
-                            />
+                            <img src="/TBS-Logo.webp" alt="TBS Logo" className="h-[52px] w-auto object-contain flex-shrink-0" />
                         </div>
                     )}
                 </div>
 
-                {/* ── Nav groups ── */}
-                <nav className={`flex-1 overflow-y-auto overflow-x-hidden ${ collapsed ? 'px-0 space-y-1.5 pt-4' : 'px-2 py-2 space-y-6' } scrollbar-hide`} style={{ scrollbarWidth: 'none' }}>
+                {/* ════════════════════════════════════════════════
+                    PROPERTY MODE NAV (when on /seo-analytics)
+                    ════════════════════════════════════════════════ */}
+                {isPropertyMode && !collapsed ? (
+                    <div className="flex flex-col flex-1 overflow-hidden">
+                        {/* Back link */}
+                        <button
+                            onClick={() => navigate('/my-sites')}
+                            className="flex items-center gap-2 px-4 py-3 text-slate-400 hover:text-slate-200 transition-colors text-[12px] font-semibold"
+                            style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+                        >
+                            <ArrowLeftIcon className="w-3.5 h-3.5" />
+                            All sites
+                        </button>
+
+                        {/* Property nav groups */}
+                        <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4" style={{ scrollbarWidth: 'none' }}>
+                            {PROPERTY_NAV.map(({ section, collapsible, items }) => {
+                                const isOpen = !collapsible || openSections[section];
+                                return (
+                                    <div key={section}>
+                                        {/* Section header */}
+                                        <div
+                                            className={`flex items-center justify-between px-2 mb-1 ${ collapsible ? 'cursor-pointer' : '' }`}
+                                            onClick={() => collapsible && toggleSection(section)}
+                                        >
+                                            <p className="text-[10px] font-bold tracking-[0.14em] uppercase text-slate-500">
+                                                {section}
+                                            </p>
+                                            {collapsible && (
+                                                <ChevronDownIcon className={`w-3 h-3 text-slate-600 transition-transform duration-200 ${ isOpen ? '' : '-rotate-90' }`} />
+                                            )}
+                                        </div>
+
+                                        {/* Items */}
+                                        <AnimatePresence initial={false}>
+                                            {isOpen && (
+                                                <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: 'auto', opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    transition={{ duration: 0.18 }}
+                                                    className="space-y-0.5 overflow-hidden"
+                                                >
+                                                    {items.map(({ label, path, icon: Icon }) => {
+                                                        const active = isActive(path);
+                                                        return (
+                                                            <Link
+                                                                key={path}
+                                                                to={path}
+                                                                className={`flex items-center gap-3 rounded-lg px-3 py-2 transition-all duration-150 outline-none`}
+                                                                style={{
+                                                                    color: active ? '#10b981' : '#94a3b8',
+                                                                    background: active ? 'rgba(16,185,129,0.08)' : 'transparent',
+                                                                }}
+                                                                onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#e2e8f0'; } }}
+                                                                onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94a3b8'; } }}
+                                                            >
+                                                                <Icon className="w-4 h-4 flex-shrink-0" />
+                                                                <span className={`text-[13px] whitespace-nowrap ${ active ? 'font-bold' : 'font-medium' }`}>
+                                                                    {label}
+                                                                </span>
+                                                            </Link>
+                                                        );
+                                                    })}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                );
+                            })}
+                        </nav>
+                    </div>
+                ) : isPropertyMode && collapsed ? (
+                    /* Collapsed property mode — icon-only nav */
+                    <nav className="flex-1 overflow-y-auto px-0 py-3 space-y-1.5" style={{ scrollbarWidth: 'none' }}>
+                        {PROPERTY_NAV.flatMap(g => g.items).map(({ label, path, icon: Icon }) => {
+                            const active = isActive(path);
+                            return (
+                                <Link
+                                    key={path}
+                                    to={path}
+                                    title={label}
+                                    className="flex items-center justify-center py-1.5"
+                                >
+                                    <div
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${ active ? '' : 'hover:bg-white/5' }`}
+                                        style={{ background: active ? 'rgba(16,185,129,0.12)' : 'transparent' }}
+                                    >
+                                        <Icon className="w-5 h-5" style={{ color: active ? '#10b981' : '#94a3b8' }} />
+                                    </div>
+                                </Link>
+                            );
+                        })}
+                    </nav>
+                ) : (
+                /* ════════════════════════════════════════════════
+                    NORMAL NAV (all other routes)
+                    ════════════════════════════════════════════════ */
+                    <nav className={`flex-1 overflow-y-auto overflow-x-hidden ${ collapsed ? 'px-0 space-y-1.5 pt-4' : 'px-2 py-2 space-y-6' } scrollbar-hide`} style={{ scrollbarWidth: 'none' }}>
                     {NAV_GROUPS.map(({ section, items }) => (
                         <div key={section} className={collapsed ? 'space-y-0' : 'space-y-1.5'}>
                             {/* Section label */}
@@ -472,7 +636,8 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                             </AnimatePresence>
                         </div>
                     )}
-                </nav>
+                    </nav>
+                ) /* end normal nav */ }
 
                 {/* ── Bottom ── */}
                 <div className={`flex-shrink-0 pb-4 ${collapsed ? 'px-0 space-y-3' : 'px-2 space-y-1'}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>

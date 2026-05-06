@@ -233,7 +233,7 @@ async def get_gsc_pages(
         )
     
     try:
-        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh)
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
         pages = await service.get_pages_with_queries(property_url, days)
         return {
             "property_url": property_url,
@@ -274,7 +274,7 @@ async def get_gsc_analytics(
         )
         
     try:
-        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh)
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
         # Fetch chart data and totals
         analytics_data = await service.get_search_analytics(property_url, days, group_by)
         # Fetch pages (90 days is standard)
@@ -289,6 +289,77 @@ async def get_gsc_analytics(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch analytics: {str(e)}"
+        )
+
+# ============= Cache Management =============
+
+@router.post("/auth/gsc/cache/invalidate")
+async def invalidate_gsc_cache(
+    current_user: UserInfo = Depends(get_current_user)
+):
+    """Invalidate the GSC data cache for the current user (forces a fresh fetch)."""
+    from services.gsc_service import invalidate_cache
+    invalidate_cache(user_email=current_user.email)
+    return {"message": "Cache cleared. Next request will fetch fresh data."}
+
+
+@router.get("/auth/gsc/countries/{property_url:path}")
+async def get_gsc_countries(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get clicks/impressions/ctr/position breakdown by country for a GSC property."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GSC not connected. Please connect your Google Search Console account first."
+        )
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        countries = await service.get_countries(property_url, days)
+        return {"countries": countries, "total": len(countries)}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch countries: {str(e)}"
+        )
+
+
+@router.get("/auth/gsc/devices/{property_url:path}")
+async def get_gsc_devices(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get clicks/impressions/ctr/position breakdown by device for a GSC property."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="GSC not connected. Please connect your Google Search Console account first."
+        )
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        devices = await service.get_devices(property_url, days)
+        return {"devices": devices}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch devices: {str(e)}"
         )
 
 

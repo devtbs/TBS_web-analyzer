@@ -10,12 +10,15 @@ import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
 
 import Home from './pages/Home';
+import MySites from './pages/MySites';
 import Dashboard from './pages/Dashboard';
 import NewAnalysis from './pages/NewAnalysis';
 import History from './pages/History';
 import Results from './pages/Results';
 import PageSelector from './pages/PageSelector';
 import SEOAnalytics from './pages/SEOAnalytics';
+import CountriesPage from './pages/CountriesPage';
+import GlobalReports from './pages/GlobalReports';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
 
@@ -119,7 +122,7 @@ const PublicLayout = ({ children }) => {
     const { user, loading } = useAuth();
     
     if (loading) return null;
-    if (user) return <Navigate to="/dashboard" replace />;
+    if (user) return <Navigate to="/my-sites" replace />;
     
     return (
         <div className="min-h-screen flex flex-col">
@@ -142,8 +145,11 @@ function AppContent() {
 
                 {/* All protected pages share the same Layout wrapper */}
                 <Route element={<ProtectedLayout />}>
-                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/my-sites" element={<MySites />} />
+                    <Route path="/dashboard" element={<Navigate to="/my-sites" replace />} />
+                    <Route path="/global-reports" element={<GlobalReports />} />
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />
+                    <Route path="/seo-analytics/countries" element={<CountriesPage />} />
                     <Route path="/new-analysis" element={<NewAnalysis />} />
                     <Route path="/history" element={<History />} />
                     <Route path="/select-pages" element={<PageSelector />} />
