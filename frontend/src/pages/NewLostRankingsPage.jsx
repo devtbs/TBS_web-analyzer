@@ -353,14 +353,6 @@ export default function NewLostRankingsPage() {
                             ))}
                         </div>
 
-                        {/* Date comparison label */}
-                        {!loading && period.current_start && (
-                            <span className="text-[11px] text-slate-400 font-medium hidden sm:block">
-                                {fmt(period.current_start)} – {fmt(period.current_end)}
-                                &nbsp;vs&nbsp;
-                                {fmt(period.prev_start)} – {fmt(period.prev_end)}
-                            </span>
-                        )}
 
                         {/* Search + Download */}
                         <div className="ml-auto flex items-center gap-2">

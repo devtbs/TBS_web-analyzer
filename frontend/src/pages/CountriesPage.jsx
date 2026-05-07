@@ -101,7 +101,6 @@ const presetToDays = (p) => {
         default: return 28;
     }
 };
-const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 /* ── Skeleton row ──────────────────────────────────── */
 const SkeletonRow = ({ i }) => (
@@ -232,8 +231,6 @@ export default function CountriesPage() {
     /* ── Date range label ── */
     const end   = new Date();
     const start = new Date(); start.setDate(start.getDate() - days);
-    const prevEnd   = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
-    const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days);
 
     const SortIcon = ({ col }) => {
         if (sortKey !== col) return <ChevronDownIcon className="w-3 h-3 text-slate-300 ml-1 inline-block" />;
@@ -342,9 +339,6 @@ export default function CountriesPage() {
                             {t}
                         </button>
                     ))}
-                    <span className="ml-4 text-[12px] text-slate-400 font-medium">
-                        {fmtDate(start)} vs {fmtDate(prevStart)}, {fmtDate(prevEnd)}
-                    </span>
                 </div>
                 <button onClick={() => handleDownloadCSV(countries, 'countries_full_data.csv')} title="Download CSV" className="flex items-center gap-1.5 p-1.5 text-slate-400 hover:text-slate-600 transition-colors rounded-lg hover:bg-slate-100">
                     <ArrowDownTrayIcon className="w-4 h-4" />

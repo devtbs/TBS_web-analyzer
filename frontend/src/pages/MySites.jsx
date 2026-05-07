@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     AreaChart,
     Area,
+    XAxis,
     ResponsiveContainer,
     Tooltip,
     YAxis,
@@ -10,12 +11,10 @@ import {
 import {
     SparklesIcon,
     EyeIcon,
-    TagIcon,
     FunnelIcon,
     MagnifyingGlassIcon,
     PlusIcon,
     ChevronDownIcon,
-    ClockIcon,
     ArrowPathIcon,
 } from '@heroicons/react/24/outline';
 import {
@@ -120,36 +119,42 @@ const SparkTooltip = ({ active, payload, label }) => {
 /* ── Skeleton property card — mirrors PropertyCard layout exactly ── */
 const SkeletonPropertyCard = ({ i = 0 }) => (
     <div
-        className="bg-white rounded-[12px] border border-slate-200 shadow-sm flex flex-col overflow-hidden"
+        className="bg-white rounded-[16px] border border-slate-200/80 shadow-sm flex flex-col relative"
         style={{ animationDelay: `${i * 60}ms` }}
     >
         {/* header: favicon + pill + url */}
-        <div className="px-4 pt-4 pb-3 flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-slate-100 animate-pulse shrink-0" style={{ animationDelay: `${i * 60}ms` }} />
-            <div className="w-12 h-4 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 30}ms` }} />
-            <div className="flex-1 h-4 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 60}ms` }} />
+        <div className="px-5 pt-5 pb-4 flex items-center gap-3 min-w-0 border-b border-slate-100/60">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 animate-pulse shrink-0 border border-slate-100" style={{ animationDelay: `${i * 60}ms` }} />
+            <div className="flex flex-col gap-1.5 flex-1">
+                <div className="w-3/4 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 30}ms` }} />
+                <div className="flex items-center gap-2">
+                    <div className="w-10 h-3.5 rounded-sm bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 45}ms` }} />
+                    <div className="w-1/2 h-2.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 60}ms` }} />
+                </div>
+            </div>
         </div>
 
         {/* metrics */}
-        <div className="px-4 pb-3 space-y-2">
+        <div className="px-5 pt-4 pb-3 space-y-3">
             <div className="flex items-center justify-between">
-                <div className="w-16 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 40}ms` }} />
-                <div className="w-20 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 55}ms` }} />
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 70}ms` }} />
+                    <div className="w-12 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 80}ms` }} />
+                </div>
+                <div className="w-20 h-4 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 90}ms` }} />
             </div>
             <div className="flex items-center justify-between">
-                <div className="w-20 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 70}ms` }} />
-                <div className="w-24 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 85}ms` }} />
+                <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 100}ms` }} />
+                    <div className="w-20 h-3.5 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 110}ms` }} />
+                </div>
+                <div className="w-20 h-4 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 120}ms` }} />
             </div>
         </div>
 
         {/* sparkline area */}
-        <div className="px-4 pt-1 pb-4 h-[80px]">
-            <div className="w-full h-full rounded-lg bg-slate-50 animate-pulse" style={{ animationDelay: `${i * 60 + 100}ms` }} />
-        </div>
-
-        {/* tags footer */}
-        <div className="mx-4 py-2.5 mb-1 border-t border-slate-100 flex justify-center">
-            <div className="w-16 h-3 rounded bg-slate-100 animate-pulse" style={{ animationDelay: `${i * 60 + 120}ms` }} />
+        <div className="flex flex-col gap-1 px-5 pt-2 pb-5 h-[96px] bg-gradient-to-b from-transparent to-slate-50/50 rounded-b-[16px]">
+            <div className="w-full h-full rounded-lg bg-slate-50 animate-pulse" style={{ animationDelay: `${i * 60 + 130}ms` }} />
         </div>
     </div>
 );
@@ -175,35 +180,39 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
     return (
         <div
             onClick={onClick}
-            className="bg-white rounded-[12px] cursor-pointer shadow-sm border border-slate-200 hover:border-slate-300 transition-all duration-300 flex flex-col overflow-hidden relative"
+            className="group bg-white rounded-[16px] cursor-pointer shadow-sm border border-slate-200/80 hover:border-emerald-500/30 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 flex flex-col relative"
             style={{ animationDelay: `${index * 40}ms` }}
         >
             {/* ── Card top ── */}
-            <div className="px-4 pt-4 pb-3 flex items-center gap-2 min-w-0">
-                <div className="w-5 h-5 rounded flex items-center justify-center shrink-0 overflow-hidden">
-                    <Favicon url={property.url} size={20} />
+            <div className="px-5 pt-5 pb-4 flex items-center gap-3 min-w-0 border-b border-slate-100/60">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
+                    <Favicon url={property.url} size={22} />
                 </div>
-                <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${styles.pill}`}>
-                    {scheme}
-                </span>
-                <span className="text-[14px] font-semibold text-slate-800 truncate" title={displayUrl}>
-                    {displayUrl}
-                </span>
+                <div className="flex flex-col min-w-0 justify-center">
+                    <div className="flex items-center gap-2">
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-[1px] rounded-sm shrink-0 ${styles.pill}`}>
+                            {scheme}
+                        </span>
+                        <span className="text-[14px] font-bold text-slate-800 truncate group-hover:text-emerald-600 transition-colors" title={displayUrl}>
+                            {displayUrl}
+                        </span>
+                    </div>
+                </div>
             </div>
 
             {/* ── Metrics ── */}
-            <div className="px-4 pb-3 space-y-1.5">
+            <div className="px-5 pt-4 pb-3 space-y-2.5">
                 {/* Clicks */}
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#64748b]">
-                        <SparklesIcon className="w-4 h-4" />
+                    <div className="flex items-center gap-2 text-slate-500">
+                        <SparklesIcon className="w-4 h-4 text-emerald-500" />
                         <span className="text-[13px] font-medium">Clicks</span>
                     </div>
                     {loading ? (
                         <div className="h-4 w-16 bg-slate-100 rounded animate-pulse" />
                     ) : (
                         <div className="flex items-center gap-2.5">
-                            <span className="text-[14px] font-bold text-slate-900">
+                            <span className="text-[15px] font-black text-slate-900">
                                 {totals?.clicks?.toLocaleString() ?? '0'}
                             </span>
                             <Delta value={deltas?.clicks} isPositiveGood={true} />
@@ -213,15 +222,15 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
                 
                 {/* Impressions */}
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-[#64748b]">
-                        <EyeIcon className="w-4 h-4" />
+                    <div className="flex items-center gap-2 text-slate-500">
+                        <EyeIcon className="w-4 h-4 text-sky-500" />
                         <span className="text-[13px] font-medium">Impressions</span>
                     </div>
                     {loading ? (
                         <div className="h-4 w-16 bg-slate-100 rounded animate-pulse" />
                     ) : (
                         <div className="flex items-center gap-2.5">
-                            <span className="text-[14px] font-bold text-slate-900">
+                            <span className="text-[15px] font-black text-slate-900">
                                 {totals?.impressions?.toLocaleString() ?? '0'}
                             </span>
                             <Delta value={deltas?.impressions} isPositiveGood={true} />
@@ -231,7 +240,7 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
             </div>
 
             {/* ── Sparklines ── */}
-            <div className="flex flex-col gap-1 px-4 pt-1 pb-4 h-[80px]">
+            <div className="flex flex-col gap-1 px-5 pt-2 pb-5 h-[96px] bg-gradient-to-b from-transparent to-slate-50/50 rounded-b-[16px]">
                 {loading ? (
                     <div className="h-full w-full bg-slate-50 rounded animate-pulse" />
                 ) : chartData.length > 0 ? (
@@ -246,6 +255,7 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
                                             <stop offset="100%" stopColor="#0f766e" stopOpacity={0.0} />
                                         </linearGradient>
                                     </defs>
+                                    <XAxis dataKey="month" hide />
                                     <YAxis domain={['auto', 'auto']} hide />
                                     <Tooltip content={<SparkTooltip />} cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '3 2' }} wrapperStyle={{ zIndex: 100 }} />
                                     <Area
@@ -284,6 +294,7 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
                                             <stop offset="100%" stopColor="#0f766e" stopOpacity={0.0} />
                                         </linearGradient>
                                     </defs>
+                                    <XAxis dataKey="month" hide />
                                     <YAxis domain={['auto', 'auto']} hide />
                                     <Tooltip content={<SparkTooltip />} cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '3 2' }} wrapperStyle={{ zIndex: 100 }} />
                                     <Area
@@ -319,11 +330,6 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
                 )}
             </div>
             
-            {/* ── Tags footer ── */}
-            <div className="mx-4 py-2.5 mb-1 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[#64748b] hover:text-slate-800 transition-colors">
-                <TagIcon className="w-3.5 h-3.5" />
-                <span className="text-[12px] font-medium">Tags</span>
-            </div>
         </div>
     );
 };
@@ -339,13 +345,6 @@ export default function MySites() {
     const [search, setSearch] = useState('');
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Current & previous period labels for header
-    const now = new Date();
-    const periodEnd = new Date(now); periodEnd.setDate(now.getDate() - 1);
-    const periodStart = new Date(periodEnd); periodStart.setDate(periodEnd.getDate() - 27);
-    const prevEnd = new Date(periodStart); prevEnd.setDate(periodStart.getDate() - 1);
-    const prevStart = new Date(prevEnd); prevStart.setDate(prevEnd.getDate() - 27);
-    const fmt = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     /* ── Load with sessionStorage cache ── */
     useEffect(() => {
@@ -476,12 +475,7 @@ export default function MySites() {
                         <h1 className="text-[22px] font-black text-slate-800 tracking-tight leading-none mb-1.5">
                             My Sites
                         </h1>
-                        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-500">
-                            <ClockIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>{fmt(periodStart)} – {fmt(periodEnd)}</span>
-                            <span className="text-slate-300">·</span>
-                            <span className="text-slate-400">vs {fmt(prevStart)} – {fmt(prevEnd)}</span>
-                        </div>
+
                     </div>
 
                     {/* Right: all controls in one row */}

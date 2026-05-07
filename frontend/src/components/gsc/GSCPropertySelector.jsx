@@ -106,33 +106,46 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         }
     };
 
-    const handleGoogleConnect = async () => {
+    const handleGoogleConnect = async (switchAccount = false) => {
         if (!isGoogleLoaded || !window.google?.accounts?.oauth2) {
             toast.error('Google services not loaded yet. Please try again.'); return;
         }
         setIsConnecting(true);
         try {
-            // Use Authorization Code flow to get a refresh token (not just an access token)
-            // This ensures GSC stays connected permanently, not just for 1 hour
+            // Use Authorization Code flow to get a refresh token (not just an access token).
+            // 'prompt: select_account' forces Google to show the account picker every time,
+            // so users can connect a *different* Google account than the one they're logged in with.
             const client = window.google.accounts.oauth2.initCodeClient({
                 client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
                 scope: 'https://www.googleapis.com/auth/webmasters.readonly',
                 ux_mode: 'popup',
+                prompt: 'select_account',   // ← CRITICAL: always show account chooser
                 callback: async (response) => {
                     if (response.code) {
                         try {
-                            const authToken = localStorage.getItem('access_token');
-                            await api.post('/auth/gsc/connect',
-                                { gsc_code: response.code }
-                            );
+                            // Clear any cached properties from the previous account
+                            localStorage.removeItem('gsc_selected_property');
+                            sessionStorage.clear();
+                            // Invalidate backend cache for this user
+                            try { await api.post('/auth/gsc/cache/invalidate'); } catch (_) {}
+
+                            await api.post('/auth/gsc/connect', { gsc_code: response.code });
                             setIsConnected(true);
-                            toast.success('Connected to Google Search Console!');
+                            setProperties([]);  // clear stale list immediately
+                            onPropertySelect([]);
+                            toast.success(
+                                switchAccount
+                                    ? 'Switched GSC account successfully!'
+                                    : 'Connected to Google Search Console!'
+                            );
                             await fetchProperties();
                         } catch (err) {
                             toast.error(err.response?.data?.detail || 'Failed to connect to Search Console');
                         }
                     } else if (response.error) {
-                        toast.error(`Google error: ${response.error}`);
+                        if (response.error !== 'popup_closed_by_user') {
+                            toast.error(`Google error: ${response.error}`);
+                        }
                     }
                     setIsConnecting(false);
                 },
@@ -142,6 +155,19 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
             });
             client.requestCode();
         } catch { toast.error('Failed to initialize Google connection'); setIsConnecting(false); }
+    };
+
+    const handleSwitchAccount = async () => {
+        // Disconnect current account first, then immediately open the account picker
+        try {
+            await api.post('/auth/gsc/disconnect', {});
+            localStorage.removeItem('gsc_selected_property');
+            sessionStorage.clear();
+            setIsConnected(false);
+            setProperties([]);
+            onPropertySelect([]);
+        } catch { /* ignore disconnect errors — proceed to connect anyway */ }
+        await handleGoogleConnect(true);
     };
 
     const fetchProperties = async () => {
@@ -235,9 +261,17 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                         onClick={() => fetchProperties()}
                         disabled={isFetching}
                         className="p-2.5 rounded-xl text-slate-400 hover:bg-white hover:text-slate-600 hover:shadow-sm transition-all"
-                        title="Refresh"
+                        title="Refresh properties"
                     >
                         <ArrowPathIcon className={`w-5 h-5 ${isFetching ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button
+                        onClick={handleSwitchAccount}
+                        disabled={isConnecting}
+                        className="px-5 py-2 text-sm font-bold text-emerald-700 border border-emerald-200 rounded-xl bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Connect a different Google account"
+                    >
+                        {isConnecting ? 'Switching...' : 'Switch Account'}
                     </button>
                     <button
                         onClick={handleDisconnect}

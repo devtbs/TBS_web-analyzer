@@ -470,13 +470,19 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                                     key={path}
                                     to={path}
                                     title={label}
-                                    className="flex items-center justify-center py-1.5"
+                                    className="relative flex items-center justify-center py-1.5 group outline-none"
+                                    style={{ color: active ? '#10b981' : '#9ca3af' }}
+                                    onMouseEnter={e => { if (!active) e.currentTarget.style.color = '#d1d5db'; }}
+                                    onMouseLeave={e => { if (!active) e.currentTarget.style.color = '#9ca3af'; }}
                                 >
                                     <div
-                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${ active ? '' : 'hover:bg-white/5' }`}
-                                        style={{ background: active ? 'rgba(16,185,129,0.12)' : 'transparent' }}
+                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-150 ${ active ? '' : 'group-hover:bg-white/5' }`}
+                                        style={{ 
+                                            background: active ? 'rgba(16,185,129,0.12)' : 'transparent',
+                                            boxShadow: active ? '0 0 15px rgba(16, 185, 129, 0.1)' : 'none'
+                                        }}
                                     >
-                                        <Icon className="w-5 h-5" style={{ color: active ? '#10b981' : '#94a3b8' }} />
+                                        <Icon className="flex-shrink-0 transition-colors" style={{ width: 20, height: 20, color: active ? '#10b981' : 'inherit' }} />
                                     </div>
                                 </Link>
                             );
