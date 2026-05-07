@@ -486,27 +486,6 @@ export default function MySites() {
 
                     {/* Right: all controls in one row */}
                     <div className="flex items-center gap-2 shrink-0">
-                        {/* Sort */}
-                        <button className="flex items-center gap-1.5 h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-600 transition-colors shadow-sm">
-                            A to Z
-                            <ChevronDownIcon className="w-3.5 h-3.5 text-slate-400" />
-                        </button>
-
-                        {/* Filter */}
-                        <button className="flex items-center gap-1.5 h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-600 transition-colors shadow-sm">
-                            <FunnelIcon className="w-3.5 h-3.5 text-slate-400" />
-                            Filter
-                        </button>
-
-                        {/* Tags */}
-                        <button className="flex items-center gap-1.5 h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-[12px] font-bold text-slate-600 transition-colors shadow-sm">
-                            <TagIcon className="w-3.5 h-3.5 text-slate-400" />
-                            Tags
-                        </button>
-
-                        {/* Divider */}
-                        <div className="w-px h-5 bg-slate-200 mx-1" />
-
                         {/* Search */}
                         <div className="relative">
                             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />

@@ -126,7 +126,13 @@ const SkeletonRow = ({ i }) => (
    ══════════════════════════════════════════════════════ */
 export default function CountriesPage() {
     const navigate = useNavigate();
-    const selectedProperty = localStorage.getItem('gsc_selected_property') || '';
+    const [selectedProperty, setSelectedProperty] = useState(localStorage.getItem('gsc_selected_property') || '');
+
+    useEffect(() => {
+        const handlePropChange = () => setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+        window.addEventListener('gsc_property_changed', handlePropChange);
+        return () => window.removeEventListener('gsc_property_changed', handlePropChange);
+    }, []);
 
     const [countries, setCountries] = useState([]);
     const [loading, setLoading] = useState(true);       // true only on first load (no cache)
@@ -137,6 +143,9 @@ export default function CountriesPage() {
     const [isPresetOpen, setIsPresetOpen] = useState(false);
     const [sortKey, setSortKey] = useState('clicks');
     const [sortDir, setSortDir] = useState('desc');
+    const [page, setPage] = useState(1);
+
+    const ITEMS_PER_PAGE = 50;
 
     /* ── Fetch with caching ── */
     useEffect(() => {
@@ -177,6 +186,17 @@ export default function CountriesPage() {
         });
         return list;
     }, [countries, tab, sortKey, sortDir]);
+
+    const totalPages = Math.ceil(displayed.length / ITEMS_PER_PAGE);
+    const paginated = useMemo(() => {
+        const startIndex = (page - 1) * ITEMS_PER_PAGE;
+        return displayed.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+    }, [displayed, page]);
+
+    // Reset page on filter changes
+    useEffect(() => {
+        setPage(1);
+    }, [tab, sortKey, sortDir, days, selectedProperty]);
 
     const handleSort = (key) => {
         if (sortKey === key) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
@@ -336,7 +356,7 @@ export default function CountriesPage() {
                                     No countries match the current filter.
                                 </td>
                             </tr>
-                        ) : displayed.map((row, idx) => (
+                        ) : paginated.map((row, idx) => (
                             <motion.tr
                                 key={row.name}
                                 initial={{ opacity: 0, y: 4 }}
@@ -367,6 +387,37 @@ export default function CountriesPage() {
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {!loading && totalPages > 1 && (
+                <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-white sticky bottom-0">
+                    <span className="text-[13px] text-slate-500 font-medium">
+                        Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, displayed.length)} of {displayed.length} countries
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            disabled={page === 1}
+                            onClick={() => {
+                                setPage(p => Math.max(1, p - 1));
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Previous
+                        </button>
+                        <button 
+                            disabled={page === totalPages}
+                            onClick={() => {
+                                setPage(p => Math.min(totalPages, p + 1));
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

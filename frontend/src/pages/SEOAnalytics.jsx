@@ -276,6 +276,16 @@ const SEOAnalytics = () => {
         setIsMounted(true);
     }, []);
 
+    // Listen to sidebar property changes
+    useEffect(() => {
+        const handlePropChange = () => {
+            const saved = localStorage.getItem('gsc_selected_property');
+            if (saved) setSelectedProperty(saved);
+        };
+        window.addEventListener('gsc_property_changed', handlePropChange);
+        return () => window.removeEventListener('gsc_property_changed', handlePropChange);
+    }, []);
+
     // Load Properties on Component Mount
     useEffect(() => {
         const fetchProperties = async () => {
@@ -822,126 +832,6 @@ const SEOAnalytics = () => {
 
                 {/* Right: Domain, Query, Page Filters & Logout */}
                 <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
-                    {/* Domain Selector Picker */}
-                    <div className="relative w-full sm:w-auto">
-                        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden h-10 shadow-sm w-full sm:w-auto bg-white">
-                            <div className="px-3 bg-slate-50 text-slate-500 font-bold border-r border-slate-200 h-full flex items-center text-[12px] tracking-wide uppercase flex-shrink-0">
-                                Domain
-                            </div>
-                            <button 
-                                onClick={() => setIsDomainPickerOpen(!isDomainPickerOpen)}
-                                className="bg-white px-3 flex items-center justify-between gap-3 h-full flex-1 sm:min-w-[14rem] hover:bg-slate-50 transition-colors text-left group/btn"
-                            >
-                                <div className="flex items-center gap-2.5 min-w-0">
-                                    {selectedProperty ? (
-                                        <Favicon url={selectedProperty} size={18} className="rounded-sm shadow-sm border border-slate-100" />
-                                    ) : (
-                                        <LinkIcon className="w-[18px] h-[18px] text-slate-400" />
-                                    )}
-                                    <span className="text-slate-700 font-bold text-[13px] truncate">
-                                        {selectedProperty ? getDomain(selectedProperty) : 'Select Domain'}
-                                    </span>
-                                </div>
-                                <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform duration-200 flex-shrink-0 ${isDomainPickerOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                        </div>
-
-                        <AnimatePresence>
-                            {isDomainPickerOpen && (
-                                <>
-                                    {/* Click Backdrop */}
-                                    <div 
-                                        className="fixed inset-0 z-40" 
-                                        onClick={() => {
-                                            setIsDomainPickerOpen(false);
-                                            setDomainSearch('');
-                                        }} 
-                                    />
-                                    
-                                    <motion.div 
-                                        initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                                        transition={{ duration: 0.15, ease: "easeOut" }}
-                                        className="absolute left-0 lg:left-auto lg:right-0 top-[calc(100%+8px)] w-full sm:w-[320px] bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden"
-                                    >
-                                        {/* Search Bar */}
-                                        <div className="p-3 border-b border-slate-50 sticky top-0 bg-white/80 backdrop-blur-md z-10">
-                                            <div className="relative group">
-                                                <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
-                                                <input 
-                                                    autoFocus
-                                                    type="text"
-                                                    placeholder="Search properties..."
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-lg pl-9 pr-8 py-2 text-[13px] outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500/30 transition-all font-medium"
-                                                    value={domainSearch}
-                                                    onChange={(e) => setDomainSearch(e.target.value)}
-                                                />
-                                                {domainSearch && (
-                                                    <button 
-                                                        onClick={() => setDomainSearch('')}
-                                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                                                    >
-                                                        <XMarkIcon className="w-3.5 h-3.5" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Domain List */}
-                                        <div className="max-h-80 overflow-y-auto p-1.5 space-y-0.5">
-                                            {properties.length === 0 ? (
-                                                <div className="px-4 py-8 text-center">
-                                                    <div className="w-10 h-10 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                                                        <LinkIcon className="w-5 h-5 text-slate-300" />
-                                                    </div>
-                                                    <p className="text-[13px] font-medium text-slate-400">No properties found</p>
-                                                </div>
-                                            ) : properties.filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase())).length === 0 ? (
-                                                <div className="px-4 py-8 text-center text-[13px] text-slate-400 font-medium">
-                                                    No results for "{domainSearch}"
-                                                </div>
-                                            ) : (
-                                                properties
-                                                    .filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase()))
-                                                    .map(p => (
-                                                         <button 
-                                                            key={p.url}
-                                                            onClick={() => {
-                                                                setSelectedProperty(p.url);
-                                                                setIsDomainPickerOpen(false);
-                                                                setDomainSearch('');
-                                                            }}
-                                                            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-left transition-all ${
-                                                                selectedProperty === p.url 
-                                                                    ? 'bg-emerald-50 text-emerald-700' 
-                                                                    : 'text-slate-600 hover:bg-slate-50'
-                                                            }`}
-                                                        >
-                                                            <div className="flex items-center gap-3 min-w-0">
-                                                                <Favicon url={p.url} size={20} className="rounded shadow-sm border border-slate-100" />
-                                                                <div className="flex flex-col min-w-0">
-                                                                    <span className={`text-[13px] font-bold truncate ${selectedProperty === p.url ? 'text-emerald-700' : 'text-slate-700'}`}>
-                                                                        {getDomain(p.url)}
-                                                                    </span>
-                                                                    <span className="text-[11px] text-slate-400 truncate mt-0.5">
-                                                                        {p.url.replace(/^https?:\/\//, '')}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                            {selectedProperty === p.url && (
-                                                                <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                            )}
-                                                        </button>
-                                                    ))
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                </>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
                     {/* Query Filter */}
                     <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
                         <PencilIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
@@ -1024,22 +914,7 @@ const SEOAnalytics = () => {
                         className={`transition-opacity duration-300 ${isUpdating ? 'opacity-60 pointer-events-none' : ''}`}
                     >
                         {/* ── Top Header Context (Mocked to match screenshot) ── */}
-                        <div className="flex flex-col mb-8 px-1">
-                            {/* Row 1: Date Range (computed from selected days) */}
-                            <div className="flex items-center gap-2 mb-4">
-                                {(() => {
-                                    const end = new Date();
-                                    const start = new Date(); start.setDate(start.getDate() - days);
-                                    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                                    const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
-                                    const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days);
-                                    return (<>
-                                        <span className="text-[14px] font-extrabold text-slate-800">{fmt(start)} – {fmt(end)}</span>
-                                        <span className="text-[14px] font-bold text-slate-400">vs {fmt(prevStart)} – {fmt(prevEnd)}</span>
-                                    </>);
-                                })()}
-                            </div>
-                            
+                        <div className="flex flex-col mb-8 px-1">         
                             {/* Row 2: Toggles and Search/Date */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 {/* Left: Filter & Toggles */}

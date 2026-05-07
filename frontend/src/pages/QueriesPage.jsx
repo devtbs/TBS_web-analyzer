@@ -80,7 +80,13 @@ const SortIcon = ({ col, sortKey, sortDir }) => {
    ══════════════════════════════════════════════════════════ */
 export default function QueriesPage() {
     const navigate = useNavigate();
-    const selectedProperty = localStorage.getItem('gsc_selected_property') || '';
+    const [selectedProperty, setSelectedProperty] = useState(localStorage.getItem('gsc_selected_property') || '');
+
+    useEffect(() => {
+        const handlePropChange = () => setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+        window.addEventListener('gsc_property_changed', handlePropChange);
+        return () => window.removeEventListener('gsc_property_changed', handlePropChange);
+    }, []);
 
     const [rawPages, setRawPages]       = useState([]);   // raw from queries endpoint
     const [loading, setLoading]         = useState(true);
@@ -271,34 +277,38 @@ export default function QueriesPage() {
                             </tbody>
                         </table>
                     </div>
-                    {!loading && filtered.length > 0 && (
-                        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[12px] text-slate-400 font-medium">
-                                Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} queries
-                            </span>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                    className="px-2.5 py-1 text-[12px] font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    ← Prev
-                                </button>
-                                <span className="px-3 text-[12px] font-bold text-slate-500">
-                                    {currentPage} / {totalPages}
-                                </span>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
-                                    className="px-2.5 py-1 text-[12px] font-semibold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                                >
-                                    Next →
-                                </button>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
+
+            {!loading && filtered.length > 0 && totalPages > 1 && (
+                <div className="sticky bottom-0 border-t border-slate-200 bg-white px-6 py-4 flex items-center justify-between shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-20">
+                    <span className="text-[13px] text-slate-500 font-medium">
+                        Showing {(currentPage - 1) * PAGE_SIZE + 1} to {Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} queries
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                setCurrentPage(p => Math.max(1, p - 1));
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            disabled={currentPage === 1}
+                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            onClick={() => {
+                                setCurrentPage(p => Math.min(totalPages, p + 1));
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            disabled={currentPage === totalPages}
+                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                            Next
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

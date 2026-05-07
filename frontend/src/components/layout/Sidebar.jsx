@@ -62,6 +62,16 @@ const SCHEME_PILL = {
     'Domain': 'bg-amber-100 text-amber-700',
 };
 
+const getDomain = (url) => {
+    try { 
+        let domain = new URL(url).hostname.replace('www.', ''); 
+        return domain.length > 25 ? domain.substring(0, 22) + '...' : domain;
+    }
+    catch { 
+        return url && url.length > 25 ? url.substring(0, 22) + '...' : url; 
+    }
+};
+
 
 const NAV_GROUPS = [
     {
@@ -99,6 +109,11 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
     const [folders, setFolders] = useState([]);
 
     const [isMenuTransitioning, setIsMenuTransitioning] = useState(false);
+    
+    // GSC Property Selector State
+    const [properties, setProperties] = useState([]);
+    const [isDomainPickerOpen, setIsDomainPickerOpen] = useState(false);
+    const [domainSearch, setDomainSearch] = useState('');
 
     useEffect(() => {
         localStorage.setItem('sidebar_folders_open', isFoldersOpen);
@@ -221,6 +236,28 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
         ? selectedProperty.replace(/^https?:\/\//, '').replace(/^sc-domain:/, '')
         : '';
 
+    useEffect(() => {
+        if (!isPropertyMode) return;
+        const fetchProperties = async () => {
+            try {
+                const authToken = localStorage.getItem('access_token');
+                if (!authToken) return;
+                const res = await api.get('/auth/gsc/properties');
+                setProperties(res.data.properties || []);
+            } catch (err) {
+                console.warn("Failed to fetch properties in sidebar", err);
+            }
+        };
+        fetchProperties();
+    }, [isPropertyMode]);
+
+    const handleSelectProperty = (url) => {
+        localStorage.setItem('gsc_selected_property', url);
+        setIsDomainPickerOpen(false);
+        setDomainSearch('');
+        window.dispatchEvent(new Event('gsc_property_changed'));
+    };
+
     /* ── Collapsible section state for property nav ── */
     const [openSections, setOpenSections] = useState({ 'OPTIMIZATION': true, 'SITE ANALYSIS': false });
     const toggleSection = (section) => setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -283,6 +320,87 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                             <ArrowLeftIcon className="w-3.5 h-3.5" />
                             All sites
                         </button>
+
+                        {/* Sidebar Property Selector */}
+                        <div className="px-3 py-3 border-b border-white/5">
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsDomainPickerOpen(!isDomainPickerOpen)}
+                                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-all duration-150 text-left group"
+                                >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                        {selectedProperty ? (
+                                            <Favicon url={selectedProperty} size={18} className="rounded-sm flex-shrink-0" />
+                                        ) : (
+                                            <GlobeAltIcon className="w-[18px] h-[18px] text-slate-400" />
+                                        )}
+                                        <span className="text-slate-200 font-bold text-[13px] truncate">
+                                            {selectedProperty ? getDomain(selectedProperty) : 'Select Domain'}
+                                        </span>
+                                    </div>
+                                    <ChevronDownIcon className={`w-4 h-4 text-slate-500 transition-transform duration-200 flex-shrink-0 ${isDomainPickerOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                <AnimatePresence>
+                                    {isDomainPickerOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => { setIsDomainPickerOpen(false); setDomainSearch(''); }} />
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                                                transition={{ duration: 0.15 }}
+                                                className="absolute left-0 right-0 top-[calc(100%+8px)] w-full bg-[#0f172a] border border-slate-700/50 rounded-xl shadow-[0_12px_40px_rgb(0,0,0,0.5)] z-50 overflow-hidden"
+                                            >
+                                                <div className="p-2 border-b border-slate-800 sticky top-0 bg-[#0f172a] z-10">
+                                                    <div className="relative">
+                                                        <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                                                        <input
+                                                            autoFocus
+                                                            type="text"
+                                                            placeholder="Search properties..."
+                                                            className="w-full bg-[#1e293b] border-none rounded-lg pl-8 pr-7 py-2 text-[12px] text-slate-200 outline-none focus:ring-1 focus:ring-emerald-500/50 placeholder:text-slate-500 transition-colors"
+                                                            value={domainSearch}
+                                                            onChange={(e) => setDomainSearch(e.target.value)}
+                                                        />
+                                                        {domainSearch && (
+                                                            <button onClick={() => setDomainSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-200">
+                                                                <XMarkIcon className="w-3 h-3" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="max-h-[280px] overflow-y-auto p-1 space-y-0.5">
+                                                    {properties.length === 0 ? (
+                                                        <div className="px-3 py-6 text-center text-[12px] text-slate-500">No properties</div>
+                                                    ) : properties.filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase())).length === 0 ? (
+                                                        <div className="px-3 py-6 text-center text-[12px] text-slate-500">No results</div>
+                                                    ) : (
+                                                        properties.filter(p => p.url.toLowerCase().includes(domainSearch.toLowerCase())).map(p => (
+                                                            <button
+                                                                key={p.url}
+                                                                onClick={() => handleSelectProperty(p.url)}
+                                                                className={`w-full flex items-center justify-between gap-3 px-2 py-2 rounded-lg text-left transition-colors ${
+                                                                    selectedProperty === p.url ? 'bg-emerald-500/10 text-emerald-400' : 'text-slate-300 hover:bg-white/5'
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-2.5 min-w-0">
+                                                                    <Favicon url={p.url} size={16} className={`rounded-sm flex-shrink-0 ${selectedProperty === p.url ? '' : 'grayscale opacity-70'}`} />
+                                                                    <span className={`text-[12px] font-medium truncate ${selectedProperty === p.url ? 'text-emerald-400' : 'text-slate-300'}`}>
+                                                                        {getDomain(p.url)}
+                                                                    </span>
+                                                                </div>
+                                                                {selectedProperty === p.url && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />}
+                                                            </button>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        </>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
 
                         {/* Property nav groups */}
                         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4" style={{ scrollbarWidth: 'none' }}>

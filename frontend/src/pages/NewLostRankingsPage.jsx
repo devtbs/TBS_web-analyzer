@@ -109,9 +109,13 @@ const KpiCard = ({ label, count, isNew, icon: Icon }) => (
 export default function NewLostRankingsPage() {
     const navigate = useNavigate();
 
-    const [selectedProperty] = useState(() =>
-        localStorage.getItem('gsc_selected_property') || ''
-    );
+    const [selectedProperty, setSelectedProperty] = useState(localStorage.getItem('gsc_selected_property') || '');
+
+    useEffect(() => {
+        const handlePropChange = () => setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+        window.addEventListener('gsc_property_changed', handlePropChange);
+        return () => window.removeEventListener('gsc_property_changed', handlePropChange);
+    }, []);
 
     // Data
     const [data, setData] = useState(null);
