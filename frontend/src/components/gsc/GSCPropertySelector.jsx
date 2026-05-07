@@ -161,6 +161,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         try {
             const authToken = localStorage.getItem('access_token');
             await api.post('/auth/gsc/disconnect', {});
+            localStorage.removeItem('gsc_selected_property');
+            sessionStorage.clear();
             setIsConnected(false);
             setProperties([]);
             onPropertySelect([]);

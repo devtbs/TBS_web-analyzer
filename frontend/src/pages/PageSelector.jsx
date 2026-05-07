@@ -45,7 +45,7 @@ const PageSelector = () => {
         try {
             setLoading(true);
             const token = localStorage.getItem('access_token');
-            const response = await api.get(`/auth/gsc/pages/${encodeURIComponent(propertyUrl)}`);
+            const response = await api.get(`/auth/gsc/pages-with-queries/${encodeURIComponent(propertyUrl)}`);
             setPages(response.data.pages);
             setFilteredPages(response.data.pages);
         } catch (error) {

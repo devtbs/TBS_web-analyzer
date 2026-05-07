@@ -141,292 +141,72 @@ class TopicalMapGenerator:
 Analyze the provided website data and create a comprehensive topical map following the 8-part semantic analysis framework.
 Return ONLY valid JSON without markdown formatting."""
         
-        # Main analysis prompt - comprehensive 8-part framework
-        prompt = f"""Perform a COMPREHENSIVE semantic analysis of this website using the detailed 8-part framework below.
+        # ── CALL 1: metadata, semantic, taxonomy, competitive (NO articles) ──
+        prompt = f"""Analyze this website and return a topical map in JSON.
 
 Website Data:
 {json.dumps(content_data, indent=2)}
 
-═══════════════════════════════════════════════════════════
-COMPREHENSIVE SEMANTIC WEBSITE ANALYSIS FRAMEWORK
-═══════════════════════════════════════════════════════════
-
-PART 1: BUSINESS INTELLIGENCE EXTRACTION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Analyze and document:
-• Company Overview: What the business does, founding year (if available), geographic presence
-• Business Model: Asset structure, revenue model, operational approach (B2B/B2C/SaaS/Marketplace/etc)
-• Technology Stack: Key technologies enabling the service/product (5-10 items)
-• Unique Value Propositions: What differentiates from competitors (3-5 items)
-• Target Markets: Geographic regions, industry verticals served
-• Service/Product Taxonomy: Primary offerings with hierarchical breakdown
-
-PART 2: DEEP SEMANTIC ANALYSIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-For the central entity, document ALL these relationship types:
-
-✦ Core Entities (5-10): Direct, fundamental concepts
-✦ Derived Entities (5-10): Specialized variations
-✦ Attributes (8-15): Characteristics, metrics, standards, capabilities
-✦ Context Terms (8-15): Usage scenarios, applications, industry contexts
-✦ Synonyms (5-10): Alternative terms, jargon, regional variations
-✦ Antonyms (3-5): Contrasting concepts, what it's NOT
-✦ Hypernyms (3-5): Broader categories, parent classifications
-✦ Hyponyms (5-10): Specific subcategories, niche applications
-✦ Holonyms (3-5): Larger systems/frameworks it belongs to
-✦ Meronyms (5-10): Component parts, service elements, features
-✦ Troponyms (3-5): Specific methods, process variations
-✦ Entailments (3-5): Logical consequences, guaranteed outcomes
-✦ Acronyms (5-10): Industry abbreviations, technical terms
-✦ Polysemes (2-5): Multiple meanings in different contexts
-✦ Related Concepts (5-10): Connected ideas, complementary services
-
-PART 3: COMPETITIVE & SOURCE ANALYSIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Analyze the competitive landscape:
-• Top Competitors (5-10): Main competing websites/brands in the space
-• Content Approaches (3-5): How competitors structure their content strategies
-• Gap Opportunities (4-6): What competitors are missing that this site could capitalize on
-• SERP Insights (3-5): What Google prioritizes for target keywords (content types, lengths, features, schema)
-
-PART 4: CONTENT STRATEGY FRAMEWORK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-IMPORTANT: Analyze the 'existing_content_themes' and 'site_structure' data provided to understand what content already exists.
-
-Based on existing content analysis:
-• Audience Segments (3-5): Define detailed segments with expertise levels, goals, pain points, content preferences
-• Core Topics (6-10): Direct revenue/conversion topics (identify which are MISSING from existing content)
-• Outer Topics (8-12): Authority/traffic building topics (identify which are MISSING from existing content)
-• Content Gaps (4-6): Specific topics/angles NOT covered in existing {len(content_data.get('existing_content_themes', []))} content themes
-• Priority Areas (4-6): Top strategic content focuses based on what's missing vs what competitors rank for
-
-PART 5: COMPREHENSIVE QUERY RESEARCH
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Provide 8-15 example queries per category:
-
-📌 Raw Queries (5-8): Direct, unmodified search terms
-📌 Informational (10-15): "what is...", "how does... work", "guide to..."
-📌 Transactional (8-12): "buy...", "sign up...", "order...", "get quote..."
-📌 Commercial (10-15): "best...", "vs...", "compare...", "review...", "top..."
-📌 Navigational (5-8): Brand + service type searches
-📌 Contextual (8-12): Local, problem-solution, future-oriented
-📌 Audience-Specific (10-15): Beginner/Advanced/Professional specific queries
-📌 Predictive (5-8): "future of...", "trends in...", "2024..."
-📌 Voice Search (5-8): Conversational, question-based queries
-
-PART 6: CONTENT PLAN GENERATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Create 30-50 article ideas with:
-• Title: Specific, SEO-optimized article title
-• Section: "Core" (revenue-focused) or "Outer" (authority-building)
-• Article Type: "informative", "service_page", "listicle", "tool_page"
-• Categories: L1 (main), L2 (sub), L3 (sub-sub) taxonomy levels
-• Priority: 1 (Core/Quick wins), 2 (Strategic), 3 (Support/Long-tail)
-• Source Context: 3-5 sentences explaining how to integrate company expertise, specific features to highlight, CTAs
-
-PART 7: SEMANTIC SEO OPTIMIZATION
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Provide:
-• Topic Clusters (5-8): Groups of semantically related content that should interlink
-• Schema Recommendations (5-8): Specific schema types to implement (Article, Service, FAQ, Organization, etc.)
-• Entity Optimization (5-8): Tips for entity co-occurrence, salience, and relationship building in content
-
-PART 8: COMPETITIVE POSITIONING
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Document:
-• Competitive Advantages (5-8): Key differentiators
-• Technology Stack (6-10): Technologies/tools/platforms used
-
-PART 9: TAXONOMY STRUCTURE (Content Hierarchy)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Create a hierarchical content taxonomy following this tree structure:
-
-Central Topic (Business/Service Name)
-├── Level 1: Major Category A
-│   ├── Level 2: Subcategory A1
-│   │   ├── Level 3: Topic A1a
-│   │   └── Level 3: Topic A1b
-│   └── Level 2: Subcategory A2
-│       ├── Level 3: Topic A2a
-│       └── Level 3: Topic A2b
-├── Level 1: Major Category B
-│   ├── Level 2: Subcategory B1
-│   └── Level 2: Subcategory B2
-└── Level 1: Major Category C
-
-Requirements:
-• Create 3-5 Level 1 categories (main content pillars) - color: #4F46E5 (indigo)
-• Each L1 MUST have 2-4 Level 2 subcategories - color: #10B981 (green)
-• Each L2 MUST have 2-3 Level 3 sub-subcategories - color: #F59E0B (amber)
-• CRITICAL: EVERY Level 1 node MUST have at least 2 children (Level 2 nodes)
-• CRITICAL: EVERY Level 2 node MUST have at least 2 children (Level 3 nodes)
-• NO empty children arrays for L1 or L2 nodes - all must be fully populated
-• Total nodes: 15-25 nodes for comprehensive coverage
-• Each node must have: name, level, parent (null for L1), children array, color
-• Build taxonomy from content_articles categories to ensure consistency
-• Names should be clear, specific, and SEO-friendly (not generic)
-
-
-
-PART 10: ONTOLOGY RELATIONSHIPS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Create semantic relationships (8-12 relations):
-• Format: Subject → Predicate → Object → Context
-• Use semantic_relationships data to build meaningful connections
-• Examples:
-  - "{central_entity}" → "provides" → "Core Service" → "Target Market"
-  - "Technology" → "enables" → "Business Outcome" → "Industry Context"
-• Focus on business value, capabilities, and domain expertise
-
-═══════════════════════════════════════════════════════════
-REQUIRED JSON OUTPUT STRUCTURE
-═══════════════════════════════════════════════════════════
-
-Return comprehensive JSON with this EXACT structure:
-
+Return ONLY this JSON (replace ALL placeholder values with real data about {domain}. No markdown, no code blocks):
 {{
-  "business_description": "Detailed 300-400 word description covering: what they do, business model, value props, target markets, competitive positioning",
-  "central_entity": "Main business/brand name",
-  "business_model": "Specific model (e.g., 'B2B SaaS Platform', 'E-commerce Marketplace', 'Professional Services')",
-  "search_intent": ["Primary Intent 1", "Intent 2", "Intent 3"],
-  "target_audiences": ["Audience 1 (Level)", "Audience 2 (Level)", "Audience 3"],
-  "conversion_methods": ["Method 1", "Method 2", "Method 3"],
-  "key_topics": ["Topic 1", "Topic 2", "Topic 3"],
-  
+  "business_description": "200-word description of what the company does, its business model, and value propositions",
+  "central_entity": "{central_entity}",
+  "business_model": "e.g. B2C Ride-hailing Platform",
+  "search_intent": ["Intent 1", "Intent 2", "Intent 3"],
+  "target_audiences": ["Audience 1", "Audience 2", "Audience 3"],
+  "conversion_methods": ["Method 1", "Method 2"],
+  "key_topics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"],
   "semantic_relationships": {{
-    "core_entities": ["Entity 1", "Entity 2", "..."],
-    "derived_entities": ["Derived 1", "Derived 2", "..."],
-    "attributes": ["Attribute 1", "Attribute 2", "..."],
-    "context_terms": ["Context 1", "Context 2", "..."],
-    "synonyms": ["Synonym 1", "Synonym 2", "..."],
-    "antonyms": ["Antonym 1", "Antonym 2", "..."],
-    "hypernyms": ["Hypernym 1", "Hypernym 2", "..."],
-    "hyponyms": ["Hyponym 1", "Hyponym 2", "..."],
-    "holonyms": ["Holonym 1", "Holonym 2", "..."],
-    "meronyms": ["Meronym 1", "Meronym 2", "..."],
-    "troponyms": ["Troponym 1", "Troponym 2", "..."],
-    "entailments": ["Entailment 1", "Entailment 2", "..."],
-    "acronyms": ["Acronym 1", "Acronym 2", "..."],
-    "polysemes": ["Polyseme 1", "Polyseme 2", "..."],
-    "related_concepts": ["Concept 1", "Concept 2", "..."]
+    "core_entities": ["e1","e2","e3","e4","e5"],
+    "derived_entities": ["d1","d2","d3"],
+    "attributes": ["a1","a2","a3","a4","a5"],
+    "context_terms": ["c1","c2","c3","c4"],
+    "synonyms": ["s1","s2","s3"],
+    "antonyms": ["an1","an2"],
+    "hypernyms": ["h1","h2"],
+    "hyponyms": ["hy1","hy2","hy3"],
+    "holonyms": ["ho1","ho2"],
+    "meronyms": ["m1","m2","m3"],
+    "troponyms": ["t1","t2"],
+    "entailments": ["en1","en2"],
+    "acronyms": ["ac1","ac2"],
+    "polysemes": ["p1","p2"],
+    "related_concepts": ["rc1","rc2","rc3"]
   }},
-  
   "audience_segments": [
-    {{
-      "name": "Segment Name",
-      "expertise_level": "Beginner/Intermediate/Advanced/Expert",
-      "primary_goal": "What they want to achieve",
-      "pain_points": ["Pain 1", "Pain 2", "Pain 3"],
-      "content_types": ["Type 1", "Type 2", "Type 3"]
-    }}
+    {{"name":"Segment Name","expertise_level":"Beginner","primary_goal":"Goal","pain_points":["p1","p2"],"content_types":["t1","t2"]}}
   ],
-  
   "content_strategy": {{
-    "core_topics": ["Core Topic 1", "Core Topic 2", "..."],
-    "outer_topics": ["Outer Topic 1", "Outer Topic 2", "..."],
-    "content_gaps": ["Gap 1", "Gap 2", "..."],
-    "priority_areas": ["Priority 1", "Priority 2", "..."]
+    "core_topics": ["t1","t2","t3","t4"],
+    "outer_topics": ["o1","o2","o3","o4"],
+    "content_gaps": ["g1","g2","g3"],
+    "priority_areas": ["pa1","pa2","pa3"]
   }},
-  
-  "query_templates": {{
-    "raw_queries": ["Query 1", "Query 2", "..."],
-    "informational": ["Query 1", "Query 2", "..."],
-    "transactional": ["Query 1", "Query 2", "..."],
-    "commercial": ["Query 1", "Query 2", "..."],
-    "navigational": ["Query 1", "Query 2", "..."],
-    "contextual": ["Query 1", "Query 2", "..."],
-    "audience_specific": ["Query 1", "Query 2", "..."],
-    "predictive": ["Query 1", "Query 2", "..."],
-    "voice_search": ["Query 1", "Query 2", "..."]
-  }},
-  
   "competitive_analysis": {{
-    "top_competitors": ["Competitor 1", "Competitor 2", "..."],
-    "content_approaches": ["Approach 1", "Approach 2", "..."],
-    "gap_opportunities": ["Opportunity 1", "Opportunity 2", "..."],
-    "serp_insights": ["Insight 1", "Insight 2", "..."]
+    "top_competitors": ["c1","c2","c3","c4","c5"],
+    "content_approaches": ["a1","a2","a3"],
+    "gap_opportunities": ["g1","g2","g3"],
+    "serp_insights": ["s1","s2","s3"]
   }},
-  
-  "content_articles": [
-    {{
-      "title": "Specific Article Title",
-      "section": "Core or Outer",
-      "article_type": "informative/service_page/listicle/tool_page",
-      "category_l1": "Main Category",
-      "category_l2": "Subcategory",
-      "category_l3": "Sub-subcategory",
-      "priority": 1,
-      "source_context": "3-5 sentences explaining integration strategy, company expertise, specific features to highlight, CTAs"
-    }}
-  ],
-  
   "seo_optimization": {{
-    "topic_clusters": ["Cluster 1", "Cluster 2", "..."],
-    "schema_recommendations": ["Schema 1", "Schema 2", "..."],
-    "entity_optimization": ["Tip 1", "Tip 2", "..."]
+    "topic_clusters": ["tc1","tc2","tc3"],
+    "schema_recommendations": ["sr1","sr2","sr3"],
+    "entity_optimization": ["eo1","eo2","eo3"]
   }},
-  
-  "competitive_advantages": ["Advantage 1", "Advantage 2", "..."],
-  "technology_stack": ["Tech 1", "Tech 2", "..."],
-  
+  "competitive_advantages": ["adv1","adv2","adv3"],
+  "technology_stack": ["tech1","tech2","tech3","tech4"],
   "taxonomy": [
-    {{
-      "name": "Main Category Name",
-      "level": 1,
-      "parent": null,
-      "children": ["Subcategory 1", "Subcategory 2"],
-      "color": "#4F46E5"
-    }},
-    {{
-      "name": "Subcategory 1",
-      "level": 2,
-      "parent": "Main Category Name",
-      "children": ["Sub-sub 1", "Sub-sub 2"],
-      "color": "#10B981"
-    }},
-    {{
-      "name": "Sub-sub 1",
-      "level": 3,
-      "parent": "Subcategory 1",
-      "children": [],
-      "color": "#F59E0B"
-    }},
-    {{
-      "name": "Sub-sub 2",
-      "level": 3,
-      "parent": "Subcategory 1",
-      "children": [],
-      "color": "#F59E0B"
-    }},
-    {{
-      "name": "Subcategory 2",
-      "level": 2,
-      "parent": "Main Category Name",
-      "children": ["Sub-sub 3"],
-      "color": "#10B981"
-    }},
-    {{
-      "name": "Sub-sub 3",
-      "level": 3,
-      "parent": "Subcategory 2",
-      "children": [],
-      "color": "#F59E0B"
-    }}
+    {{"name":"Category A","level":1,"parent":null,"children":["Sub A1","Sub A2"],"color":"#4F46E5"}},
+    {{"name":"Sub A1","level":2,"parent":"Category A","children":["Topic A1a","Topic A1b"],"color":"#10B981"}},
+    {{"name":"Topic A1a","level":3,"parent":"Sub A1","children":[],"color":"#F59E0B"}},
+    {{"name":"Topic A1b","level":3,"parent":"Sub A1","children":[],"color":"#F59E0B"}},
+    {{"name":"Sub A2","level":2,"parent":"Category A","children":["Topic A2a","Topic A2b"],"color":"#10B981"}},
+    {{"name":"Topic A2a","level":3,"parent":"Sub A2","children":[],"color":"#F59E0B"}},
+    {{"name":"Topic A2b","level":3,"parent":"Sub A2","children":[],"color":"#F59E0B"}}
   ],
-  
   "ontology": [
-    {{
-      "subject": "AI Solutions",
-      "predicate": "help",
-      "object": "Automate Processes",
-      "context": "Thai Businesses"
-    }},
-    {{
-      "subject": "Machine Learning",
-      "predicate": "learns",
-      "object": "From Data",
-      "context": "Efficiency and optimization"
-    }}
+    {{"subject":"{central_entity}","predicate":"provides","object":"Core Service","context":"Target Market"}},
+    {{"subject":"Technology","predicate":"enables","object":"Business Outcome","context":"Industry"}}
   ]
 }}
 
@@ -573,13 +353,49 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                 from models.schemas import CompetitiveAnalysis
                 competitive_analysis = CompetitiveAnalysis(**result['competitive_analysis'])
             
-            # Parse content articles (Part 6) - Initial batch
+            # ── CALL 2: Generate content_articles separately (dedicated call to avoid token limit) ──
             content_articles = None
-            if 'content_articles' in result and result['content_articles']:
+            try:
+                core_topics = result.get('content_strategy', {}).get('core_topics', [])
+                outer_topics = result.get('content_strategy', {}).get('outer_topics', [])
+                key_topics = result.get('key_topics', [])
+                articles_prompt = f"""Generate 15 SEO article ideas for {domain} ({result.get('business_model', 'business')}).
+
+Key topics: {', '.join(key_topics[:5])}
+Core content areas: {', '.join(core_topics[:4])}
+Outer content areas: {', '.join(outer_topics[:4])}
+
+Return ONLY a JSON array (no markdown):
+[
+  {{
+    "title": "Specific SEO article title",
+    "section": "Core",
+    "article_type": "informative",
+    "category_l1": "Main Category",
+    "category_l2": "Subcategory",
+    "category_l3": "Sub-topic",
+    "priority": 1,
+    "source_context": "One sentence on content angle."
+  }}
+]
+
+Generate 15 diverse articles mixing Core and Outer sections. Return ONLY the JSON array."""
+
+                print(f"📝 Generating content articles (Call 2)...")
+                articles_result = await ai_service.extract_json(
+                    articles_prompt,
+                    "You are an SEO content strategist. Return ONLY a valid JSON array of article objects. No markdown.",
+                    use_deepseek=True
+                )
                 from models.schemas import ContentArticle
-                content_articles = [ContentArticle(**article) for article in result['content_articles']]
-            
-            # Parse SEO optimization (Part 7)
+                articles_data = articles_result if isinstance(articles_result, list) else articles_result.get('articles', [])
+                content_articles = [ContentArticle(**a) for a in articles_data if isinstance(a, dict)]
+                print(f"✅ Generated {len(content_articles)} articles from Call 2")
+            except Exception as e:
+                print(f"⚠️ Article generation failed: {str(e)}, continuing without articles")
+
+            print(f"✅ Generated {len(content_articles or [])} articles from initial analysis")
+
             seo_optimization = None
             if 'seo_optimization' in result:
                 from models.schemas import SEOOptimization
@@ -663,11 +479,7 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                     # Competitors from AI are already set — no fallback needed
                     pass
 
-            
-            # Use only the initial articles from AI response (no batch processing for speed)
-            print(f"✅ Generated {len(content_articles or [])} articles from initial analysis")
 
-            
             # Create comprehensive TopicalMapData
             return TopicalMapData(
                 url=url,

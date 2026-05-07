@@ -94,7 +94,8 @@ export const AuthProvider = ({ children }) => {
         } finally {
             localStorage.removeItem('access_token');
             localStorage.removeItem('user_data');
-            sessionStorage.removeItem('selectedPages');
+            localStorage.removeItem('gsc_selected_property');
+            sessionStorage.clear();
             setUser(null);
         }
     };

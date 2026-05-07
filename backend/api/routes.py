@@ -179,7 +179,7 @@ async def get_gsc_properties(
         )
     
     try:
-        properties = await get_user_properties(gsc_token, is_refresh_token=is_refresh)
+        properties = await get_user_properties(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
         return {"properties": properties}
     except Exception as e:
         raise HTTPException(
@@ -246,9 +246,12 @@ async def get_gsc_analytics(
             "pages": pages
         }
     except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch analytics: {str(e)}"
+            detail=f"Failed to fetch analytics: {error_msg}"
         )
 
 # ============= Cache Management =============
@@ -287,9 +290,12 @@ async def get_gsc_countries(
         countries = await service.get_countries(property_url, days)
         return {"countries": countries, "total": len(countries)}
     except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch countries: {str(e)}"
+            detail=f"Failed to fetch countries: {error_msg}"
         )
 
 
@@ -313,7 +319,36 @@ async def get_gsc_pages(
         pages = await service.get_top_pages(property_url, days)
         return {"pages": pages, "total": len(pages)}
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch pages: {str(e)}")
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch pages: {error_msg}")
+
+
+@router.get("/auth/gsc/pages-with-queries/{property_url:path}")
+async def get_gsc_pages_with_queries(
+    property_url: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Return pages with their ranking queries for the PageSelector."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
+    try:
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        pages = await service.get_pages_with_queries(property_url, days)
+        return {"pages": pages, "total": len(pages)}
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch pages with queries: {error_msg}")
 
 
 @router.get("/auth/gsc/queries/{property_url:path}")
@@ -336,7 +371,10 @@ async def get_gsc_queries(
         queries = await service.get_top_queries(property_url, days)
         return {"queries": queries, "total": len(queries)}
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch queries: {str(e)}")
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch queries: {error_msg}")
 
 
 @router.get("/auth/gsc/devices/{property_url:path}")
@@ -363,9 +401,12 @@ async def get_gsc_devices(
         devices = await service.get_devices(property_url, days)
         return {"devices": devices}
     except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch devices: {str(e)}"
+            detail=f"Failed to fetch devices: {error_msg}"
         )
 
 
@@ -393,9 +434,12 @@ async def get_gsc_daily_stats(
         daily_stats = await service.get_daily_stats(property_url, days)
         return {"daily_stats": daily_stats}
     except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch daily stats: {str(e)}"
+            detail=f"Failed to fetch daily stats: {error_msg}"
         )
 
 
@@ -423,9 +467,12 @@ async def get_gsc_new_lost_rankings(
         data = await service.get_new_lost_rankings(property_url, days)
         return data
     except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You do not have permission to access {property_url}.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to fetch new/lost rankings: {str(e)}"
+            detail=f"Failed to fetch new/lost rankings: {error_msg}"
         )
 
 

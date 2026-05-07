@@ -823,13 +823,14 @@ class GSCService:
 
 
 
-async def get_user_properties(stored_token: str, is_refresh_token: bool = False) -> List[Dict[str, str]]:
+async def get_user_properties(stored_token: str, is_refresh_token: bool = False, user_email: str = 'default') -> List[Dict[str, str]]:
     """
     Helper: get user's Search Console properties from stored credentials.
     
     Args:
         stored_token: Token string from the database.
         is_refresh_token: True if the token is a refresh token.
+        user_email: Email of the user to isolate the cache.
     """
-    service = GSCService.from_stored_token(stored_token, is_refresh_token=is_refresh_token)
+    service = GSCService.from_stored_token(stored_token, is_refresh_token=is_refresh_token, user_email=user_email)
     return await service.get_properties()
