@@ -124,12 +124,38 @@ const SkeletonRow = ({ i }) => (
 /* ══════════════════════════════════════════════════════
    CountriesPage
    ══════════════════════════════════════════════════════ */
+const handleDownloadCSV = (data, filename) => {
+    if (!data || !data.length) return;
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            let val = row[header];
+            if (typeof val === 'string') {
+                return `"${val.replace(/"/g, '""')}"`;
+            }
+            return val;
+        }).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
 export default function CountriesPage() {
     const navigate = useNavigate();
     const [selectedProperty, setSelectedProperty] = useState(localStorage.getItem('gsc_selected_property') || '');
 
     useEffect(() => {
-        const handlePropChange = () => setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+        const handlePropChange = () => {
+            setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+            setLoading(true);
+            setCountries([]);
+        };
         window.addEventListener('gsc_property_changed', handlePropChange);
         return () => window.removeEventListener('gsc_property_changed', handlePropChange);
     }, []);
@@ -320,7 +346,7 @@ export default function CountriesPage() {
                         {fmtDate(start)} vs {fmtDate(prevStart)}, {fmtDate(prevEnd)}
                     </span>
                 </div>
-                <button className="flex items-center gap-1.5 p-1.5 text-slate-400 hover:text-slate-600 transition-colors rounded-lg hover:bg-slate-100">
+                <button onClick={() => handleDownloadCSV(countries, 'countries_full_data.csv')} title="Download CSV" className="flex items-center gap-1.5 p-1.5 text-slate-400 hover:text-slate-600 transition-colors rounded-lg hover:bg-slate-100">
                     <ArrowDownTrayIcon className="w-4 h-4" />
                 </button>
             </div>

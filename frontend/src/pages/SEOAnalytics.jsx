@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import {
     ChevronDownIcon,
 } from '@heroicons/react/20/solid';
-import { ArrowPathIcon, LinkIcon, PlusIcon, ArrowTopRightOnSquareIcon, ChartBarIcon, PencilIcon, MagnifyingGlassIcon, XMarkIcon, SparklesIcon, EyeIcon, FunnelIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { ArrowPathIcon, LinkIcon, PlusIcon, ArrowTopRightOnSquareIcon, ArrowDownTrayIcon, ChartBarIcon, PencilIcon, MagnifyingGlassIcon, XMarkIcon, SparklesIcon, EyeIcon, FunnelIcon, ClockIcon } from '@heroicons/react/24/outline';
 import {
     AreaChart,
     Area,
@@ -149,6 +149,28 @@ const getStatus = (avgPos) => {
     return 'Decay';
 };
 
+const handleDownloadCSV = (data, filename) => {
+    if (!data || !data.length) return;
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            let val = row[header];
+            if (typeof val === 'string') {
+                return `"${val.replace(/"/g, '""')}"`;
+            }
+            return val;
+        }).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
 const getStatusInfo = (status) => {
     switch (status) {
         case 'Top result': return { color: 'bg-emerald-400', label: 'Top Result' };
@@ -280,7 +302,11 @@ const SEOAnalytics = () => {
     useEffect(() => {
         const handlePropChange = () => {
             const saved = localStorage.getItem('gsc_selected_property');
-            if (saved) setSelectedProperty(saved);
+            if (saved) {
+                setSelectedProperty(saved);
+                setLoading(true);
+                setAnalytics(null);
+            }
         };
         window.addEventListener('gsc_property_changed', handlePropChange);
         return () => window.removeEventListener('gsc_property_changed', handlePropChange);
@@ -1211,7 +1237,7 @@ const SEOAnalytics = () => {
                                                     ))}
                                                 </div>
                                             </div>
-                                            <button className="text-slate-400 hover:text-slate-600"><ArrowTopRightOnSquareIcon className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDownloadCSV(computedWidgets.devicesData, 'devices_data.csv')} title="Download CSV" className="text-slate-400 hover:text-slate-600"><ArrowDownTrayIcon className="w-4 h-4" /></button>
                                         </div>
                                         <div className="w-full">
                                             <table className="w-full text-left">
@@ -1337,7 +1363,7 @@ const SEOAnalytics = () => {
                                                     ))}
                                                 </div>
                                             </div>
-                                            <button className="text-slate-400 hover:text-slate-600"><ArrowTopRightOnSquareIcon className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDownloadCSV(computedWidgets.countriesData, 'countries_data.csv')} title="Download CSV" className="text-slate-400 hover:text-slate-600"><ArrowDownTrayIcon className="w-4 h-4" /></button>
                                         </div>
                                         <div className="w-full">
                                             <table className="w-full text-left">

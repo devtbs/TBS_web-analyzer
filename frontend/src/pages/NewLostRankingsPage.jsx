@@ -105,6 +105,28 @@ const KpiCard = ({ label, count, isNew, icon: Icon }) => (
     </div>
 );
 
+const handleDownloadCSV = (data, filename) => {
+    if (!data || !data.length) return;
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            let val = row[header];
+            if (typeof val === 'string') {
+                return `"${val.replace(/"/g, '""')}"`;
+            }
+            return val;
+        }).join(','))
+    ].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
 /* ── Main Page ───────────────────────────────────────────── */
 export default function NewLostRankingsPage() {
     const navigate = useNavigate();
@@ -112,7 +134,11 @@ export default function NewLostRankingsPage() {
     const [selectedProperty, setSelectedProperty] = useState(localStorage.getItem('gsc_selected_property') || '');
 
     useEffect(() => {
-        const handlePropChange = () => setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+        const handlePropChange = () => {
+            setSelectedProperty(localStorage.getItem('gsc_selected_property') || '');
+            setLoading(true);
+            setData(null);
+        };
         window.addEventListener('gsc_property_changed', handlePropChange);
         return () => window.removeEventListener('gsc_property_changed', handlePropChange);
     }, []);
@@ -346,7 +372,11 @@ export default function NewLostRankingsPage() {
                                 disabled={loading}
                                 className="text-[12px] border border-slate-200 rounded-lg px-3 py-1.5 text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300 w-[160px] disabled:opacity-40"
                             />
-                            <button className="p-1.5 text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg transition-colors">
+                            <button 
+                                onClick={() => handleDownloadCSV(rows, `${statusTab.toLowerCase()}_${typeTab.toLowerCase()}_rankings.csv`)}
+                                title="Download CSV"
+                                className="p-1.5 text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg transition-colors"
+                            >
                                 <ArrowDownTrayIcon className="w-4 h-4" />
                             </button>
                         </div>
