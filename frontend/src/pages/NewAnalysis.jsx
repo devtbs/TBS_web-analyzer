@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import ProgressModal from '../components/ui/ProgressModal';
 import GSCPropertySelector from '../components/gsc/GSCPropertySelector';
 import {
     PlusIcon,
@@ -39,7 +38,6 @@ const NewAnalysis = () => {
     const location = useLocation();
     const [urls, setUrls] = useState(['']);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [analysisId, setAnalysisId] = useState(null);
     const [useGSC, setUseGSC] = useState(true);
     const [tabLoading, setTabLoading] = useState(false);
     const tabTimerRef = useRef(null);
@@ -126,20 +124,13 @@ const NewAnalysis = () => {
             const response = await api.post('/api/analyze',
                 { urls: validUrls }
             );
-            setAnalysisId(response.data.analysis_id);
             setSelectedPages([]);
             sessionStorage.removeItem('selectedPages');
+            navigate(`/results/${response.data.analysis_id}`);
         } catch (error) {
             toast.error(error.response?.data?.detail || 'Analysis failed');
             setIsAnalyzing(false);
         }
-    };
-
-    const handleProgressComplete = () => { if (analysisId) navigate(`/results/${analysisId}`); };
-    const handleProgressError = (error) => {
-        toast.error(error || 'Analysis failed');
-        setIsAnalyzing(false);
-        setAnalysisId(null);
     };
 
     const totalUrls = useGSC
@@ -150,15 +141,6 @@ const NewAnalysis = () => {
 
     return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-full w-full py-12 bg-slate-50">
-            
-            {analysisId && (
-                <ProgressModal
-                    analysisId={analysisId}
-                    onComplete={handleProgressComplete}
-                    onError={handleProgressError}
-                />
-            )}
-
             <div className="relative w-full flex justify-center px-4 sm:px-6">
                 <div className="w-full max-w-[1024px]">
                     <motion.div
