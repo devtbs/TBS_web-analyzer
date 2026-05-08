@@ -29,7 +29,7 @@ const ProgressModal = ({ analysisId, onComplete, onError }) => {
         // Ensure baseURL is absolute for EventSource
         if (!baseURL.startsWith('http')) {
             const isProd = !window.location.hostname.includes('localhost');
-            baseURL = isProd ? 'https://api.phyominthein.com' : `http://${window.location.hostname}:8000`;
+            baseURL = isProd ? window.location.origin : `http://${window.location.hostname}:8000`;
         }
 
         const eventSource = new EventSource(
