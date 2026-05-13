@@ -245,6 +245,7 @@ const SEOAnalytics = () => {
     const [deltas, setDeltas] = useState(null);
     const [pages, setPages] = useState([]);
     const [chartData, setChartData] = useState([]);
+    const [permissionError, setPermissionError] = useState(null); // null | property URL string
 
     // Chart toggles
     const [activeMetrics, setActiveMetrics] = useState({
@@ -341,10 +342,11 @@ const SEOAnalytics = () => {
         fetchProperties();
     }, []);
 
-    // Save selected property to local storage
+    // Save selected property to local storage & clear permission error on switch
     useEffect(() => {
         if (selectedProperty) {
             localStorage.setItem('gsc_selected_property', selectedProperty);
+            setPermissionError(null); // reset any prior 403 when user picks a new property
         }
     }, [selectedProperty]);
 
@@ -387,8 +389,12 @@ const SEOAnalytics = () => {
                 setPages(payload.pages);
                 setCurrentPage(1);
             } catch (err) {
-                const message = err.response?.data?.detail || 'Failed to fetch analytics for this property';
-                toast.error(message);
+                if (err.response?.status === 403) {
+                    setPermissionError(selectedProperty);
+                } else {
+                    const message = err.response?.data?.detail || 'Failed to fetch analytics for this property';
+                    toast.error(message);
+                }
             } finally {
                 setLoading(false);
                 setIsUpdating(false);
@@ -429,7 +435,10 @@ const SEOAnalytics = () => {
                 setRealDevices(bd.devices);
                 setRealDailyStats(bd.daily_stats);
             } catch (err) {
-                console.warn('Could not load country/device/daily breakdown:', err.message);
+                if (err.response?.status !== 403) {
+                    console.warn('Could not load country/device/daily breakdown:', err.message);
+                }
+                // 403 on breakdowns is expected when main analytics already shows the banner
             }
         };
         fetchBreakdowns();
@@ -935,6 +944,50 @@ const SEOAnalytics = () => {
                         </table>
                     </div>
                 </div>
+            ) : permissionError === selectedProperty ? (
+                /* ── Permission Denied Banner ── */
+                <motion.div
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.35 }}
+                    className="flex flex-col items-center justify-center py-24 px-6"
+                >
+                    <div className="w-20 h-20 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center mb-6 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-amber-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                        </svg>
+                    </div>
+                    <h2 className="text-[22px] font-black text-slate-800 mb-2 tracking-tight text-center">
+                        Access Denied
+                    </h2>
+                    <p className="text-slate-500 text-[14px] text-center max-w-md leading-relaxed mb-1">
+                        Your Google account doesn&apos;t have permission to view data for:
+                    </p>
+                    <code className="text-emerald-700 font-mono text-[13px] bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-lg mb-6">
+                        {selectedProperty}
+                    </code>
+                    <p className="text-slate-400 text-[13px] text-center max-w-sm leading-relaxed mb-8">
+                        Ask the site owner to add your Google account as a <strong className="text-slate-600">Full User</strong> or <strong className="text-slate-600">Owner</strong> in Google Search Console.
+                    </p>
+                    <div className="flex items-center gap-3">
+                        <a
+                            href="https://support.google.com/webmasters/answer/2451999"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 px-5 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg font-semibold text-[13px] hover:bg-amber-100 transition-colors"
+                        >
+                            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                            How to grant access
+                        </a>
+                        <button
+                            onClick={() => setSelectedProperty('')}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg font-semibold text-[13px] hover:bg-slate-100 transition-colors"
+                        >
+                            <ArrowPathIcon className="w-4 h-4" />
+                            Choose Another Property
+                        </button>
+                    </div>
+                </motion.div>
             ) : (
                 <AnimatePresence>
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}

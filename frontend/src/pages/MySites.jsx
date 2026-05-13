@@ -160,7 +160,7 @@ const SkeletonPropertyCard = ({ i = 0 }) => (
 );
 
 
-const PropertyCard = ({ property, data, loading, index, onClick }) => {
+const PropertyCard = ({ property, data, loading, index, onClick, permissionDenied }) => {
     const scheme = getScheme(property.url);
     const styles = SCHEME_STYLES[scheme] || SCHEME_STYLES['Domain'];
     const totals = data?.totals;
@@ -180,7 +180,11 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
     return (
         <div
             onClick={onClick}
-            className="group bg-white rounded-[16px] cursor-pointer shadow-sm border border-slate-200/80 hover:border-emerald-500/30 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:-translate-y-0.5 transition-all duration-300 flex flex-col relative"
+            className={`group bg-white rounded-[16px] cursor-pointer shadow-sm border transition-all duration-300 flex flex-col relative ${
+                permissionDenied
+                    ? 'border-amber-200 hover:border-amber-300 hover:shadow-[0_8px_30px_rgba(251,191,36,0.12)]'
+                    : 'border-slate-200/80 hover:border-emerald-500/30 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:-translate-y-0.5'
+            }`}
             style={{ animationDelay: `${index * 40}ms` }}
         >
             {/* ── Card top ── */}
@@ -188,7 +192,7 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden border border-slate-100 shadow-sm bg-slate-50">
                     <Favicon url={property.url} size={22} />
                 </div>
-                <div className="flex flex-col min-w-0 justify-center">
+                <div className="flex flex-col min-w-0 justify-center flex-1">
                     <div className="flex items-center gap-2">
                         <span className={`text-[9px] font-bold uppercase px-1.5 py-[1px] rounded-sm shrink-0 ${styles.pill}`}>
                             {scheme}
@@ -198,147 +202,141 @@ const PropertyCard = ({ property, data, loading, index, onClick }) => {
                         </span>
                     </div>
                 </div>
-            </div>
-
-            {/* ── Metrics ── */}
-            <div className="px-5 pt-4 pb-3 space-y-2.5">
-                {/* Clicks */}
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-slate-500">
-                        <SparklesIcon className="w-4 h-4 text-emerald-500" />
-                        <span className="text-[13px] font-medium">Clicks</span>
-                    </div>
-                    {loading ? (
-                        <div className="h-4 w-16 bg-slate-100 rounded animate-pulse" />
-                    ) : (
-                        <div className="flex items-center gap-2.5">
-                            <span className="text-[15px] font-black text-slate-900">
-                                {totals?.clicks?.toLocaleString() ?? '0'}
-                            </span>
-                            <Delta value={deltas?.clicks} isPositiveGood={true} />
-                        </div>
-                    )}
-                </div>
-                
-                {/* Impressions */}
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-slate-500">
-                        <EyeIcon className="w-4 h-4 text-sky-500" />
-                        <span className="text-[13px] font-medium">Impressions</span>
-                    </div>
-                    {loading ? (
-                        <div className="h-4 w-16 bg-slate-100 rounded animate-pulse" />
-                    ) : (
-                        <div className="flex items-center gap-2.5">
-                            <span className="text-[15px] font-black text-slate-900">
-                                {totals?.impressions?.toLocaleString() ?? '0'}
-                            </span>
-                            <Delta value={deltas?.impressions} isPositiveGood={true} />
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* ── Sparklines ── */}
-            <div className="flex flex-col gap-1 px-5 pt-2 pb-5 h-[96px] bg-gradient-to-b from-transparent to-slate-50/50 rounded-b-[16px]">
-                {loading ? (
-                    <div className="h-full w-full bg-slate-50 rounded animate-pulse" />
-                ) : chartData.length > 0 ? (
-                    <>
-                        {/* Top Chart: Clicks */}
-                        <div className="h-1/2 w-full relative z-20">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData} margin={{ top: 8, right: 2, left: 2, bottom: 0 }}>
-                                    <defs>
-                                        <linearGradient id={`ci-${index}`} x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#0f766e" stopOpacity={0.35} />
-                                            <stop offset="100%" stopColor="#0f766e" stopOpacity={0.0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="month" hide />
-                                    <YAxis domain={['auto', 'auto']} hide />
-                                    <Tooltip content={<SparkTooltip />} cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '3 2' }} wrapperStyle={{ zIndex: 100 }} />
-                                    <Area
-                                        type="natural"
-                                        dataKey="prev_clicks"
-                                        name="Previous"
-                                        stroke="#5eead4"
-                                        strokeWidth={1.5}
-                                        strokeDasharray="4 3"
-                                        fill="none"
-                                        dot={false}
-                                        activeDot={false}
-                                    />
-                                    <Area
-                                        type="natural"
-                                        dataKey="clicks"
-                                        name="Current"
-                                        stroke="#0f766e"
-                                        strokeWidth={2.5}
-                                        fillOpacity={1}
-                                        fill={`url(#ci-${index})`}
-                                        dot={false}
-                                        activeDot={false}
-                                    />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                        
-                        {/* Bottom Chart: Impressions */}
-                        <div className="h-1/2 w-full relative z-10 mt-1">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={chartData} margin={{ top: 8, right: 2, left: 2, bottom: 0 }}>
-                                    <defs>
-                                        <linearGradient id={`ii-${index}`} x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="0%" stopColor="#0f766e" stopOpacity={0.35} />
-                                            <stop offset="100%" stopColor="#0f766e" stopOpacity={0.0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis dataKey="month" hide />
-                                    <YAxis domain={['auto', 'auto']} hide />
-                                    <Tooltip content={<SparkTooltip />} cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '3 2' }} wrapperStyle={{ zIndex: 100 }} />
-                                    <Area
-                                        type="natural"
-                                        dataKey="prev_impressions"
-                                        name="Previous"
-                                        stroke="#5eead4"
-                                        strokeWidth={1.5}
-                                        strokeDasharray="4 3"
-                                        fill="none"
-                                        dot={false}
-                                        activeDot={false}
-                                    />
-                                    <Area
-                                        type="natural"
-                                        dataKey="impressions"
-                                        name="Current"
-                                        stroke="#0f766e"
-                                        strokeWidth={2.5}
-                                        fillOpacity={1}
-                                        fill={`url(#ii-${index})`}
-                                        dot={false}
-                                        activeDot={false}
-                                    />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </>
-                ) : (
-                    <div className="h-full flex items-center justify-center">
-                        <span className="text-[11px] font-semibold text-slate-400">No data</span>
+                {/* Lock badge shown on 403 sites */}
+                {permissionDenied && (
+                    <div className="shrink-0 flex items-center gap-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg" title="Your account lacks access to this property">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                        </svg>
+                        <span className="text-[10px] font-bold text-amber-600">No Access</span>
                     </div>
                 )}
             </div>
+
+            {permissionDenied ? (
+                /* ── Permission Denied card body ── */
+                <div className="px-5 py-7 flex flex-col items-center justify-center text-center flex-1 gap-2">
+                    <p className="text-[12px] font-semibold text-amber-600 leading-snug">
+                        Insufficient permissions
+                    </p>
+                    <p className="text-[11px] text-slate-400 leading-relaxed max-w-[180px]">
+                        Ask the site owner to add you as a <strong className="text-slate-500">Full User</strong> in Search Console.
+                    </p>
+                    <a
+                        href="https://support.google.com/webmasters/answer/2451999"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="mt-1 text-[11px] font-bold text-amber-600 underline underline-offset-2 hover:text-amber-700 transition-colors"
+                    >
+                        Learn how →
+                    </a>
+                </div>
+            ) : (
+                <>
+                    {/* ── Metrics ── */}
+                    <div className="px-5 pt-4 pb-3 space-y-2.5">
+                        {/* Clicks */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-slate-500">
+                                <SparklesIcon className="w-4 h-4 text-emerald-500" />
+                                <span className="text-[13px] font-medium">Clicks</span>
+                            </div>
+                            {loading ? (
+                                <div className="h-4 w-16 bg-slate-100 rounded animate-pulse" />
+                            ) : (
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-[15px] font-black text-slate-900">
+                                        {totals?.clicks?.toLocaleString() ?? '0'}
+                                    </span>
+                                    <Delta value={deltas?.clicks} isPositiveGood={true} />
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Impressions */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-slate-500">
+                                <EyeIcon className="w-4 h-4 text-sky-500" />
+                                <span className="text-[13px] font-medium">Impressions</span>
+                            </div>
+                            {loading ? (
+                                <div className="h-4 w-16 bg-slate-100 rounded animate-pulse" />
+                            ) : (
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-[15px] font-black text-slate-900">
+                                        {totals?.impressions?.toLocaleString() ?? '0'}
+                                    </span>
+                                    <Delta value={deltas?.impressions} isPositiveGood={true} />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── Sparklines ── */}
+                    <div className="flex flex-col gap-1 px-5 pt-2 pb-5 h-[96px] bg-gradient-to-b from-transparent to-slate-50/50 rounded-b-[16px]">
+                        {loading ? (
+                            <div className="h-full w-full bg-slate-50 rounded animate-pulse" />
+                        ) : chartData.length > 0 ? (
+                            <>
+                                {/* Top Chart: Clicks */}
+                                <div className="h-1/2 w-full relative z-20">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={chartData} margin={{ top: 8, right: 2, left: 2, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id={`ci-${index}`} x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#0f766e" stopOpacity={0.35} />
+                                                    <stop offset="100%" stopColor="#0f766e" stopOpacity={0.0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <XAxis dataKey="month" hide />
+                                            <YAxis domain={['auto', 'auto']} hide />
+                                            <Tooltip content={<SparkTooltip />} cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '3 2' }} wrapperStyle={{ zIndex: 100 }} />
+                                            <Area type="natural" dataKey="prev_clicks" name="Previous" stroke="#5eead4" strokeWidth={1.5} strokeDasharray="4 3" fill="none" dot={false} activeDot={false} />
+                                            <Area type="natural" dataKey="clicks" name="Current" stroke="#0f766e" strokeWidth={2.5} fillOpacity={1} fill={`url(#ci-${index})`} dot={false} activeDot={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                
+                                {/* Bottom Chart: Impressions */}
+                                <div className="h-1/2 w-full relative z-10 mt-1">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={chartData} margin={{ top: 8, right: 2, left: 2, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id={`ii-${index}`} x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#0f766e" stopOpacity={0.35} />
+                                                    <stop offset="100%" stopColor="#0f766e" stopOpacity={0.0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <XAxis dataKey="month" hide />
+                                            <YAxis domain={['auto', 'auto']} hide />
+                                            <Tooltip content={<SparkTooltip />} cursor={{ stroke: '#e2e8f0', strokeWidth: 1, strokeDasharray: '3 2' }} wrapperStyle={{ zIndex: 100 }} />
+                                            <Area type="natural" dataKey="prev_impressions" name="Previous" stroke="#5eead4" strokeWidth={1.5} strokeDasharray="4 3" fill="none" dot={false} activeDot={false} />
+                                            <Area type="natural" dataKey="impressions" name="Current" stroke="#0f766e" strokeWidth={2.5} fillOpacity={1} fill={`url(#ii-${index})`} dot={false} activeDot={false} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="h-full flex items-center justify-center">
+                                <span className="text-[11px] font-semibold text-slate-400">No data</span>
+                            </div>
+                        )}
+                    </div>
+                </>
+            )}
             
         </div>
     );
 };
+
 
 /* ── Page ─────────────────────────────────────────────────── */
 export default function MySites() {
     const navigate = useNavigate();
     const [properties, setProperties] = useState([]);
     const [analyticsMap, setAnalyticsMap] = useState({}); // url → analytics data
+    const [permissionErrors, setPermissionErrors] = useState(new Set()); // urls with 403
     const [loadingProps, setLoadingProps] = useState(true);
     const [loadingData, setLoadingData] = useState(false);
     const [isConnected, setIsConnected] = useState(null);
@@ -385,11 +383,26 @@ export default function MySites() {
                         )
                     );
                     const map = {};
+                    const denied = new Set();
                     results.forEach(r => {
-                        if (r.status === 'fulfilled') map[r.value.url] = r.value.data;
+                        if (r.status === 'fulfilled') {
+                            map[r.value.url] = r.value.data;
+                        } else {
+                            // Detect 403 — extract from the rejection reason
+                            const status = r.reason?.response?.status;
+                            const detail = r.reason?.response?.data?.detail || '';
+                            if (status === 403 || detail.includes('permission')) {
+                                // find which url this rejection belongs to
+                                const url = props.find(p =>
+                                    r.reason?.config?.url?.includes(encodeURIComponent(p.url))
+                                )?.url;
+                                if (url) denied.add(url);
+                            }
+                        }
                     });
                     ssSet(SS_ANALYTICS_KEY, map);
                     setAnalyticsMap(map);
+                    setPermissionErrors(denied);
                     setLoadingData(false);
                 }
             } catch (err) {
@@ -426,9 +439,24 @@ export default function MySites() {
                 )
             );
             const map = {};
-            results.forEach(r => { if (r.status === 'fulfilled') map[r.value.url] = r.value.data; });
+            const denied = new Set();
+            results.forEach(r => {
+                if (r.status === 'fulfilled') {
+                    map[r.value.url] = r.value.data;
+                } else {
+                    const status = r.reason?.response?.status;
+                    const detail = r.reason?.response?.data?.detail || '';
+                    if (status === 403 || detail.includes('permission')) {
+                        const url = props.find(p =>
+                            r.reason?.config?.url?.includes(encodeURIComponent(p.url))
+                        )?.url;
+                        if (url) denied.add(url);
+                    }
+                }
+            });
             ssSet(SS_ANALYTICS_KEY, map);
             setAnalyticsMap(map);
+            setPermissionErrors(denied);
         }
         setLoadingData(false);
         setIsRefreshing(false);
@@ -540,7 +568,8 @@ export default function MySites() {
                                 property={property}
                                 index={i}
                                 data={analyticsMap[property.url] || null}
-                                loading={loadingData && !analyticsMap[property.url]}
+                                loading={loadingData && !analyticsMap[property.url] && !permissionErrors.has(property.url)}
+                                permissionDenied={permissionErrors.has(property.url)}
                                 onClick={() => {
                                     localStorage.setItem('gsc_selected_property', property.url);
                                     navigate('/seo-analytics');
