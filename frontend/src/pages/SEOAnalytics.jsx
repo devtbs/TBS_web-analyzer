@@ -259,6 +259,18 @@ const SEOAnalytics = () => {
     const [statusFilter, setStatusFilter] = useState('All');
     const [queryFilter, setQueryFilter] = useState('');
     const [pageFilter, setPageFilter] = useState('');
+
+    // Advanced filter panel
+    const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+    const filterPanelRef = useRef(null);
+    const [advancedFilters, setAdvancedFilters] = useState({
+        urlPattern: '',       // regex or plain text on url/query
+        urlIsRegex: false,
+        clicksMin: '', clicksMax: '',
+        impressionsMin: '', impressionsMax: '',
+        ctrMin: '', ctrMax: '',
+        positionMin: '', positionMax: '',
+    });
     
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -289,10 +301,14 @@ const SEOAnalytics = () => {
             if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
                 setIsDatePickerOpen(false);
             }
+            if (filterPanelRef.current && !filterPanelRef.current.contains(event.target)) {
+                setFilterPanelOpen(false);
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
 
     const [isMounted, setIsMounted] = useState(false);
     useEffect(() => {
@@ -796,21 +812,69 @@ const SEOAnalytics = () => {
         toast.success('Report downloaded successfully');
     };
 
-    // Table Filtering
-    const filteredPages = activeTabList.filter((item) => {
-        if (activeTab === 'Pages') {
-            const urlMatch = item.url.toLowerCase().includes(pageFilter.toLowerCase());
-            const queryMatch = !queryFilter ? true : item.queries?.some(q => q.query.toLowerCase().includes(queryFilter.toLowerCase()));
-            return urlMatch && queryMatch;
-        } else if (activeTab === 'Queries') {
-            const combinedFilter = (pageFilter + ' ' + queryFilter).trim().toLowerCase();
-            return item.url.toLowerCase().includes(combinedFilter);
-        } else if (activeTab === 'Clusters') {
-            const combinedFilter = (pageFilter + ' ' + queryFilter).trim().toLowerCase();
-            return item.url.toLowerCase().includes(combinedFilter);
-        }
-        return true;
+    // ── Advanced filter helpers ──────────────────────────────
+    const activeFilterCount = useMemo(() => {
+        let n = 0;
+        if (advancedFilters.urlPattern) n++;
+        if (advancedFilters.clicksMin || advancedFilters.clicksMax) n++;
+        if (advancedFilters.impressionsMin || advancedFilters.impressionsMax) n++;
+        if (advancedFilters.ctrMin || advancedFilters.ctrMax) n++;
+        if (advancedFilters.positionMin || advancedFilters.positionMax) n++;
+        return n;
+    }, [advancedFilters]);
+
+    const clearAdvancedFilters = () => setAdvancedFilters({
+        urlPattern: '', urlIsRegex: false,
+        clicksMin: '', clicksMax: '',
+        impressionsMin: '', impressionsMax: '',
+        ctrMin: '', ctrMax: '',
+        positionMin: '', positionMax: '',
     });
+
+    // Table Filtering
+    const filteredPages = useMemo(() => {
+        return activeTabList.filter((item) => {
+            const text = item.url?.toLowerCase() ?? '';
+
+            // ── Basic text search (top-bar inputs) ───────────────
+            if (activeTab === 'Pages') {
+                const urlMatch = text.includes(pageFilter.toLowerCase());
+                const queryMatch = !queryFilter ? true : item.queries?.some(q => q.query.toLowerCase().includes(queryFilter.toLowerCase()));
+                if (!urlMatch || !queryMatch) return false;
+            } else {
+                const combinedFilter = (pageFilter + ' ' + queryFilter).trim().toLowerCase();
+                if (combinedFilter && !text.includes(combinedFilter)) return false;
+            }
+
+            // ── Advanced: URL/Query pattern ───────────────────────
+            if (advancedFilters.urlPattern) {
+                try {
+                    const pattern = advancedFilters.urlIsRegex
+                        ? new RegExp(advancedFilters.urlPattern, 'i')
+                        : new RegExp(advancedFilters.urlPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+                    if (!pattern.test(text)) return false;
+                } catch { /* invalid regex — skip */ }
+            }
+
+            // ── Advanced: Numeric range filters ──────────────────
+            const clicks     = item.total_clicks      ?? item.clicks      ?? 0;
+            const imps       = item.total_impressions ?? item.impressions  ?? 0;
+            const ctr        = imps > 0 ? (clicks / imps) * 100 : 0;
+            const pos        = item.avg_position      ?? item.position    ?? 0;
+
+            const af = advancedFilters;
+            if (af.clicksMin      !== '' && clicks < Number(af.clicksMin))      return false;
+            if (af.clicksMax      !== '' && clicks > Number(af.clicksMax))      return false;
+            if (af.impressionsMin !== '' && imps   < Number(af.impressionsMin)) return false;
+            if (af.impressionsMax !== '' && imps   > Number(af.impressionsMax)) return false;
+            if (af.ctrMin         !== '' && ctr    < Number(af.ctrMin))         return false;
+            if (af.ctrMax         !== '' && ctr    > Number(af.ctrMax))         return false;
+            if (af.positionMin    !== '' && pos    < Number(af.positionMin))    return false;
+            if (af.positionMax    !== '' && pos    > Number(af.positionMax))    return false;
+
+            return true;
+        });
+    }, [activeTabList, activeTab, pageFilter, queryFilter, advancedFilters]);
 
     // Pagination
     const totalPagesCount = Math.ceil(filteredPages.length / itemsPerPage);
@@ -998,10 +1062,162 @@ const SEOAnalytics = () => {
                             {/* Row 2: Toggles and Search/Date */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 {/* Left: Filter & Toggles */}
-                                <div className="flex items-center gap-2">
-                                    <button className="flex items-center gap-2 px-3.5 py-1.5 border border-slate-200 rounded-lg shadow-sm bg-white hover:bg-slate-50 text-[13px] font-bold text-slate-700 transition-colors">
-                                        <FunnelIcon className="w-4 h-4 text-slate-500" /> Filter
-                                    </button>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {/* ── Advanced Filter Button + Panel ── */}
+                                    <div className="relative" ref={filterPanelRef}>
+                                        <button
+                                            onClick={() => setFilterPanelOpen(p => !p)}
+                                            className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-lg shadow-sm text-[13px] font-bold transition-colors ${
+                                                activeFilterCount > 0
+                                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+                                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            <FunnelIcon className="w-4 h-4" />
+                                            Filter
+                                            {activeFilterCount > 0 && (
+                                                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-black flex items-center justify-center">
+                                                    {activeFilterCount}
+                                                </span>
+                                            )}
+                                        </button>
+
+                                        {/* ── Filter Panel (fixed overlay so it never clips) ── */}
+                                        {filterPanelOpen && (
+                                            <>
+                                                {/* Backdrop */}
+                                                <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={() => setFilterPanelOpen(false)}
+                                                />
+                                                {/* Panel */}
+                                                <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-white border border-slate-200/80 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.16)] overflow-hidden">
+                                                    {/* Header */}
+                                                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                                                        <div className="flex items-center gap-2">
+                                                            <FunnelIcon className="w-4 h-4 text-slate-500" />
+                                                            <span className="text-[14px] font-black text-slate-800">Advanced Filters</span>
+                                                        </div>
+                                                        {activeFilterCount > 0 && (
+                                                            <button onClick={clearAdvancedFilters} className="text-[11px] font-bold text-rose-500 hover:text-rose-600 transition-colors px-2 py-1 rounded-lg hover:bg-rose-50">
+                                                                Clear all
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+
+                                                        {/* URL / Query Pattern */}
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <label className="text-[12px] font-bold text-slate-600 uppercase tracking-wide">URL / Query Pattern</label>
+                                                                <button
+                                                                    onClick={() => setAdvancedFilters(f => ({ ...f, urlIsRegex: !f.urlIsRegex }))}
+                                                                    className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition-all ${
+                                                                        advancedFilters.urlIsRegex
+                                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                                                                            : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                                                                    }`}
+                                                                >
+                                                                    .* {advancedFilters.urlIsRegex ? 'ON' : 'Regex'}
+                                                                </button>
+                                                            </div>
+                                                            <input
+                                                                type="text"
+                                                                placeholder={advancedFilters.urlIsRegex ? 'e.g. /blog/.+  or  ^https' : 'e.g. /products/'}
+                                                                value={advancedFilters.urlPattern}
+                                                                onChange={e => setAdvancedFilters(f => ({ ...f, urlPattern: e.target.value }))}
+                                                                className="w-full px-3 py-2.5 text-[13px] border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-emerald-400 outline-none font-mono transition-colors placeholder:text-slate-300"
+                                                            />
+                                                        </div>
+
+                                                        <div className="border-t border-slate-100" />
+
+                                                        {/* Numeric range rows */}
+                                                        {[
+                                                            { label: 'Clicks', minKey: 'clicksMin', maxKey: 'clicksMax', step: 1, minHint: '0', maxHint: '∞' },
+                                                            { label: 'Impressions', minKey: 'impressionsMin', maxKey: 'impressionsMax', step: 10, minHint: '0', maxHint: '∞' },
+                                                            { label: 'CTR %', minKey: 'ctrMin', maxKey: 'ctrMax', step: 0.1, minHint: '0', maxHint: '100' },
+                                                            { label: 'Position', minKey: 'positionMin', maxKey: 'positionMax', step: 0.1, minHint: '1', maxHint: '100' },
+                                                        ].map(({ label, minKey, maxKey, step, minHint, maxHint }) => (
+                                                            <div key={label}>
+                                                                <label className="text-[11px] font-black uppercase tracking-wide block mb-2 text-slate-600">{label}</label>
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div className="relative">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">≥</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            placeholder={minHint}
+                                                                            step={step}
+                                                                            min={0}
+                                                                            value={advancedFilters[minKey]}
+                                                                            onChange={e => setAdvancedFilters(f => ({ ...f, [minKey]: e.target.value }))}
+                                                                            className="w-full pl-7 pr-3 py-2 text-[13px] font-medium border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-emerald-400 outline-none transition-colors"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="relative">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">≤</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            placeholder={maxHint}
+                                                                            step={step}
+                                                                            min={0}
+                                                                            value={advancedFilters[maxKey]}
+                                                                            onChange={e => setAdvancedFilters(f => ({ ...f, [maxKey]: e.target.value }))}
+                                                                            className="w-full pl-7 pr-3 py-2 text-[13px] font-medium border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-emerald-400 outline-none transition-colors"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Footer */}
+                                                    <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/60">
+                                                        <button
+                                                            onClick={() => { setFilterPanelOpen(false); setCurrentPage(1); }}
+                                                            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-[13px] font-bold rounded-xl transition-colors shadow-sm shadow-emerald-600/20"
+                                                        >
+                                                            Apply Filters {activeFilterCount > 0 && `(${activeFilterCount} active)`}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+
+                                    </div>
+
+                                    {/* ── Active Filter Chips ── */}
+                                    {advancedFilters.urlPattern && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-[11px] font-bold text-emerald-700">
+                                            {advancedFilters.urlIsRegex ? '.*' : '🔍'} {advancedFilters.urlPattern.length > 18 ? advancedFilters.urlPattern.slice(0, 18) + '…' : advancedFilters.urlPattern}
+                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, urlPattern: '' }))} className="text-emerald-500 hover:text-emerald-700"><XMarkIcon className="w-3 h-3" /></button>
+                                        </span>
+                                    )}
+                                    {(advancedFilters.clicksMin || advancedFilters.clicksMax) && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-full text-[11px] font-bold text-sky-700">
+                                            Clicks {advancedFilters.clicksMin && `≥${advancedFilters.clicksMin}`}{advancedFilters.clicksMin && advancedFilters.clicksMax && ' '}{advancedFilters.clicksMax && `≤${advancedFilters.clicksMax}`}
+                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, clicksMin: '', clicksMax: '' }))} className="text-sky-500 hover:text-sky-700"><XMarkIcon className="w-3 h-3" /></button>
+                                        </span>
+                                    )}
+                                    {(advancedFilters.impressionsMin || advancedFilters.impressionsMax) && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 border border-violet-200 rounded-full text-[11px] font-bold text-violet-700">
+                                            Impr {advancedFilters.impressionsMin && `≥${advancedFilters.impressionsMin}`}{advancedFilters.impressionsMin && advancedFilters.impressionsMax && ' '}{advancedFilters.impressionsMax && `≤${advancedFilters.impressionsMax}`}
+                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, impressionsMin: '', impressionsMax: '' }))} className="text-violet-500 hover:text-violet-700"><XMarkIcon className="w-3 h-3" /></button>
+                                        </span>
+                                    )}
+                                    {(advancedFilters.ctrMin || advancedFilters.ctrMax) && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-full text-[11px] font-bold text-amber-700">
+                                            CTR {advancedFilters.ctrMin && `≥${advancedFilters.ctrMin}%`}{advancedFilters.ctrMin && advancedFilters.ctrMax && ' '}{advancedFilters.ctrMax && `≤${advancedFilters.ctrMax}%`}
+                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, ctrMin: '', ctrMax: '' }))} className="text-amber-500 hover:text-amber-700"><XMarkIcon className="w-3 h-3" /></button>
+                                        </span>
+                                    )}
+                                    {(advancedFilters.positionMin || advancedFilters.positionMax) && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 border border-rose-200 rounded-full text-[11px] font-bold text-rose-700">
+                                            Pos {advancedFilters.positionMin && `≥${advancedFilters.positionMin}`}{advancedFilters.positionMin && advancedFilters.positionMax && ' '}{advancedFilters.positionMax && `≤${advancedFilters.positionMax}`}
+                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, positionMin: '', positionMax: '' }))} className="text-rose-500 hover:text-rose-700"><XMarkIcon className="w-3 h-3" /></button>
+                                        </span>
+                                    )}
                                     <div className="flex items-center gap-2 ml-2">
                                         {['clicks', 'impressions', 'ctr', 'position'].map(id => (
                                             <button 
