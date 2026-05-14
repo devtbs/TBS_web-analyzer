@@ -1053,10 +1053,16 @@ const SEOAnalytics = () => {
                                             <span className="capitalize text-slate-500">{f.dimension}:</span>
                                             {f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
                                             <span className="text-slate-900 mx-1">{['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
-                                            <button onClick={() => {
-                                                setGscFilters(prev => prev.filter((_, idx) => idx !== i));
-                                                setCurrentPage(1);
-                                            }} className="text-slate-400 hover:text-slate-600 transition-colors ml-1"><XMarkIcon className="w-3.5 h-3.5" /></button>
+                                            <button 
+                                                disabled={isUpdating}
+                                                onClick={() => {
+                                                    setGscFilters(prev => prev.filter((_, idx) => idx !== i));
+                                                    setCurrentPage(1);
+                                                }} 
+                                                className="text-slate-400 hover:text-slate-600 transition-colors ml-1 disabled:opacity-50 disabled:cursor-wait"
+                                            >
+                                                <XMarkIcon className="w-3.5 h-3.5" />
+                                            </button>
                                         </span>
                                     ))}
 
@@ -1064,9 +1070,14 @@ const SEOAnalytics = () => {
                                     <div className="relative" ref={filterMenuRef}>
                                         <button
                                             onClick={() => setAddFilterMenuOpen(p => !p)}
-                                            className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 rounded-full text-[13px] font-bold text-slate-600 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                                            disabled={isUpdating}
+                                            className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 rounded-full text-[13px] font-bold text-slate-600 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-800 transition-colors disabled:opacity-70 disabled:cursor-wait"
                                         >
-                                            <PlusIcon className="w-4 h-4 text-emerald-600" />
+                                            {isUpdating ? (
+                                                <div className="w-4 h-4 border-[2px] border-emerald-400 border-t-transparent rounded-full animate-spin shrink-0"></div>
+                                            ) : (
+                                                <PlusIcon className="w-4 h-4 text-emerald-600" />
+                                            )}
                                             Add filter
                                         </button>
 
