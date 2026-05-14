@@ -134,6 +134,7 @@ export default function GlobalReports() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [aggregatedData, setAggregatedData] = useState(null);
     const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+    const [failedSites, setFailedSites] = useState([]); // sites that returned 403 / permission error
     const datePickerRef = useRef(null);
 
     // Date Picker UI State
@@ -185,9 +186,26 @@ export default function GlobalReports() {
                             )
                         );
                         map = {};
-                        results.forEach(r => {
-                            if (r.status === 'fulfilled') map[r.value.url] = r.value.data;
+                        const failed = [];
+                        results.forEach((r, idx) => {
+                            if (r.status === 'fulfilled') {
+                                map[r.value.url] = r.value.data;
+                            } else {
+                                const url = props[idx]?.url || 'Unknown';
+                                const status = r.reason?.response?.status;
+                                failed.push({
+                                    url,
+                                    domain: url.replace(/^https?:\/\//, '').replace(/\/$/, ''),
+                                    reason: status === 403
+                                        ? 'Permission denied (403) — verify GSC access'
+                                        : status === 401
+                                        ? 'Not authorised (401) — reconnect Search Console'
+                                        : `Error ${status || 'unknown'}`,
+                                    is403: status === 403,
+                                });
+                            }
                         });
+                        setFailedSites(failed);
                         ssSet(cacheKey, map);
                     }
 
@@ -322,7 +340,7 @@ export default function GlobalReports() {
         <div className="flex-1 bg-[#f5f6f8] p-8 w-full">
             
             {/* Header */}
-            <div className="flex items-start justify-between mb-8">
+            <div className="flex items-start justify-between mb-6">
                 <div>
                     <h1 className="text-[24px] font-black text-slate-900 tracking-tight mb-1">
                         Global Reports
@@ -397,6 +415,49 @@ export default function GlobalReports() {
                     </div>
                 </div>
             </div>
+
+            {/* 403 / permission error banner */}
+            {failedSites.length > 0 && (
+                <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                    <div className="flex items-start gap-3">
+                        <div className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-500">
+                            <svg fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                            </svg>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-[13px] font-bold text-amber-800 mb-1">
+                                {failedSites.length} {failedSites.length === 1 ? 'property' : 'properties'} could not be loaded
+                            </p>
+                            <p className="text-[12px] text-amber-700 mb-3">
+                                Data below is based on {properties.length - failedSites.length} of {properties.length} properties. Fix permissions in Google Search Console to include the missing sites.
+                            </p>
+                            <div className="space-y-1.5">
+                                {failedSites.map((s, i) => (
+                                    <div key={i} className="flex items-center gap-2 text-[12px]">
+                                        <span className={`px-2 py-0.5 rounded font-black text-[10px] ${
+                                            s.is403 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                            {s.is403 ? '403' : 'ERR'}
+                                        </span>
+                                        <span className="font-semibold text-amber-900">{s.domain}</span>
+                                        <span className="text-amber-600">— {s.reason}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setFailedSites([])}
+                            className="text-amber-400 hover:text-amber-600 transition-colors p-1 rounded flex-shrink-0"
+                            title="Dismiss"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <div className={`relative transition-opacity duration-300 ${isUpdating ? 'opacity-80 pointer-events-none' : ''}`}>
                 
