@@ -1,192 +1,192 @@
 from typing import Dict, List
-from models.schemas import ComparisonData, TopicalMapData
+from models.schemas import ComparisonData, TopicalMapData, RecommendedArticle
 from .ai_service import ai_service
 import json
 
 
 class Comparator:
-    """AI-powered website comparison engine"""
-    
+    """AI-powered competitor gap analysis engine.
+
+    Goal: given a primary site (index 0) and one or more competitors,
+    produce **actionable recommendations** on how the primary site can
+    achieve greater topical authority than the competition.
+    """
+
     async def compare_websites_with_ai(
-        self, 
+        self,
         scraped_data_list: List[Dict],
-        topical_maps: List[TopicalMapData]
+        topical_maps: List[TopicalMapData],
     ) -> ComparisonData:
-        """Generate intelligent comparison using AI"""
-        
+        """Generate competitor-beating gap analysis using AI."""
+
         if len(scraped_data_list) < 2:
             return None
-        
-        # Prepare data for AI analysis
-        websites_data = []
-        for i, (data, tmap) in enumerate(zip(scraped_data_list, topical_maps)):
-            if data.get('status') != 'success':
-                continue
-            
-            # Use Firecrawl markdown if available for better preview
+
+        # ── Identify primary vs competitors ─────────────────────────────────
+        primary_data = scraped_data_list[0]
+        primary_map = topical_maps[0] if topical_maps else None
+        competitor_data = scraped_data_list[1:]
+        competitor_maps = topical_maps[1:] if len(topical_maps) > 1 else []
+
+        def site_summary(data: Dict, tmap: TopicalMapData) -> Dict:
             if data.get('source') == 'firecrawl' and data.get('markdown'):
                 text_preview = data.get('markdown', '')[:1500]
             else:
                 text_preview = data.get('text_content', '')[:1000]
-            
-            website_info = {
+            return {
                 'url': data['url'],
                 'title': data.get('title', ''),
-                'description': data.get('description', ''),
-                'business_model': tmap.business_model,
-                'target_audiences': tmap.target_audiences,
-                'key_topics': tmap.key_topics,
-                'conversion_methods': tmap.conversion_methods,
-                'h2_headings': data.get('headings', {}).get('h2', [])[:10],
-                'text_preview': text_preview
+                'key_topics': tmap.key_topics if tmap else [],
+                'content_gaps': (tmap.content_strategy.content_gaps if tmap and tmap.content_strategy else []),
+                'core_topics': (tmap.content_strategy.core_topics if tmap and tmap.content_strategy else []),
+                'outer_topics': (tmap.content_strategy.outer_topics if tmap and tmap.content_strategy else []),
+                'target_audiences': tmap.target_audiences if tmap else [],
+                'semantic_core_entities': (tmap.semantic_relationships.core_entities if tmap and tmap.semantic_relationships else []),
+                'h2_headings': data.get('headings', {}).get('h2', [])[:12],
+                'text_preview': text_preview,
+                'competitive_advantages': (tmap.competitive_advantages or []) if tmap else [],
+                'competitor_top_competitors': (tmap.competitive_analysis.top_competitors if tmap and tmap.competitive_analysis else []),
             }
-            websites_data.append(website_info)
-        
-        system_prompt = """You are an expert business analyst specializing in competitive analysis.
-Analyze multiple websites and provide detailed comparison insights.
+
+        primary_summary = site_summary(primary_data, primary_map) if primary_data.get('status') == 'success' else {}
+        competitor_summaries = [
+            site_summary(d, m)
+            for d, m in zip(competitor_data, competitor_maps)
+            if d.get('status') == 'success'
+        ]
+
+        if not competitor_summaries:
+            return None
+
+        system_prompt = """You are a senior SEO strategist specialising in competitive topical authority analysis.
+Your job is to analyse a primary website versus its competitors and produce a clear, highly actionable battle-plan
+that tells the primary site EXACTLY what content to create, update, or optimise to outrank and out-authorise the competition.
 Return ONLY valid JSON without markdown formatting or explanation."""
-        
-        prompt = f"""Compare these {len(websites_data)} websites and provide a comprehensive analysis.
 
-Websites Data:
-{json.dumps(websites_data, indent=2)}
+        prompt = f"""PRIMARY SITE:
+{json.dumps(primary_summary, indent=2)}
 
-Return a JSON object with these exact fields:
+COMPETITORS:
+{json.dumps(competitor_summaries, indent=2)}
 
-1. business_models (object): Map of URL to business model string
-   Example: {{"https://example.com": "SaaS", "https://another.com": "E-commerce"}}
+Analyse the data above and return a JSON object with the following fields:
 
-2. service_overlap (array): 5-10 services/features that appear across multiple sites
-   Example: ["Customer Support", "Analytics Dashboard", "API Access"]
+{{
+  "gap_summary": "A 3-5 sentence executive summary explaining the primary site's current position relative to competitors and the single most important action to take.",
 
-3. unique_services (object): Map of URL to array of unique services (3-5 per site)
-   Example: {{"https://example.com": ["AI-Powered Insights", "Custom Integrations"]}}
+  "topic_gaps": [
+    "List of 8-15 specific topic areas that competitors cover but the primary site does NOT. Be specific — use real topic names from the competitor data."
+  ],
 
-4. audience_comparison (object): Map of URL to target audiences array
-   Example: {{"https://example.com": ["Small Businesses", "Startups"]}}
+  "entity_gaps": [
+    "List of 6-10 semantic entities/concepts that appear prominently in competitor content but are absent or weak on the primary site."
+  ],
 
-5. technology_stack (object): Map of URL to technologies array (5-8 items)
-   Example: {{"https://example.com": ["React", "Python", "AWS", "PostgreSQL"]}}
+  "quick_wins": [
+    "5-7 high-priority content actions the primary site can take RIGHT NOW to close the gap fastest. Start each with an action verb. Be very specific."
+  ],
 
-6. geographic_coverage (object): Map of URL to locations array
-   Example: {{"https://example.com": ["United States", "Canada", "Global"]}}
+  "content_opportunities": [
+    "5-8 longer-term strategic content opportunities the primary site should invest in over the next 3-6 months to build topical authority."
+  ],
 
-7. similarity_matrix (object): Nested object showing similarity scores (0.0-1.0) between each pair
-   Example: {{
-     "https://example.com": {{"https://example.com": 1.0, "https://another.com": 0.65}},
-     "https://another.com": {{"https://example.com": 0.65, "https://another.com": 1.0}}
-   }}
+  "recommended_articles": [
+    {{
+      "title": "Exact proposed article title (SEO-friendly)",
+      "reason": "Why this article will close a gap vs a specific competitor",
+      "priority": 1,
+      "competitor_source": "URL of the competitor that covers this topic"
+    }}
+  ]
+}}
 
-Provide accurate, data-driven insights based on the actual content."""
-        
+Rules:
+- recommended_articles: provide 8-12 articles, with 3-4 at priority 1, 3-4 at priority 2, 2-4 at priority 3.
+- Be specific — reference actual topics, competitor URLs, and real content themes from the data.
+- Do NOT make generic suggestions like "write more blog posts". Every item must be directly derived from the competitive gap.
+- Return ONLY the JSON object.
+"""
+
         try:
-            # Use DeepSeek for comparison analysis (better quality, no rate limits)
             result = await ai_service.extract_json(prompt, system_prompt, use_deepseek=True)
-            
-            # Validate and create ComparisonData
+
+            # Parse recommended_articles
+            raw_articles = result.get('recommended_articles', [])
+            recommended_articles = []
+            for a in raw_articles:
+                if isinstance(a, dict):
+                    try:
+                        recommended_articles.append(RecommendedArticle(
+                            title=a.get('title', ''),
+                            reason=a.get('reason', ''),
+                            priority=int(a.get('priority', 2)),
+                            competitor_source=a.get('competitor_source'),
+                        ))
+                    except Exception:
+                        pass
+
             return ComparisonData(
-                business_models=result.get('business_models', {}),
-                service_overlap=result.get('service_overlap', [])[:15],
-                unique_services=result.get('unique_services', {}),
-                audience_comparison=result.get('audience_comparison', {}),
-                technology_stack=result.get('technology_stack', {}),
-                geographic_coverage=result.get('geographic_coverage', {}),
-                similarity_matrix=result.get('similarity_matrix', {})
+                gap_summary=result.get('gap_summary', ''),
+                topic_gaps=result.get('topic_gaps', [])[:15],
+                entity_gaps=result.get('entity_gaps', [])[:10],
+                quick_wins=result.get('quick_wins', [])[:7],
+                content_opportunities=result.get('content_opportunities', [])[:8],
+                recommended_articles=recommended_articles,
+                # Legacy fields — populate lightly so old UI doesn't break
+                business_models={s['url']: 'See gap summary' for s in [primary_summary] + competitor_summaries},
+                service_overlap=[],
+                unique_services={},
+                audience_comparison={},
+                technology_stack={},
+                geographic_coverage={},
+                similarity_matrix={},
             )
-            
+
         except Exception as e:
-            print(f"AI comparison failed: {str(e)}")
-            # Fallback to basic comparison
+            print(f"AI competitor gap analysis failed: {str(e)}")
             return self._fallback_comparison(scraped_data_list, topical_maps)
-    
+
     def _fallback_comparison(
         self,
         scraped_data_list: List[Dict],
-        topical_maps: List[TopicalMapData]
+        topical_maps: List[TopicalMapData],
     ) -> ComparisonData:
-        """Fallback comparison without AI"""
-        
-        # Extract business models
-        business_models = {}
-        for tmap in topical_maps:
-            business_models[tmap.url] = tmap.business_model
-        
-        # Basic service extraction
-        all_topics = []
-        url_topics = {}
-        
-        for data, tmap in zip(scraped_data_list, topical_maps):
-            if data.get('status') != 'success':
-                continue
-            
-            url = data['url']
-            topics = tmap.key_topics[:10]
-            url_topics[url] = topics
-            all_topics.extend(topics)
-        
-        # Find overlaps (simple approach)
-        from collections import Counter
-        topic_counts = Counter(all_topics)
-        service_overlap = [topic for topic, count in topic_counts.items() if count > 1][:10]
-        
-        # Unique services
-        unique_services = {}
-        for url, topics in url_topics.items():
-            unique = [t for t in topics if topic_counts[t] == 1]
-            unique_services[url] = unique[:5]
-        
-        # Audience comparison
-        audience_comparison = {}
-        for tmap in topical_maps:
-            audience_comparison[tmap.url] = tmap.target_audiences
-        
-        # Basic technology stack
-        technology_stack = {}
-        for data in scraped_data_list:
-            if data.get('status') == 'success':
-                technology_stack[data['url']] = ['Web', 'Cloud']
-        
-        # Geographic coverage
-        geographic_coverage = {}
-        for data in scraped_data_list:
-            if data.get('status') == 'success':
-                geographic_coverage[data['url']] = ['Not specified']
-        
-        # Simple similarity matrix
-        similarity_matrix = {}
-        urls = [tmap.url for tmap in topical_maps]
-        for url1 in urls:
-            similarity_matrix[url1] = {}
-            for url2 in urls:
-                if url1 == url2:
-                    similarity_matrix[url1][url2] = 1.0
-                else:
-                    # Simple overlap-based similarity
-                    topics1 = set(url_topics.get(url1, []))
-                    topics2 = set(url_topics.get(url2, []))
-                    if topics1 and topics2:
-                        intersection = len(topics1 & topics2)
-                        union = len(topics1 | topics2)
-                        similarity_matrix[url1][url2] = round(intersection / union, 2) if union > 0 else 0.3
-                    else:
-                        similarity_matrix[url1][url2] = 0.3
-        
+        """Minimal fallback when AI fails."""
+        primary_map = topical_maps[0] if topical_maps else None
+        competitor_maps = topical_maps[1:] if len(topical_maps) > 1 else []
+
+        primary_topics = set(primary_map.key_topics) if primary_map else set()
+        comp_topics: set = set()
+        for m in competitor_maps:
+            comp_topics.update(m.key_topics)
+
+        topic_gaps = list(comp_topics - primary_topics)[:10]
+
         return ComparisonData(
-            business_models=business_models,
-            service_overlap=service_overlap,
-            unique_services=unique_services,
-            audience_comparison=audience_comparison,
-            technology_stack=technology_stack,
-            geographic_coverage=geographic_coverage,
-            similarity_matrix=similarity_matrix
+            gap_summary=f"The primary site covers {len(primary_topics)} key topics while competitors collectively cover {len(comp_topics)}. There are {len(topic_gaps)} topic gaps identified.",
+            topic_gaps=topic_gaps,
+            entity_gaps=[],
+            quick_wins=[f"Create content covering: {t}" for t in topic_gaps[:5]],
+            content_opportunities=[],
+            recommended_articles=[
+                RecommendedArticle(title=f"Guide to {t}", reason="Covered by competitors but absent from primary site", priority=1)
+                for t in topic_gaps[:5]
+            ],
+            business_models={},
+            service_overlap=[],
+            unique_services={},
+            audience_comparison={},
+            technology_stack={},
+            geographic_coverage={},
+            similarity_matrix={},
         )
-    
+
     async def compare_websites(
-        self, 
+        self,
         scraped_data_list: List[Dict],
-        topical_maps: List[TopicalMapData]
+        topical_maps: List[TopicalMapData],
     ) -> ComparisonData:
-        """Main comparison method - uses AI if available"""
+        """Main comparison method."""
         return await self.compare_websites_with_ai(scraped_data_list, topical_maps)
 
 

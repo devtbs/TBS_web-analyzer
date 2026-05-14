@@ -18,24 +18,68 @@ import {
     Squares2X2Icon,
     TableCellsIcon,
     WrenchScrewdriverIcon,
-    ArrowDownTrayIcon
+    ArrowDownTrayIcon,
+    Cog6ToothIcon,
+    XMarkIcon,
+    LanguageIcon,
 } from '@heroicons/react/24/outline';
 import Favicon from '../ui/Favicon';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
+const LS_PROMPT_EN = 'writing_prompt_en';
+const LS_PROMPT_TH = 'writing_prompt_th';
+const LS_LANGUAGE  = 'writing_language';
+
+const DEFAULT_EN_HINT = `You are an expert, award-winning travel and lifestyle writer.
+Write with a rich, sensory, culturally respectful tone.
+Avoid generic AI intros — dive straight into a vivid hook.
+Output valid Markdown starting with H1.`;
+
+const DEFAULT_TH_HINT = `คุณคือนักเขียนท่องเที่ยวและไลฟ์สไตล์ที่เชี่ยวชาญ
+เขียนด้วยน้ำเสียงที่สมจริง กระตุ้นประสาทสัมผัส และให้เกียรติวัฒนธรรม
+หลีกเลี่ยงประโยคเปิดแบบ AI ทั่วไป เขียนทั้งบทความเป็นภาษาไทย
+ผลลัพธ์ต้องเป็น Markdown ที่ถูกต้อง`;
+
+const getDomain = (url) => { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } };
+
+// Source badge colours for competitor domains (cycles through a palette)
+const COMP_COLORS = [
+    { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-200', dot: 'bg-violet-400' },
+    { bg: 'bg-rose-100',   text: 'text-rose-700',   border: 'border-rose-200',   dot: 'bg-rose-400'   },
+    { bg: 'bg-sky-100',    text: 'text-sky-700',    border: 'border-sky-200',    dot: 'bg-sky-400'    },
+    { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-400' },
+];
+
 const TopicalMap = ({ topicalMaps, analysisId }) => {
-    const [activeIndex, setActiveIndex] = useState(0);
     const navigate = useNavigate();
     const [generatingArticle, setGeneratingArticle] = useState(null);
+    const [showPromptSettings, setShowPromptSettings] = useState(false);
+    const [language, setLanguage] = useState(() => localStorage.getItem(LS_LANGUAGE) || 'en');
+    const [promptEn, setPromptEn] = useState(() => localStorage.getItem(LS_PROMPT_EN) || '');
+    const [promptTh, setPromptTh] = useState(() => localStorage.getItem(LS_PROMPT_TH) || '');
+
+    const savePromptSettings = () => {
+        localStorage.setItem(LS_LANGUAGE, language);
+        localStorage.setItem(LS_PROMPT_EN, promptEn);
+        localStorage.setItem(LS_PROMPT_TH, promptTh);
+        setShowPromptSettings(false);
+        toast.success('Writing settings saved!');
+    };
 
     const handleGenerateArticle = async (article) => {
         setGeneratingArticle(article.title);
+        const lang = localStorage.getItem(LS_LANGUAGE) || 'en';
+        const sysPrompt = lang === 'th'
+            ? (localStorage.getItem(LS_PROMPT_TH) || '')
+            : (localStorage.getItem(LS_PROMPT_EN) || '');
         try {
             const response = await api.post(`/api/article/${analysisId}`, {
                 topic: article.title,
                 category: article.category_l1 || 'General',
-                article_type: article.article_type || 'informative'
+                article_type: article.article_type || 'informative',
+                language: lang,
+                system_prompt: sysPrompt || undefined,
             }, { timeout: 120000 });
             navigate(`/documents/${response.data.document_id}`);
         } catch (error) {
@@ -65,12 +109,49 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             </div>
         );
     }
+    // ── Primary = first URL, competitors = rest ─────────────────────────────
+    const primaryMap = topicalMaps[0];
+    const competitorMaps = topicalMaps.slice(1);
+    const activeMap = primaryMap; // keep old refs working
 
-    const activeMap = topicalMaps[activeIndex];
+    // Competitor colour lookup (stable by index)
+    const compColor = (idx) => COMP_COLORS[idx % COMP_COLORS.length];
+    const compDomain = (map) => getDomain(map.url);
 
-    // Debug: Check if taxonomy and ontology data exists
-    console.log('Taxonomy data:', activeMap.taxonomy);
-    console.log('Ontology data:', activeMap.ontology);
+    // Merged key topics: primary + gap topics from competitors
+    const primaryTopicSet = new Set((primaryMap.key_topics || []).map(t => t.toLowerCase()));
+    const gapTopicsWithSource = [];
+    competitorMaps.forEach((cm, ci) => {
+        (cm.key_topics || []).forEach(t => {
+            if (!primaryTopicSet.has(t.toLowerCase()) && !gapTopicsWithSource.find(g => g.topic.toLowerCase() === t.toLowerCase())) {
+                gapTopicsWithSource.push({ topic: t, domain: compDomain(cm), colorIdx: ci });
+            }
+        });
+    });
+
+    // Merged content articles: primary tagged, then competitor-unique articles
+    const primaryArticles = (primaryMap.content_articles || []).map(a => ({ ...a, _isPrimary: true, _domain: getDomain(primaryMap.url) }));
+    const primaryTitleSet = new Set(primaryArticles.map(a => a.title.toLowerCase().slice(0, 30)));
+    const competitorArticles = [];
+    competitorMaps.forEach((cm, ci) => {
+        (cm.content_articles || []).forEach(a => {
+            if (!primaryTitleSet.has(a.title.toLowerCase().slice(0, 30))) {
+                competitorArticles.push({ ...a, _isPrimary: false, _domain: compDomain(cm), _colorIdx: ci });
+            }
+        });
+    });
+    const mergedArticles = [...primaryArticles, ...competitorArticles];
+
+    // Merged core/outer topics from competitors (for content strategy section)
+    const primaryCoreSet = new Set((primaryMap.content_strategy?.core_topics || []).map(t => t.toLowerCase()));
+    const competitorCoreTopics = [];
+    competitorMaps.forEach((cm, ci) => {
+        (cm.content_strategy?.core_topics || []).forEach(t => {
+            if (!primaryCoreSet.has(t.toLowerCase())) {
+                competitorCoreTopics.push({ topic: t, domain: compDomain(cm), colorIdx: ci });
+            }
+        });
+    });
 
     const toggleSection = (section) => {
         setExpandedSections(prev => ({
@@ -78,6 +159,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             [section]: !prev[section]
         }));
     };
+
 
     const exportToPNG = async (elementId, filename) => {
         const element = document.getElementById(elementId);
@@ -247,6 +329,99 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
     return (
         <>
+        {/* ── Prompt settings panel ── */}
+        <AnimatePresence>
+            {showPromptSettings && (
+                <motion.div
+                    key="prompt-panel"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 z-[9998] flex items-center justify-center"
+                    style={{ background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(6px)' }}
+                    onClick={() => setShowPromptSettings(false)}
+                >
+                    <motion.div
+                        initial={{ scale: 0.95, opacity: 0, y: 16 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.95, opacity: 0, y: 16 }}
+                        transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                        className="bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                            <div className="flex items-center gap-2.5">
+                                <Cog6ToothIcon className="w-5 h-5 text-emerald-600" />
+                                <h2 className="text-base font-bold text-slate-800">Writing Settings</h2>
+                            </div>
+                            <button onClick={() => setShowPromptSettings(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors text-slate-400 hover:text-slate-600">
+                                <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="px-6 py-5 space-y-5">
+                            {/* Language toggle */}
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Output Language</p>
+                                <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit">
+                                    {[{ code: 'en', label: '🇬🇧 English' }, { code: 'th', label: '🇹🇭 ภาษาไทย' }].map(lang => (
+                                        <button
+                                            key={lang.code}
+                                            onClick={() => setLanguage(lang.code)}
+                                            className={`px-5 py-2 text-sm font-bold transition-all ${
+                                                language === lang.code
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : 'bg-white text-slate-600 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            {lang.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+
+                            {/* Prompt — only the selected language */}
+                            {language === 'en' ? (
+                                <div>
+                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Writing Prompt <span className="text-slate-300 normal-case tracking-normal font-normal">(leave blank for default)</span></p>
+                                    <textarea
+                                        value={promptEn}
+                                        onChange={e => setPromptEn(e.target.value)}
+                                        placeholder={DEFAULT_EN_HINT}
+                                        rows={6}
+                                        className="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y font-mono"
+                                    />
+                                </div>
+                            ) : (
+                                <div>
+                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Writing Prompt <span className="text-slate-300 normal-case tracking-normal font-normal">(leave blank for default)</span></p>
+                                    <textarea
+                                        value={promptTh}
+                                        onChange={e => setPromptTh(e.target.value)}
+                                        placeholder={DEFAULT_TH_HINT}
+                                        rows={6}
+                                        className="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y font-mono"
+                                    />
+                                </div>
+                            )}
+
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
+                            <button onClick={() => setShowPromptSettings(false)} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">Cancel</button>
+                            <button
+                                onClick={savePromptSettings}
+                                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm"
+                            >
+                                Save & Apply
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
         {/* ── Full-screen generation overlay ── */}
         <AnimatePresence>
             {generatingArticle && (
@@ -302,36 +477,48 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         </AnimatePresence>
 
         <div className="space-y-6" id="export-full-topical-map">
-            {/* URL Selector & Global Export */}
+            {/* Primary + Competitors indicator bar */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3 mb-2" data-html2canvas-ignore="true">
-                {topicalMaps.length > 1 && (
-                    <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 flex-nowrap" style={{ scrollbarWidth: 'none' }}>
-                        {topicalMaps.map((map, index) => {
-                            const domain = new URL(map.url).hostname.replace('www.', '');
-                            return (
-                                <button
-                                    key={index}
-                                    onClick={() => setActiveIndex(index)}
-                                    className={`flex-shrink-0 px-3 sm:px-4 py-2 rounded-md font-bold transition-all flex items-center gap-2 text-sm shadow-sm ${activeIndex === index
-                                        ? 'bg-emerald-600 text-white shadow-emerald-200'
-                                        : 'bg-white text-slate-600 border border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
-                                        }`}
-                                >
-                                    <Favicon url={map.url} size={16} className="flex-shrink-0" />
-                                    {domain}
-                                </button>
-                            );
-                        })}
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Primary site badge */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-bold shadow-sm">
+                        <Favicon url={primaryMap.url} size={14} className="flex-shrink-0" />
+                        <span>{getDomain(primaryMap.url)}</span>
+                        <span className="text-[10px] bg-white/20 px-1.5 py-0.5 rounded font-black">PRIMARY</span>
                     </div>
-                )}
-                
-                <button
-                    onClick={exportAllToPDF}
-                    className="self-start sm:self-auto sm:ml-auto flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                >
-                    <ArrowDownTrayIcon className="w-4 h-4" />
-                    Export Map to PDF
-                </button>
+                    {/* Competitor badges */}
+                    {competitorMaps.map((cm, ci) => {
+                        const c = compColor(ci);
+                        return (
+                            <div key={ci} className={`flex items-center gap-2 px-3 py-1.5 ${c.bg} border ${c.border} rounded-lg text-sm font-bold`}>
+                                <Favicon url={cm.url} size={14} className="flex-shrink-0" />
+                                <span className={c.text}>{compDomain(cm)}</span>
+                                <span className={`text-[10px] ${c.text} opacity-70 font-black`}>COMPETITOR</span>
+                            </div>
+                        );
+                    })}
+                </div>
+
+
+                <div className="flex items-center gap-2 self-start sm:self-auto sm:ml-auto">
+                    {/* Writing settings button */}
+                    <button
+                        onClick={() => setShowPromptSettings(true)}
+                        className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-xl font-bold text-sm transition-all"
+                        title="Writing settings"
+                    >
+                        <Cog6ToothIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">Settings</span>
+                        {language === 'th' && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-black">ไทย</span>}
+                    </button>
+                    <button
+                        onClick={exportAllToPDF}
+                        className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Export Map to PDF
+                    </button>
+                </div>
             </div>
 
             {/* Header Info */}
@@ -352,16 +539,32 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
             {/* Key Topics - Horizontal Pills */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5">
-                <h3 className="text-[11px] font-black text-slate-400 mb-4 tracking-widest uppercase">KEY TOPICS</h3>
+                <div className="flex items-center gap-3 mb-4">
+                    <h3 className="text-[11px] font-black text-slate-400 tracking-widest uppercase">KEY TOPICS</h3>
+                    {gapTopicsWithSource.length > 0 && (
+                        <span className="text-[10px] font-black px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded-full">
+                            +{gapTopicsWithSource.length} from competitors
+                        </span>
+                    )}
+                </div>
                 <div className="flex flex-wrap gap-2.5">
-                    {activeMap.key_topics?.slice(0, 10).map((topic, idx) => (
-                        <span
-                            key={idx}
-                            className="px-3.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100/50 rounded-full text-sm font-bold hover:bg-emerald-100 transition-colors cursor-default"
-                        >
+                    {/* Primary topics */}
+                    {activeMap.key_topics?.slice(0, 12).map((topic, idx) => (
+                        <span key={idx} className="px-3.5 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100/50 rounded-full text-sm font-bold hover:bg-emerald-100 transition-colors cursor-default">
                             {topic}
                         </span>
                     ))}
+                    {/* Gap topics from competitors */}
+                    {gapTopicsWithSource.map((g, idx) => {
+                        const c = compColor(g.colorIdx);
+                        return (
+                            <span key={`gap-${idx}`} className={`inline-flex items-center gap-1.5 px-3 py-1.5 ${c.bg} border ${c.border} rounded-full text-sm font-bold cursor-default`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${c.dot} flex-shrink-0`} />
+                                <span className={c.text}>{g.topic}</span>
+                                <span className={`text-[9px] ${c.text} opacity-60 font-black`}>{g.domain}</span>
+                            </span>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -513,6 +716,25 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                     </div>
                                 )}
 
+                                {/* Competitor Core Topic Gaps */}
+                                {competitorCoreTopics.length > 0 && (
+                                    <div className="border-l-4 border-violet-400 bg-violet-50/50 p-4 rounded-r-xl">
+                                        <h4 className="text-sm font-black text-violet-800 mb-2 tracking-tight">Gap Topics from Competitors</h4>
+                                        <ul className="space-y-1.5">
+                                            {competitorCoreTopics.map((g, idx) => {
+                                                const c = compColor(g.colorIdx);
+                                                return (
+                                                    <li key={idx} className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${c.dot} flex-shrink-0`} />
+                                                        {g.topic}
+                                                        <span className={`text-[9px] ${c.text} ${c.bg} border ${c.border} px-1.5 py-0.5 rounded font-black`}>{g.domain}</span>
+                                                    </li>
+                                                );
+                                            })}
+                                        </ul>
+                                    </div>
+                                )}
+
                                 {/* Content Gaps */}
                                 {activeMap.content_strategy.content_gaps?.length > 0 && (
                                     <div className="border-l-4 border-amber-500 bg-amber-50/50 p-4 rounded-r-xl md:col-span-2">
@@ -524,6 +746,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                         </div>
                                     </div>
                                 )}
+
                             </div>
                         </div>
                     )}
@@ -907,15 +1130,15 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 </div>
             )}
 
-            {/* Content Plan */}
-            {activeMap.content_articles && (
+            {/* Content Plan — merged primary + competitor articles */}
+            {mergedArticles.length > 0 && (
                 <div id="export-content-plan" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                     <SectionHeader
                         title="Content Plan"
                         color="from-slate-800 to-slate-900"
                         icon={DocumentTextIcon}
                         section="articles"
-                        count={activeMap.content_articles.length}
+                        count={mergedArticles.length}
                         elementId="export-content-plan"
                     />
                     {expandedSections.articles && (
@@ -928,14 +1151,12 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                                 Article Title <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
                                             </th>
+                                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Source</th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                                 Section <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Article Type <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
-                                            </th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Level 1 <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
+                                                Article Type
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-8 text-center">
                                                 Actions
@@ -943,16 +1164,28 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {activeMap.content_articles.map((article, idx) => (
-                                            <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-3 text-sm text-slate-700">
-                                                    {article.title}
+                                        {mergedArticles.map((article, idx) => {
+                                            const isComp = !article._isPrimary;
+                                            const ci = article._colorIdx ?? 0;
+                                            const c = isComp ? compColor(ci) : null;
+                                            return (
+                                            <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isComp ? 'bg-violet-50/30' : ''}`}>
+                                                <td className="px-4 py-3 text-sm text-slate-700">{article.title}</td>
+                                                <td className="px-3 py-3">
+                                                    {isComp ? (
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black ${c.bg} ${c.text} border ${c.border}`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                                                            {article._domain}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                            Primary
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${article.section === 'Core'
-                                                        ? 'bg-emerald-100 text-emerald-800 shadow-sm border border-emerald-200/50'
-                                                        : 'bg-slate-100 text-slate-700 border border-slate-200'
-                                                        }`}>
+                                                    <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${article.section === 'Core' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/50' : 'bg-slate-100 text-slate-700 border border-slate-200'}`}>
                                                         {article.section}
                                                     </span>
                                                 </td>
@@ -961,11 +1194,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                         {article.article_type}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 text-sm text-slate-700">
-                                                    {article.category_l1}
-                                                </td>
                                                 <td className="px-4 py-3 text-center">
-                                                    <button 
+                                                    <button
                                                         onClick={() => handleGenerateArticle(article)}
                                                         disabled={!!generatingArticle}
                                                         className={`inline-flex items-center gap-x-1.5 rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all
@@ -973,15 +1203,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                 ? 'bg-emerald-100 text-emerald-600 cursor-wait'
                                                                 : generatingArticle
                                                                 ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
-                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/10'
+                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
                                                             }`}
                                                     >
-                                                        <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} aria-hidden="true" />
-                                                        {generatingArticle === article.title ? 'Writing…' : 'Write Article'}
+                                                        <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} />
+                                                        {generatingArticle === article.title ? 'Writing…' : 'Write'}
                                                     </button>
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>

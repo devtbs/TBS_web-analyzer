@@ -31,6 +31,8 @@ class Node(BaseModel):
     type: str
     color: str
     size: Optional[int] = 10  # Node size based on importance (centrality metrics)
+    gap: Optional[bool] = False  # True if entity exists in competitors but not in primary site
+    source_url: Optional[str] = None  # Which competitor has this entity
 
 
 class Link(BaseModel):
@@ -192,14 +194,29 @@ class TopicalMapData(BaseModel):
 
 
 
+class RecommendedArticle(BaseModel):
+    title: str
+    reason: str
+    priority: int  # 1=highest, 3=lowest
+    competitor_source: Optional[str] = None  # which competitor covers this
+
+
 class ComparisonData(BaseModel):
-    business_models: Dict[str, str]
-    service_overlap: List[str]
-    unique_services: Dict[str, List[str]]
-    audience_comparison: Dict[str, List[str]]
-    technology_stack: Dict[str, List[str]]
-    geographic_coverage: Dict[str, List[str]]
-    similarity_matrix: Dict[str, Dict[str, float]]
+    # Legacy fields (kept for backward compat)
+    business_models: Optional[Dict[str, str]] = {}
+    service_overlap: Optional[List[str]] = []
+    unique_services: Optional[Dict[str, List[str]]] = {}
+    audience_comparison: Optional[Dict[str, List[str]]] = {}
+    technology_stack: Optional[Dict[str, List[str]]] = {}
+    geographic_coverage: Optional[Dict[str, List[str]]] = {}
+    similarity_matrix: Optional[Dict[str, Dict[str, float]]] = {}
+    # New: competitor-beating gap analysis
+    gap_summary: Optional[str] = None
+    topic_gaps: Optional[List[str]] = []
+    quick_wins: Optional[List[str]] = []
+    content_opportunities: Optional[List[str]] = []
+    entity_gaps: Optional[List[str]] = []
+    recommended_articles: Optional[List[RecommendedArticle]] = []
 
 
 class FullAnalysisResult(BaseModel):
@@ -215,6 +232,8 @@ class BriefRequest(BaseModel):
     category: str
     article_type: str
     domain: Optional[str] = ""
+    system_prompt: Optional[str] = None   # custom writing style prompt
+    language: Optional[str] = "en"        # "en" or "th"
 
 class DocumentResponse(BaseModel):
     id: str

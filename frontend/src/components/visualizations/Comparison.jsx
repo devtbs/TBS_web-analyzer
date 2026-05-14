@@ -1,30 +1,49 @@
 import { useState } from 'react';
 import {
-    BriefcaseIcon,
-    ServerIcon,
-    UserGroupIcon,
-    GlobeAltIcon,
-    ChartBarIcon,
     SparklesIcon,
+    BoltIcon,
+    ExclamationTriangleIcon,
+    LightBulbIcon,
+    RocketLaunchIcon,
+    ArrowTrendingUpIcon,
     ChevronDownIcon,
-    ChevronUpIcon
+    ChevronUpIcon,
+    DocumentTextIcon,
 } from '@heroicons/react/24/outline';
-import Favicon from '../ui/Favicon';
+
+const PRIORITY_LABELS = { 1: { label: 'High priority', color: 'bg-red-100 text-red-700 border-red-200' }, 2: { label: 'Medium', color: 'bg-amber-100 text-amber-700 border-amber-200' }, 3: { label: 'Low', color: 'bg-slate-100 text-slate-600 border-slate-200' } };
+
+const Section = ({ title, icon: Icon, iconBg, count, children, defaultOpen = true }) => {
+    const [open, setOpen] = useState(defaultOpen);
+    return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-slate-800 to-slate-900 cursor-pointer hover:from-slate-700 hover:to-slate-800 transition-all" onClick={() => setOpen(o => !o)}>
+                <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg ${iconBg || 'bg-white/10'} flex items-center justify-center`}>
+                        {Icon && <Icon className="w-[18px] h-[18px] text-emerald-400" />}
+                    </div>
+                    <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
+                    {count !== undefined && (
+                        <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 rounded text-emerald-300 text-xs font-black uppercase tracking-wider">{count}</span>
+                    )}
+                </div>
+                <div className="p-1 rounded-md hover:bg-white/10 transition-colors">
+                    {open ? <ChevronUpIcon className="w-5 h-5 text-slate-400" /> : <ChevronDownIcon className="w-5 h-5 text-slate-400" />}
+                </div>
+            </div>
+            {open && <div className="p-5">{children}</div>}
+        </div>
+    );
+};
+
+const Bullet = ({ text, color = 'bg-emerald-500' }) => (
+    <div className="flex items-start gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all">
+        <div className={`w-2 h-2 rounded-full ${color} flex-shrink-0 mt-1.5 shadow-sm`} />
+        <span className="text-sm text-slate-700 font-medium leading-snug">{text}</span>
+    </div>
+);
 
 const Comparison = ({ comparisonData }) => {
-    const [expandedSections, setExpandedSections] = useState({
-        business: true,
-        overlap: true,
-        unique: true,
-        audience: true,
-        technology: true,
-        geographic: true,
-        similarity: true
-    });
-
-    // Debug logging
-    console.log('Comparison component received data:', comparisonData);
-
     if (!comparisonData) {
         return (
             <div className="bg-white rounded-lg shadow p-8 text-center text-slate-500">
@@ -34,17 +53,15 @@ const Comparison = ({ comparisonData }) => {
         );
     }
 
-    // Check if data is still processing
     if (comparisonData.status === 'processing') {
         return (
             <div className="bg-white rounded-lg shadow p-8 text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-slate-600">Generating comparison with AI...</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-emerald-500 mx-auto mb-4" />
+                <p className="text-slate-600">Generating competitive gap analysis with AI…</p>
             </div>
         );
     }
 
-    // Check if comparison is not applicable
     if (comparisonData.status === 'not_applicable') {
         return (
             <div className="bg-white rounded-lg shadow p-8 text-center text-slate-500">
@@ -54,324 +71,141 @@ const Comparison = ({ comparisonData }) => {
         );
     }
 
-    // Validate we have the expected data structure
-    if (!comparisonData.business_models || typeof comparisonData.business_models !== 'object') {
-        console.error('Invalid comparison data structure:', comparisonData);
+    const {
+        gap_summary,
+        topic_gaps = [],
+        entity_gaps = [],
+        quick_wins = [],
+        content_opportunities = [],
+        recommended_articles = [],
+    } = comparisonData;
+
+    const hasNewFormat = gap_summary || topic_gaps.length || quick_wins.length || recommended_articles.length;
+
+    // Fallback: if only old-format data exists, show a simplified view
+    if (!hasNewFormat) {
         return (
-            <div className="bg-white rounded-lg shadow p-8 text-center text-red-500">
-                <p>Error loading comparison data</p>
-                <p className="text-sm mt-2">Please try analyzing again</p>
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500">
+                <SparklesIcon className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                <p className="font-semibold">Run a new analysis to see the competitor gap report.</p>
+                <p className="text-sm mt-1">Old results used the previous comparison format.</p>
             </div>
         );
     }
 
-    const toggleSection = (section) => {
-        setExpandedSections(prev => ({
-            ...prev,
-            [section]: !prev[section]
-        }));
-    };
-
-    const SectionHeader = ({ title, icon: Icon, section, count }) => (
-        <div
-            className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-800 to-slate-900 cursor-pointer hover:from-slate-700 hover:to-slate-800 transition-all border-b border-white/5"
-            onClick={() => section && toggleSection(section)}
-        >
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shadow-inner">
-                    {Icon && <Icon className="w-[18px] h-[18px] text-emerald-400" />}
-                </div>
-                <h2 className="text-base font-bold text-white tracking-tight">{title}</h2>
-                {count !== undefined && (
-                    <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500/30 rounded text-emerald-300 text-xs font-black uppercase tracking-wider">
-                        {count}
-                    </span>
-                )}
-            </div>
-            {section && (
-                <div className="p-1 rounded-md hover:bg-white/10 transition-colors">
-                    {expandedSections[section] ?
-                        <ChevronUpIcon className="w-5 h-5 text-slate-400" /> :
-                        <ChevronDownIcon className="w-5 h-5 text-slate-400" />
-                    }
-                </div>
-            )}
-        </div>
-    );
-
-    // Extract domains from URLs
-    const getDomain = (url) => {
-        try {
-            return new URL(url).hostname.replace('www.', '');
-        } catch {
-            return url;
-        }
-    };
-
-    const urls = Object.keys(comparisonData.business_models || {});
+    const p1 = recommended_articles.filter(a => a.priority === 1);
+    const p2 = recommended_articles.filter(a => a.priority === 2);
+    const p3 = recommended_articles.filter(a => a.priority === 3);
 
     return (
         <div className="space-y-6">
-            {/* Business Models */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <SectionHeader
-                    title="Business Models"
-                    icon={BriefcaseIcon}
-                    section="business"
-                    count={Object.keys(comparisonData.business_models).length}
-                />
-                {expandedSections.business && (
-                    <div className="p-5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Object.entries(comparisonData.business_models).map(([url, model]) => (
-                                <div key={url} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50/30 transition-all group">
-                                    <div className="flex items-center gap-2">
-                                        <Favicon url={url} size={14} className="rounded-sm flex-shrink-0" />
-                                        <span className="text-[11px] font-black uppercase text-slate-400 group-hover:text-emerald-600 transition-colors tracking-wider">{getDomain(url)}</span>
-                                    </div>
-                                    <span className="text-sm text-slate-900 font-bold">
-                                        {model}
-                                    </span>
-                                </div>
-                            ))}
+
+            {/* Executive Summary */}
+            {gap_summary && (
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 border border-slate-700/50 shadow-lg">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                            <SparklesIcon className="w-5 h-5 text-emerald-400" />
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400">AI Gap Analysis</p>
+                            <h2 className="text-lg font-bold text-white">Executive Summary</h2>
                         </div>
                     </div>
-                )}
-            </div>
-
-            {/* Service Overlap */}
-            {comparisonData.service_overlap && comparisonData.service_overlap.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Common Services & Features"
-                        icon={ChartBarIcon}
-                        section="overlap"
-                        count={comparisonData.service_overlap.length}
-                    />
-                    {expandedSections.overlap && (
-                        <div className="p-5">
-                            <p className="text-xs font-bold text-slate-400 mb-4 uppercase tracking-widest">Shared across all analyzed properties:</p>
-                            <div className="flex flex-wrap gap-2">
-                                {comparisonData.service_overlap.map((service, index) => (
-                                    <span
-                                        key={index}
-                                        className="px-3.5 py-2 bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-xl text-sm font-bold hover:bg-emerald-100 hover:border-emerald-200 transition-all shadow-sm"
-                                    >
-                                        {service}
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                    <p className="text-slate-300 leading-relaxed text-sm">{gap_summary}</p>
                 </div>
             )}
 
-            {/* Unique Services */}
-            {comparisonData.unique_services && Object.keys(comparisonData.unique_services).length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Unique Differentiators"
-                        icon={SparklesIcon}
-                        section="unique"
-                    />
-                    {expandedSections.unique && (
-                        <div className="p-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                {Object.entries(comparisonData.unique_services).map(([url, services]) => (
-                                    services && services.length > 0 && (
-                                        <div key={url} className="flex flex-col gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 hover:border-emerald-200 transition-all hover:bg-white hover:shadow-md group">
-                                            <div className="flex items-center justify-between">
-                                                <h4 className="font-black text-slate-900 group-hover:text-emerald-700 transition-colors text-sm">{getDomain(url)}</h4>
-                                                <span className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                                                    <SparklesIcon className="w-3.5 h-3.5 text-emerald-600" />
+            {/* Quick Wins */}
+            {quick_wins.length > 0 && (
+                <Section title="Quick Wins" icon={BoltIcon} count={quick_wins.length} iconBg="bg-amber-500/20">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Do these first to close the gap fastest:</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {quick_wins.map((win, i) => (
+                            <div key={i} className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-100 hover:border-amber-300 transition-all">
+                                <div className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-300/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <span className="text-[10px] font-black text-amber-700">{i + 1}</span>
+                                </div>
+                                <span className="text-sm text-slate-700 font-medium leading-snug">{win}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+            )}
+
+            {/* Topic Gaps */}
+            {topic_gaps.length > 0 && (
+                <Section title="Topic Gaps" icon={ExclamationTriangleIcon} count={topic_gaps.length}>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Topics competitors cover that your primary site does NOT:</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        {topic_gaps.map((gap, i) => (
+                            <div key={i} className="flex items-center gap-2.5 px-3.5 py-2.5 bg-rose-50 border border-rose-100 rounded-xl hover:border-rose-300 transition-all">
+                                <div className="w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0" />
+                                <span className="text-sm text-slate-700 font-semibold">{gap}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+            )}
+
+            {/* Entity Gaps */}
+            {entity_gaps.length > 0 && (
+                <Section title="Semantic Entity Gaps" icon={LightBulbIcon} count={entity_gaps.length} defaultOpen={false}>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Concepts & entities strong in competitor content but weak or absent on primary site:</p>
+                    <div className="flex flex-wrap gap-2">
+                        {entity_gaps.map((entity, i) => (
+                            <span key={i} className="px-3 py-1.5 bg-violet-50 border border-violet-200 text-violet-700 rounded-lg text-sm font-bold hover:bg-violet-100 transition-all">
+                                {entity}
+                            </span>
+                        ))}
+                    </div>
+                </Section>
+            )}
+
+            {/* Recommended Articles */}
+            {recommended_articles.length > 0 && (
+                <Section title="Recommended Articles to Create" icon={DocumentTextIcon} count={recommended_articles.length} iconBg="bg-emerald-500/20">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-5">Create these articles to close competitor gaps and build topical authority:</p>
+
+                    {[{ label: '🔴 High Priority', articles: p1 }, { label: '🟡 Medium Priority', articles: p2 }, { label: '⚪ Nice to Have', articles: p3 }]
+                        .filter(g => g.articles.length > 0)
+                        .map(group => (
+                            <div key={group.label} className="mb-6 last:mb-0">
+                                <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-3">{group.label}</p>
+                                <div className="space-y-3">
+                                    {group.articles.map((article, i) => (
+                                        <div key={i} className="p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 hover:bg-white hover:shadow-sm transition-all">
+                                            <div className="flex items-start justify-between gap-3 mb-1.5">
+                                                <p className="text-sm font-bold text-slate-900 leading-snug">{article.title}</p>
+                                                <span className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-black border ${PRIORITY_LABELS[article.priority]?.color || 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                                    P{article.priority}
                                                 </span>
                                             </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                {services.map((service, idx) => (
-                                                    <span
-                                                        key={idx}
-                                                        className="px-3 py-1.5 bg-white text-slate-700 rounded-lg text-xs font-bold border border-slate-200 shadow-sm"
-                                                    >
-                                                        {service}
-                                                    </span>
-                                                ))}
-                                            </div>
+                                            <p className="text-xs text-slate-500 leading-relaxed">{article.reason}</p>
+                                            {article.competitor_source && (
+                                                <p className="text-[11px] text-slate-400 mt-1.5 font-medium">
+                                                    📎 Competitor covers this: <span className="text-emerald-600">{article.competitor_source}</span>
+                                                </p>
+                                            )}
                                         </div>
-                                    )
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Target Audiences */}
-            {comparisonData.audience_comparison && Object.keys(comparisonData.audience_comparison).length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Target Audience Comparison"
-                        icon={UserGroupIcon}
-                        section="audience"
-                    />
-                    {expandedSections.audience && (
-                        <div className="p-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                {Object.entries(comparisonData.audience_comparison).map(([url, audiences]) => (
-                                    <div key={url} className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm hover:border-emerald-200 transition-all group">
-                                        <h4 className="font-black text-slate-400 group-hover:text-emerald-700 uppercase tracking-widest text-[10px] mb-4 transition-colors">{getDomain(url)}</h4>
-                                        <div className="space-y-3">
-                                            {audiences && audiences.map((audience, idx) => (
-                                                <div key={idx} className="flex items-center gap-3">
-                                                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full flex-shrink-0 shadow-[0_0_8px_rgba(16,185,129,0.4)]"></div>
-                                                    <span className="text-sm text-slate-700 font-bold">{audience}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Technology Stack */}
-            {comparisonData.technology_stack && Object.keys(comparisonData.technology_stack).length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Technology Stack"
-                        icon={ServerIcon}
-                        section="technology"
-                    />
-                    {expandedSections.technology && (
-                        <div className="p-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {Object.entries(comparisonData.technology_stack).map(([url, technologies]) => (
-                                    <div key={url} className="p-4 rounded-xl bg-slate-50 border border-slate-100 hover:bg-white hover:shadow-md transition-all group">
-                                        <h4 className="font-black text-slate-400 group-hover:text-emerald-700 transition-colors uppercase tracking-widest text-[9px] mb-3">{getDomain(url)}</h4>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {technologies && technologies.map((tech, idx) => (
-                                                <span
-                                                    key={idx}
-                                                    className="px-2.5 py-1 bg-white text-slate-600 rounded-lg text-[10px] font-black border border-slate-200 shadow-sm"
-                                                >
-                                                    {tech}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Geographic Coverage */}
-            {comparisonData.geographic_coverage && Object.keys(comparisonData.geographic_coverage).length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Geographic Coverage"
-                        icon={GlobeAltIcon}
-                        section="geographic"
-                    />
-                    {expandedSections.geographic && (
-                        <div className="p-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                {Object.entries(comparisonData.geographic_coverage).map(([url, locations]) => (
-                                    <div key={url} className="p-4 rounded-xl bg-slate-50 border border-slate-100 group">
-                                        <h4 className="font-black text-slate-400 group-hover:text-emerald-700 transition-colors uppercase tracking-widest text-[9px] mb-3">{getDomain(url)}</h4>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {locations && locations.map((location, idx) => (
-                                                <span
-                                                    key={idx}
-                                                    className="px-2.5 py-1 bg-white text-slate-600 rounded-lg text-[10px] font-black border border-slate-200 shadow-sm"
-                                                >
-                                                    {location}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* Similarity Matrix */}
-            {comparisonData.similarity_matrix && Object.keys(comparisonData.similarity_matrix).length > 0 && (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Similarity Analysis"
-                        icon={ChartBarIcon}
-                        section="similarity"
-                    />
-                    {expandedSections.similarity && (
-                        <div className="p-4">
-                            <p className="text-sm text-slate-600 mb-4">
-                                Similarity scores between websites (0% = completely different, 100% = identical)
-                            </p>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50">
-                                            <th className="text-left p-3 border border-slate-200 font-semibold"></th>
-                                            {urls.map((url, index) => (
-                                                <th key={index} className="p-3 border border-slate-200 text-center font-semibold text-xs">
-                                                    {getDomain(url)}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {urls.map((url1, i) => (
-                                            <tr key={i} className="hover:bg-slate-50 transition-colors">
-                                                <td className="p-3 border border-slate-200 font-semibold text-xs bg-slate-50">
-                                                    {getDomain(url1)}
-                                                </td>
-                                                {urls.map((url2, j) => {
-                                                    const score = comparisonData.similarity_matrix[url1]?.[url2] || 0;
-                                                    const percentage = Math.round(score * 100);
-                                                    const bgColor = score === 1
-                                                        ? 'bg-slate-100 text-slate-400'
-                                                        : score >= 0.7
-                                                            ? 'bg-emerald-50 text-emerald-700'
-                                                            : score >= 0.4
-                                                                ? 'bg-amber-50 text-amber-700'
-                                                                : 'bg-rose-50 text-rose-700';
-
-                                                    return (
-                                                        <td
-                                                            key={j}
-                                                            className={`p-4 border border-slate-100 text-center font-bold text-sm ${bgColor}`}
-                                                        >
-                                                            {percentage}%
-                                                        </td>
-                                                    );
-                                                })}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div className="mt-6 flex flex-wrap items-center gap-6 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 bg-emerald-100 border border-emerald-200 rounded-sm"></div>
-                                    <span>High (70%+)</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 bg-amber-100 border border-amber-200 rounded-sm"></div>
-                                    <span>Medium (40-69%)</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 bg-rose-100 border border-rose-200 rounded-sm"></div>
-                                    <span>Low (&lt;40%)</span>
+                                    ))}
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        ))
+                    }
+                </Section>
+            )}
+
+            {/* Content Opportunities */}
+            {content_opportunities.length > 0 && (
+                <Section title="Strategic Content Opportunities" icon={ArrowTrendingUpIcon} count={content_opportunities.length} defaultOpen={false}>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Longer-term investments to build lasting topical authority:</p>
+                    <div className="space-y-2.5">
+                        {content_opportunities.map((opp, i) => (
+                            <Bullet key={i} text={opp} color="bg-teal-500" />
+                        ))}
+                    </div>
+                </Section>
             )}
         </div>
     );

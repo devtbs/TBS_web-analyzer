@@ -986,7 +986,9 @@ async def create_full_article_direct(
         # 2. Automatically generate the full article based on the brief
         article_markdown = await generate_full_article(
             topic=request.topic,
-            brief_data=brief
+            brief_data=brief,
+            system_prompt=getattr(request, 'system_prompt', None),
+            language=getattr(request, 'language', 'en'),
         )
         
         brief["article_markdown"] = article_markdown
@@ -1197,6 +1199,7 @@ async def delete_folder(
 @router.post("/api/documents/{document_id}/generate-article")
 async def create_full_article(
     document_id: str,
+    request: Request,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -1214,10 +1217,23 @@ async def create_full_article(
     if not doc.content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document has no brief content to generate from.")
         
+    # Accept an optional JSON body for prompt / language overrides
+    class _ArticleOptions(BaseModel):
+        system_prompt: Optional[str] = None
+        language: Optional[str] = "en"
+
+    try:
+        body = await request.json()
+        opts = _ArticleOptions(**body)
+    except Exception:
+        opts = _ArticleOptions()
+
     try:
         article_markdown = await generate_full_article(
             topic=doc.title,
-            brief_data=doc.content
+            brief_data=doc.content,
+            system_prompt=opts.system_prompt,
+            language=opts.language,
         )
         
         # Update the document
