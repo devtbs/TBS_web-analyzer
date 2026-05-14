@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -9,6 +9,8 @@ import {
     ArrowDownIcon,
     ArrowPathIcon,
     ArrowDownTrayIcon,
+    PlusIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import {
     ArrowTrendingUpIcon,
@@ -164,6 +166,23 @@ export default function NewLostRankingsPage() {
     // Search
     const [search, setSearch] = useState('');
 
+    // Metric filters
+    const [metricFilters, setMetricFilters] = useState([]);
+    const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+    const [filterDialog, setFilterDialog] = useState(null);
+    const [tempFilter, setTempFilter] = useState({ operator: 'greaterThan', expression: '' });
+    const filterMenuRef = useRef(null);
+    const filterDialogRef = useRef(null);
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setFilterMenuOpen(false);
+            if (filterDialogRef.current && !filterDialogRef.current.contains(e.target)) setFilterDialog(null);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
     /* ── Fetch with sessionStorage cache ───────────────────── */
     useEffect(() => {
         if (!selectedProperty) { setLoading(false); return; }
@@ -204,12 +223,23 @@ export default function NewLostRankingsPage() {
             const q = search.toLowerCase();
             items = items.filter(r => r.name.toLowerCase().includes(q));
         }
+        // Apply metric filters
+        metricFilters.forEach(({ dimension, operator, expression }) => {
+            const val = parseFloat(expression);
+            if (isNaN(val)) return;
+            items = items.filter(row => {
+                const rv = row[dimension] ?? 0;
+                if (operator === 'greaterThan') return rv > val;
+                if (operator === 'lessThan') return rv < val;
+                return rv === val;
+            });
+        });
         return [...items].sort((a, b) => {
             const mul = sortDir === 'asc' ? 1 : -1;
             if (sortField === 'name') return mul * a.name.localeCompare(b.name);
             return mul * ((a[sortField] || 0) - (b[sortField] || 0));
         });
-    }, [data, statusTab, typeTab, sortField, sortDir, search]);
+    }, [data, statusTab, typeTab, sortField, sortDir, search, metricFilters]);
 
     const handleSort = (field) => {
         if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -354,8 +384,66 @@ export default function NewLostRankingsPage() {
                         </div>
 
 
-                        {/* Search + Download */}
-                        <div className="ml-auto flex items-center gap-2">
+                        {/* Search + Metric Filter + Download */}
+                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                            {/* Active metric chips */}
+                            {metricFilters.map((f, i) => (
+                                <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
+                                    <span className="capitalize text-slate-500">{f.dimension}:</span>
+                                    <span className="text-slate-600">{f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : '='}</span>
+                                    <span className="text-slate-900 mx-1">{f.expression}</span>
+                                    <button onClick={() => setMetricFilters(prev => prev.filter((_, idx) => idx !== i))} className="text-slate-400 hover:text-red-500 transition-colors ml-0.5">
+                                        <XMarkIcon className="w-3.5 h-3.5" />
+                                    </button>
+                                </span>
+                            ))}
+
+                            {/* Add metric filter */}
+                            <div className="relative" ref={filterMenuRef}>
+                                <button onClick={() => setFilterMenuOpen(p => !p)}
+                                    className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 rounded-full text-[13px] font-bold text-slate-600 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-800 transition-colors">
+                                    <PlusIcon className="w-4 h-4 text-emerald-600" />
+                                    Metric filter
+                                </button>
+                                {filterMenuOpen && (
+                                    <div className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden py-1">
+                                        {['clicks', 'impressions', 'position'].map(dim => (
+                                            <button key={dim} onClick={() => { setFilterDialog({ dimension: dim }); setTempFilter({ operator: 'greaterThan', expression: '' }); setFilterMenuOpen(false); }}
+                                                className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors capitalize">
+                                                {dim}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {filterDialog && (
+                                    <div ref={filterDialogRef} className="absolute right-0 top-full mt-1.5 z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                                        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                            <span className="text-[14px] font-bold text-slate-800 capitalize">{filterDialog.dimension}</span>
+                                            <button onClick={() => setFilterDialog(null)} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="w-4 h-4" /></button>
+                                        </div>
+                                        <div className="p-4 flex flex-col gap-3">
+                                            <select value={tempFilter.operator} onChange={e => setTempFilter(f => ({ ...f, operator: e.target.value }))}
+                                                className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors">
+                                                <option value="greaterThan">Greater than (&gt;)</option>
+                                                <option value="lessThan">Less than (&lt;)</option>
+                                                <option value="equals">Equals (=)</option>
+                                            </select>
+                                            <input type="number" step={filterDialog.dimension === 'position' ? '0.1' : '1'} value={tempFilter.expression}
+                                                onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value }))}
+                                                placeholder={`Enter ${filterDialog.dimension}…`}
+                                                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                autoFocus
+                                                onKeyDown={e => { if (e.key === 'Enter' && tempFilter.expression.trim()) { setMetricFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]); setFilterDialog(null); } }} />
+                                        </div>
+                                        <div className="px-4 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+                                            <button onClick={() => setFilterDialog(null)} className="px-4 py-1.5 text-[13px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Cancel</button>
+                                            <button onClick={() => { if (tempFilter.expression.trim()) { setMetricFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]); } setFilterDialog(null); }}
+                                                className="px-4 py-1.5 text-[13px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm">Apply</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             <input
                                 type="text"
                                 placeholder={`Filter ${typeTab.toLowerCase()}…`}

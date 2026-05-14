@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -9,6 +9,8 @@ import {
     ClockIcon,
     ArrowDownTrayIcon,
     MagnifyingGlassIcon,
+    PlusIcon,
+    XMarkIcon,
 } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
@@ -39,6 +41,9 @@ const presetToDays = (p) => {
         default: return 28;
     }
 };
+
+const METRIC_DIMS = ['clicks', 'impressions', 'ctr', 'position'];
+const opLabel = (op) => op === 'greaterThan' ? '>' : op === 'lessThan' ? '<' : '=';
 
 /* ── Delta badge ─────────────────────────────────────────── */
 const Delta = ({ value }) => {
@@ -74,10 +79,6 @@ const SortIcon = ({ col, sortKey, sortDir }) => {
         : <ArrowUpIcon className="w-3 h-3 text-emerald-500 ml-1 inline" />;
 };
 
-/* ══════════════════════════════════════════════════════════
-   QueriesPage — uses same /auth/gsc/analytics/ endpoint as SEOAnalytics
-   Flattens queries from pages[].queries, same logic as SEOAnalytics activeTabList
-   ══════════════════════════════════════════════════════════ */
 const handleDownloadCSV = (data, filename) => {
     if (!data || !data.length) return;
     const headers = Object.keys(data[0]);
@@ -85,9 +86,7 @@ const handleDownloadCSV = (data, filename) => {
         headers.join(','),
         ...data.map(row => headers.map(header => {
             let val = row[header];
-            if (typeof val === 'string') {
-                return `"${val.replace(/"/g, '""')}"`;
-            }
+            if (typeof val === 'string') return `"${val.replace(/"/g, '""')}"`;
             return val;
         }).join(','))
     ].join('\n');
@@ -114,7 +113,7 @@ export default function QueriesPage() {
         return () => window.removeEventListener('gsc_property_changed', handlePropChange);
     }, []);
 
-    const [rawPages, setRawPages]       = useState([]);   // raw from queries endpoint
+    const [rawPages, setRawPages]       = useState([]);
     const [loading, setLoading]         = useState(true);
     const [isUpdating, setIsUpdating]   = useState(false);
     const [preset, setPreset]           = useState('Last 28 days');
@@ -125,6 +124,23 @@ export default function QueriesPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const PAGE_SIZE = 50;
     const [search, setSearch]           = useState('');
+
+    // Metric filters
+    const [metricFilters, setMetricFilters] = useState([]);
+    const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+    const [filterDialog, setFilterDialog] = useState(null);
+    const [tempFilter, setTempFilter] = useState({ operator: 'greaterThan', expression: '' });
+    const filterMenuRef = useRef(null);
+    const filterDialogRef = useRef(null);
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setFilterMenuOpen(false);
+            if (filterDialogRef.current && !filterDialogRef.current.contains(e.target)) setFilterDialog(null);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
 
     /* ── Fetch with sessionStorage cache ── */
     useEffect(() => {
@@ -144,13 +160,23 @@ export default function QueriesPage() {
             .finally(() => { setLoading(false); setIsUpdating(false); });
     }, [selectedProperty, days]);
 
-    /* ── Schema is already flat — just pass through ── */
     const queries = useMemo(() => rawPages, [rawPages]);
 
     /* ── Filter + sort ── */
     const filtered = useMemo(() => {
         let list = [...queries];
         if (search.trim()) list = list.filter(q => q.query.toLowerCase().includes(search.toLowerCase()));
+        // Apply metric filters
+        metricFilters.forEach(({ dimension, operator, expression }) => {
+            const val = parseFloat(expression);
+            if (isNaN(val)) return;
+            list = list.filter(row => {
+                const rv = row[dimension] ?? 0;
+                if (operator === 'greaterThan') return rv > val;
+                if (operator === 'lessThan') return rv < val;
+                return rv === val;
+            });
+        });
         list.sort((a, b) => {
             if (sortKey === 'query') return sortDir === 'desc'
                 ? b.query.localeCompare(a.query) : a.query.localeCompare(b.query);
@@ -158,7 +184,7 @@ export default function QueriesPage() {
             return sortDir === 'desc' ? bv - av : av - bv;
         });
         return list;
-    }, [queries, search, sortKey, sortDir]);
+    }, [queries, search, sortKey, sortDir, metricFilters]);
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
     const displayed  = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -169,8 +195,18 @@ export default function QueriesPage() {
         setCurrentPage(1);
     };
 
-    // Reset to page 1 when search changes
-    useEffect(() => { setCurrentPage(1); }, [search]);
+    useEffect(() => { setCurrentPage(1); }, [search, metricFilters]);
+
+    const applyFilter = () => {
+        if (!tempFilter.expression.trim()) return;
+        setMetricFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), {
+            dimension: filterDialog.dimension,
+            operator: tempFilter.operator,
+            expression: tempFilter.expression,
+        }]);
+        setFilterDialog(null);
+        setCurrentPage(1);
+    };
 
     return (
         <div className="min-h-screen bg-[#f5f6f8]">
@@ -193,7 +229,7 @@ export default function QueriesPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Search — same pattern as SEOAnalytics */}
+                    {/* Search */}
                     <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
                         <MagnifyingGlassIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
                         <input
@@ -241,6 +277,89 @@ export default function QueriesPage() {
                         <ArrowDownTrayIcon className="w-4 h-4" />
                     </button>
                 </div>
+            </div>
+
+            {/* Metric Filter Bar */}
+            <div className="flex flex-wrap items-center gap-2 px-6 py-3 bg-white border-b border-slate-100">
+                {metricFilters.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
+                        <span className="capitalize text-slate-500">{f.dimension}:</span>
+                        <span className="text-slate-600">{opLabel(f.operator)}</span>
+                        <span className="text-slate-900 mx-1">{f.expression}</span>
+                        <button onClick={() => { setMetricFilters(prev => prev.filter((_, idx) => idx !== i)); setCurrentPage(1); }}
+                            className="text-slate-400 hover:text-red-500 transition-colors ml-0.5">
+                            <XMarkIcon className="w-3.5 h-3.5" />
+                        </button>
+                    </span>
+                ))}
+
+                <div className="relative" ref={filterMenuRef}>
+                    <button
+                        onClick={() => setFilterMenuOpen(p => !p)}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 rounded-full text-[13px] font-bold text-slate-600 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                    >
+                        <PlusIcon className="w-4 h-4 text-emerald-600" />
+                        Add metric filter
+                    </button>
+
+                    {filterMenuOpen && (
+                        <div className="absolute left-0 top-full mt-1.5 z-50 w-44 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden py-1">
+                            {METRIC_DIMS.map(dim => (
+                                <button
+                                    key={dim}
+                                    onClick={() => {
+                                        setFilterDialog({ dimension: dim });
+                                        setTempFilter({ operator: 'greaterThan', expression: '' });
+                                        setFilterMenuOpen(false);
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors capitalize"
+                                >
+                                    {dim}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {filterDialog && (
+                        <div ref={filterDialogRef} className="absolute left-0 top-full mt-1.5 z-50 w-72 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                <span className="text-[14px] font-bold text-slate-800 capitalize">{filterDialog.dimension}</span>
+                                <button onClick={() => setFilterDialog(null)} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="w-4 h-4" /></button>
+                            </div>
+                            <div className="p-4 flex flex-col gap-3">
+                                <select
+                                    value={tempFilter.operator}
+                                    onChange={e => setTempFilter(f => ({ ...f, operator: e.target.value }))}
+                                    className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                >
+                                    <option value="greaterThan">Greater than (&gt;)</option>
+                                    <option value="lessThan">Less than (&lt;)</option>
+                                    <option value="equals">Equals (=)</option>
+                                </select>
+                                <input
+                                    type="number"
+                                    step={['ctr', 'position'].includes(filterDialog.dimension) ? '0.1' : '1'}
+                                    value={tempFilter.expression}
+                                    onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value }))}
+                                    placeholder={`Enter ${filterDialog.dimension}…`}
+                                    className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                    autoFocus
+                                    onKeyDown={e => { if (e.key === 'Enter') applyFilter(); }}
+                                />
+                            </div>
+                            <div className="px-4 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+                                <button onClick={() => setFilterDialog(null)} className="px-4 py-1.5 text-[13px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Cancel</button>
+                                <button onClick={applyFilter} className="px-4 py-1.5 text-[13px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm">Apply</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {metricFilters.length > 0 && (
+                    <span className="text-[12px] text-slate-400 font-medium ml-auto">
+                        {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+                    </span>
+                )}
             </div>
 
             {/* ── Table ── */}
@@ -313,20 +432,14 @@ export default function QueriesPage() {
                     </span>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => {
-                                setCurrentPage(p => Math.max(1, p - 1));
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
+                            onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                             disabled={currentPage === 1}
                             className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             Previous
                         </button>
                         <button
-                            onClick={() => {
-                                setCurrentPage(p => Math.min(totalPages, p + 1));
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
+                            onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                             disabled={currentPage === totalPages}
                             className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
