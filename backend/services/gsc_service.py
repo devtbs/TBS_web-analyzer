@@ -134,24 +134,61 @@ class GSCService:
             return False
 
     def _apply_filter(self, request: dict, filters_json: str):
-        """Helper to append dimension filter group to a GSC query request."""
-        if filters_json:
-            import json
-            try:
-                filters_list = json.loads(filters_json)
-                if filters_list:
-                    request['dimensionFilterGroups'] = [{
-                        'filters': [
-                            {
-                                'dimension': f['dimension'],
-                                'operator': f['operator'],
-                                'expression': f['expression']
-                            }
-                            for f in filters_list
-                        ]
-                    }]
-            except json.JSONDecodeError:
-                pass
+        """Helper to append dimension filter group to a GSC query request.
+
+        GSC API operator values (case-sensitive, lowercase):
+          equals | notEquals | contains | notContains | includingRegex | excludingRegex
+        """
+        if not filters_json:
+            return
+        import json
+
+        # Frontend name -> GSC API operator string (all lowercase)
+        OPERATOR_MAP = {
+            'contains':       'contains',
+            'notContains':    'notContains',
+            'includingRegex': 'includingRegex',
+            'equals':         'equals',
+            # Numeric filters are handled client-side only
+            'greaterThan':    None,
+            'lessThan':       None,
+        }
+        TEXT_DIMS = {'query', 'page', 'country', 'device'}
+
+        try:
+            filters_list = json.loads(filters_json)
+            gsc_filters = []
+            for f in filters_list:
+                dim = f.get('dimension', '')
+                op  = f.get('operator', 'equals')
+                exp = f.get('expression', '').strip()
+
+                if not exp:
+                    continue
+
+                # Only text-based dimensions go to the GSC API
+                if dim not in TEXT_DIMS:
+                    continue
+
+                # country and device always use equals
+                if dim in ('country', 'device'):
+                    gsc_op = 'equals'
+                else:
+                    gsc_op = OPERATOR_MAP.get(op)
+                    if gsc_op is None:
+                        continue  # numeric operator — skip
+
+                gsc_filters.append({
+                    'dimension':  dim,
+                    'operator':   gsc_op,
+                    'expression': exp,
+                })
+
+            if gsc_filters:
+                request['dimensionFilterGroups'] = [{'filters': gsc_filters}]
+        except (json.JSONDecodeError, KeyError):
+            pass
+
 
     async def get_pages_with_queries(
         self, property_url: str, days: int = 90, 
@@ -384,15 +421,17 @@ class GSCService:
             prev_start = prev_end - timedelta(days=days)
 
             def _fetch(start, end):
+                req_body = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate': end.strftime('%Y-%m-%d'),
+                    'dimensions': ['country'],
+                    'rowLimit': 250,
+                    'dataState': 'all'
+                }
+                self._apply_filter(req_body, filters_json)
                 resp = self.service.searchanalytics().query(
                     siteUrl=property_url,
-                    body={
-                        'startDate': start.strftime('%Y-%m-%d'),
-                        'endDate': end.strftime('%Y-%m-%d'),
-                        'dimensions': ['country'],
-                        'rowLimit': 250,
-                        'dataState': 'all'
-                    }
+                    body=req_body
                 ).execute()
                 result = {}
                 for row in resp.get('rows', []):
