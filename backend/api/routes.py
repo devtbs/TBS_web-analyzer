@@ -214,6 +214,7 @@ async def get_gsc_analytics(
     property_url: str,
     days: int = 365,
     group_by: str = 'daily',
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -236,9 +237,13 @@ async def get_gsc_analytics(
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
         # Fetch chart data and totals
-        analytics_data = await service.get_search_analytics(property_url, days, group_by)
+        analytics_data = await service.get_search_analytics(
+            property_url, days, group_by, filters_json
+        )
         # Fetch pages using the same days window as analytics
-        pages = await service.get_pages_with_queries(property_url, days)
+        pages = await service.get_pages_with_queries(
+            property_url, days, filters_json
+        )
         
         return {
             "property_url": property_url,
@@ -270,6 +275,7 @@ async def invalidate_gsc_cache(
 async def get_gsc_countries(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -287,7 +293,9 @@ async def get_gsc_countries(
         )
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        countries = await service.get_countries(property_url, days)
+        countries = await service.get_countries(
+            property_url, days, filters_json
+        )
         return {"countries": countries, "total": len(countries)}
     except Exception as e:
         error_msg = str(e)
@@ -303,6 +311,7 @@ async def get_gsc_countries(
 async def get_gsc_pages(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -316,7 +325,9 @@ async def get_gsc_pages(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        pages = await service.get_top_pages(property_url, days)
+        pages = await service.get_top_pages(
+            property_url, days, filters_json
+        )
         return {"pages": pages, "total": len(pages)}
     except Exception as e:
         error_msg = str(e)
@@ -329,6 +340,7 @@ async def get_gsc_pages(
 async def get_gsc_pages_with_queries(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -342,7 +354,9 @@ async def get_gsc_pages_with_queries(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        pages = await service.get_pages_with_queries(property_url, days)
+        pages = await service.get_pages_with_queries(
+            property_url, days, filters_json
+        )
         return {"pages": pages, "total": len(pages)}
     except Exception as e:
         error_msg = str(e)
@@ -355,6 +369,7 @@ async def get_gsc_pages_with_queries(
 async def get_gsc_queries(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -368,7 +383,9 @@ async def get_gsc_queries(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        queries = await service.get_top_queries(property_url, days)
+        queries = await service.get_top_queries(
+            property_url, days, filters_json
+        )
         return {"queries": queries, "total": len(queries)}
     except Exception as e:
         error_msg = str(e)
@@ -381,6 +398,7 @@ async def get_gsc_queries(
 async def get_gsc_devices(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -398,7 +416,9 @@ async def get_gsc_devices(
         )
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        devices = await service.get_devices(property_url, days)
+        devices = await service.get_devices(
+            property_url, days, filters_json
+        )
         return {"devices": devices}
     except Exception as e:
         error_msg = str(e)
@@ -414,6 +434,7 @@ async def get_gsc_devices(
 async def get_gsc_daily_stats(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -431,7 +452,9 @@ async def get_gsc_daily_stats(
         )
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        daily_stats = await service.get_daily_stats(property_url, days)
+        daily_stats = await service.get_daily_stats(
+            property_url, days, filters_json
+        )
         return {"daily_stats": daily_stats}
     except Exception as e:
         error_msg = str(e)
@@ -447,6 +470,7 @@ async def get_gsc_daily_stats(
 async def get_gsc_new_lost_rankings(
     property_url: str,
     days: int = 28,
+    filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -464,7 +488,9 @@ async def get_gsc_new_lost_rankings(
         )
     try:
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        data = await service.get_new_lost_rankings(property_url, days)
+        data = await service.get_new_lost_rankings(
+            property_url, days, filters_json
+        )
         return data
     except Exception as e:
         error_msg = str(e)

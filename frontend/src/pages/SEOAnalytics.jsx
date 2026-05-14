@@ -257,20 +257,14 @@ const SEOAnalytics = () => {
 
     // Filtering states
     const [statusFilter, setStatusFilter] = useState('All');
-    const [queryFilter, setQueryFilter] = useState('');
-    const [pageFilter, setPageFilter] = useState('');
 
-    // Advanced filter panel
-    const [filterPanelOpen, setFilterPanelOpen] = useState(false);
-    const filterPanelRef = useRef(null);
-    const [advancedFilters, setAdvancedFilters] = useState({
-        urlPattern: '',       // regex or plain text on url/query
-        urlIsRegex: false,
-        clicksMin: '', clicksMax: '',
-        impressionsMin: '', impressionsMax: '',
-        ctrMin: '', ctrMax: '',
-        positionMin: '', positionMax: '',
-    });
+    // GSC-style filters
+    const [gscFilters, setGscFilters] = useState([]);
+    const [addFilterMenuOpen, setAddFilterMenuOpen] = useState(false);
+    const [filterDialog, setFilterDialog] = useState(null); // null or { dimension: 'page' | 'query' }
+    const [tempFilter, setTempFilter] = useState({ operator: 'contains', expression: '' });
+    const filterMenuRef = useRef(null);
+    const filterDialogRef = useRef(null);
     
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -366,11 +360,22 @@ const SEOAnalytics = () => {
         }
     }, [selectedProperty]);
 
+    // Close menus on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setAddFilterMenuOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     // Load Analytics data when property changes
     useEffect(() => {
         if (!selectedProperty) return;
 
-        const cacheKey = `seo_analytics_${selectedProperty}_${chartGrouping}_${days}`;
+        const apiFilters = gscFilters.filter(f => ['query', 'page'].includes(f.dimension));
+        const filterHash = apiFilters.length > 0 ? '_' + btoa(JSON.stringify(apiFilters)) : '';
+        const cacheKey = `seo_analytics_${selectedProperty}_${chartGrouping}_${days}${filterHash}`;
         const cached = ssGet(cacheKey);
         if (cached) {
             setAnalytics(cached.totals);
@@ -389,8 +394,15 @@ const SEOAnalytics = () => {
                 setIsUpdating(true);
             }
             try {
+                const queryParams = { 
+                    group_by: chartGrouping, 
+                    days: days,
+                    ...(apiFilters.length > 0 && {
+                        filters_json: JSON.stringify(apiFilters)
+                    })
+                };
                 const res = await api.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, { 
-                    params: { group_by: chartGrouping, days: days }
+                    params: queryParams
                 });
                 const payload = {
                     totals:     res.data.analytics.totals,
@@ -418,13 +430,15 @@ const SEOAnalytics = () => {
         };
 
         fetchAnalytics();
-    }, [selectedProperty, chartGrouping, days]);
+    }, [selectedProperty, chartGrouping, days, gscFilters]);
 
     // Fetch countries & devices when property or days change
     useEffect(() => {
         if (!selectedProperty) return;
         const fetchBreakdowns = async () => {
-            const bdKey = `seo_breakdowns_${selectedProperty}_${days}`;
+            const apiFilters = gscFilters.filter(f => ['query', 'page'].includes(f.dimension));
+            const filterHash = apiFilters.length > 0 ? '_' + btoa(JSON.stringify(apiFilters)) : '';
+            const bdKey = `seo_breakdowns_${selectedProperty}_${days}${filterHash}`;
             const bdCached = ssGet(bdKey);
             if (bdCached) {
                 setRealCountries(bdCached.countries || []);
@@ -434,10 +448,16 @@ const SEOAnalytics = () => {
                 return;
             }
             try {
+                const queryParams = { 
+                    days,
+                    ...(apiFilters.length > 0 && {
+                        filters_json: JSON.stringify(apiFilters)
+                    })
+                };
                 const [cRes, dRes, dsRes] = await Promise.all([
-                    api.get(`/auth/gsc/countries/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
-                    api.get(`/auth/gsc/devices/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
-                    api.get(`/auth/gsc/daily-stats/${encodeURIComponent(selectedProperty)}`, { params: { days } }),
+                    api.get(`/auth/gsc/countries/${encodeURIComponent(selectedProperty)}`, { params: queryParams }),
+                    api.get(`/auth/gsc/devices/${encodeURIComponent(selectedProperty)}`, { params: queryParams }),
+                    api.get(`/auth/gsc/daily-stats/${encodeURIComponent(selectedProperty)}`, { params: queryParams }),
                 ]);
                 const bd = {
                     countries:   cRes.data.countries || [],
@@ -458,7 +478,7 @@ const SEOAnalytics = () => {
             }
         };
         fetchBreakdowns();
-    }, [selectedProperty, days]);
+    }, [selectedProperty, days, gscFilters]);
 
     const handleLogoutGSC = async (e) => {
         if (e) e.preventDefault();
@@ -812,69 +832,60 @@ const SEOAnalytics = () => {
         toast.success('Report downloaded successfully');
     };
 
-    // ── Advanced filter helpers ──────────────────────────────
-    const activeFilterCount = useMemo(() => {
-        let n = 0;
-        if (advancedFilters.urlPattern) n++;
-        if (advancedFilters.clicksMin || advancedFilters.clicksMax) n++;
-        if (advancedFilters.impressionsMin || advancedFilters.impressionsMax) n++;
-        if (advancedFilters.ctrMin || advancedFilters.ctrMax) n++;
-        if (advancedFilters.positionMin || advancedFilters.positionMax) n++;
-        return n;
-    }, [advancedFilters]);
-
-    const clearAdvancedFilters = () => setAdvancedFilters({
-        urlPattern: '', urlIsRegex: false,
-        clicksMin: '', clicksMax: '',
-        impressionsMin: '', impressionsMax: '',
-        ctrMin: '', ctrMax: '',
-        positionMin: '', positionMax: '',
-    });
-
     // Table Filtering
     const filteredPages = useMemo(() => {
         return activeTabList.filter((item) => {
             const text = item.url?.toLowerCase() ?? '';
 
-            // ── Basic text search (top-bar inputs) ───────────────
-            if (activeTab === 'Pages') {
-                const urlMatch = text.includes(pageFilter.toLowerCase());
-                const queryMatch = !queryFilter ? true : item.queries?.some(q => q.query.toLowerCase().includes(queryFilter.toLowerCase()));
-                if (!urlMatch || !queryMatch) return false;
-            } else {
-                const combinedFilter = (pageFilter + ' ' + queryFilter).trim().toLowerCase();
-                if (combinedFilter && !text.includes(combinedFilter)) return false;
+            // ── GSC Filters (Local fallback for UI instant update) ───────────────────────
+            for (const f of gscFilters) {
+                if (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension)) {
+                    const clicks     = item.total_clicks      ?? item.clicks      ?? 0;
+                    const imps       = item.total_impressions ?? item.impressions  ?? 0;
+                    const ctr        = imps > 0 ? (clicks / imps) * 100 : 0;
+                    const pos        = item.avg_position      ?? item.position    ?? 0;
+                    
+                    const val = f.dimension === 'clicks' ? clicks : f.dimension === 'impressions' ? imps : f.dimension === 'ctr' ? ctr : pos;
+                    const target = Number(f.expression);
+                    if (isNaN(target)) continue;
+                    
+                    if (f.operator === 'greaterThan' && val <= target) return false;
+                    if (f.operator === 'lessThan' && val >= target) return false;
+                    if (f.operator === 'equals' && val !== target) return false;
+                } else {
+                    const isRegex = f.operator === 'includingRegex';
+                    const isExact = f.operator === 'equals';
+                    const isNotContains = f.operator === 'notContains';
+                    try {
+                        const pattern = isRegex 
+                            ? new RegExp(f.expression, 'i')
+                            : new RegExp(f.expression.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i');
+                        
+                        if (f.dimension === 'page') {
+                            if (isExact) {
+                                if (item.url !== f.expression) return false;
+                            } else if (isNotContains) {
+                                if (pattern.test(item.url || '')) return false;
+                            } else {
+                                if (!pattern.test(item.url || '')) return false;
+                            }
+                        } else if (f.dimension === 'query') {
+                            const qStr = item.queries?.map(q => q.query).join(' ') || item.query || item['Query'] || '';
+                            if (isExact) {
+                                if (!item.queries?.some(q => q.query === f.expression) && item.query !== f.expression && item['Query'] !== f.expression) return false;
+                            } else if (isNotContains) {
+                                if (pattern.test(qStr)) return false;
+                            } else {
+                                if (!pattern.test(qStr)) return false;
+                            }
+                        }
+                    } catch { /* invalid regex */ }
+                }
             }
-
-            // ── Advanced: URL/Query pattern ───────────────────────
-            if (advancedFilters.urlPattern) {
-                try {
-                    const pattern = advancedFilters.urlIsRegex
-                        ? new RegExp(advancedFilters.urlPattern, 'i')
-                        : new RegExp(advancedFilters.urlPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-                    if (!pattern.test(text)) return false;
-                } catch { /* invalid regex — skip */ }
-            }
-
-            // ── Advanced: Numeric range filters ──────────────────
-            const clicks     = item.total_clicks      ?? item.clicks      ?? 0;
-            const imps       = item.total_impressions ?? item.impressions  ?? 0;
-            const ctr        = imps > 0 ? (clicks / imps) * 100 : 0;
-            const pos        = item.avg_position      ?? item.position    ?? 0;
-
-            const af = advancedFilters;
-            if (af.clicksMin      !== '' && clicks < Number(af.clicksMin))      return false;
-            if (af.clicksMax      !== '' && clicks > Number(af.clicksMax))      return false;
-            if (af.impressionsMin !== '' && imps   < Number(af.impressionsMin)) return false;
-            if (af.impressionsMax !== '' && imps   > Number(af.impressionsMax)) return false;
-            if (af.ctrMin         !== '' && ctr    < Number(af.ctrMin))         return false;
-            if (af.ctrMax         !== '' && ctr    > Number(af.ctrMax))         return false;
-            if (af.positionMin    !== '' && pos    < Number(af.positionMin))    return false;
-            if (af.positionMax    !== '' && pos    > Number(af.positionMax))    return false;
 
             return true;
         });
-    }, [activeTabList, activeTab, pageFilter, queryFilter, advancedFilters]);
+    }, [activeTabList, activeTab, statusFilter, gscFilters]);
 
     // Pagination
     const totalPagesCount = Math.ceil(filteredPages.length / itemsPerPage);
@@ -932,31 +943,7 @@ const SEOAnalytics = () => {
 
                 {/* Right: Domain, Query, Page Filters & Logout */}
                 <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
-                    {/* Query Filter */}
-                    <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
-                        <PencilIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                        <span className="text-slate-500 font-bold text-[13px]">Query:</span>
-                        <input 
-                            type="text" 
-                            placeholder="All"
-                            className="bg-transparent border-none focus:ring-0 p-0 outline-none w-20 text-slate-800 font-bold text-[13px] placeholder:text-slate-300"
-                            value={queryFilter}
-                            onChange={(e) => {setQueryFilter(e.target.value); setCurrentPage(1);}}
-                        />
-                    </div>
 
-                    {/* Page Filter */}
-                    <div className="flex items-center gap-2 px-4 h-10 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-slate-300 transition-colors group">
-                        <PencilIcon className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                        <span className="text-slate-500 font-bold text-[13px]">Page:</span>
-                        <input 
-                            type="text" 
-                            placeholder="All"
-                            className="bg-transparent border-none focus:ring-0 p-0 outline-none w-20 text-slate-800 font-bold text-[13px] placeholder:text-slate-300"
-                            value={pageFilter}
-                            onChange={(e) => {setPageFilter(e.target.value); setCurrentPage(1);}}
-                        />
-                    </div>
 
                     {/* Logout / Disconnect Button */}
                     <button 
@@ -1063,171 +1050,108 @@ const SEOAnalytics = () => {
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                 {/* Left: Filter & Toggles */}
                                 <div className="flex items-center gap-2 flex-wrap">
-                                    {/* ── Advanced Filter Button + Panel ── */}
-                                    <div className="relative" ref={filterPanelRef}>
+                                    {/* ── Active GSC Filter Chips ── */}
+                                    {gscFilters.map((f, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
+                                            <span className="capitalize text-slate-500">{f.dimension}:</span>
+                                            {f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
+                                            <span className="text-slate-900 mx-1">{['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
+                                            <button onClick={() => {
+                                                setGscFilters(prev => prev.filter((_, idx) => idx !== i));
+                                                setCurrentPage(1);
+                                            }} className="text-slate-400 hover:text-slate-600 transition-colors ml-1"><XMarkIcon className="w-3.5 h-3.5" /></button>
+                                        </span>
+                                    ))}
+
+                                    {/* ── GSC Style Add Filter Button ── */}
+                                    <div className="relative" ref={filterMenuRef}>
                                         <button
-                                            onClick={() => setFilterPanelOpen(p => !p)}
-                                            className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-lg shadow-sm text-[13px] font-bold transition-colors ${
-                                                activeFilterCount > 0
-                                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
-                                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                            }`}
+                                            onClick={() => setAddFilterMenuOpen(p => !p)}
+                                            className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 rounded-full text-[13px] font-bold text-slate-600 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-800 transition-colors"
                                         >
-                                            <FunnelIcon className="w-4 h-4" />
-                                            Filter
-                                            {activeFilterCount > 0 && (
-                                                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-black flex items-center justify-center">
-                                                    {activeFilterCount}
-                                                </span>
-                                            )}
+                                            <PlusIcon className="w-4 h-4 text-emerald-600" />
+                                            Add filter
                                         </button>
 
-                                        {/* ── Filter Panel (fixed overlay so it never clips) ── */}
-                                        {filterPanelOpen && (
-                                            <>
-                                                {/* Backdrop */}
-                                                <div
-                                                    className="fixed inset-0 z-40"
-                                                    onClick={() => setFilterPanelOpen(false)}
-                                                />
-                                                {/* Panel */}
-                                                <div className="absolute left-0 top-full mt-2 z-50 w-80 bg-white border border-slate-200/80 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.16)] overflow-hidden">
-                                                    {/* Header */}
-                                                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                                                        <div className="flex items-center gap-2">
-                                                            <FunnelIcon className="w-4 h-4 text-slate-500" />
-                                                            <span className="text-[14px] font-black text-slate-800">Advanced Filters</span>
-                                                        </div>
-                                                        {activeFilterCount > 0 && (
-                                                            <button onClick={clearAdvancedFilters} className="text-[11px] font-bold text-rose-500 hover:text-rose-600 transition-colors px-2 py-1 rounded-lg hover:bg-rose-50">
-                                                                Clear all
-                                                            </button>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-
-                                                        {/* URL / Query Pattern */}
-                                                        <div>
-                                                            <div className="flex items-center justify-between mb-2">
-                                                                <label className="text-[12px] font-bold text-slate-600 uppercase tracking-wide">URL / Query Pattern</label>
-                                                                <button
-                                                                    onClick={() => setAdvancedFilters(f => ({ ...f, urlIsRegex: !f.urlIsRegex }))}
-                                                                    className={`text-[10px] font-black px-2.5 py-1 rounded-lg border transition-all ${
-                                                                        advancedFilters.urlIsRegex
-                                                                            ? 'bg-emerald-50 border-emerald-300 text-emerald-700'
-                                                                            : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                                                                    }`}
-                                                                >
-                                                                    .* {advancedFilters.urlIsRegex ? 'ON' : 'Regex'}
-                                                                </button>
-                                                            </div>
-                                                            <input
-                                                                type="text"
-                                                                placeholder={advancedFilters.urlIsRegex ? 'e.g. /blog/.+  or  ^https' : 'e.g. /products/'}
-                                                                value={advancedFilters.urlPattern}
-                                                                onChange={e => setAdvancedFilters(f => ({ ...f, urlPattern: e.target.value }))}
-                                                                className="w-full px-3 py-2.5 text-[13px] border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-emerald-400 outline-none font-mono transition-colors placeholder:text-slate-300"
-                                                            />
-                                                        </div>
-
-                                                        <div className="border-t border-slate-100" />
-
-                                                        {/* Numeric range rows */}
-                                                        {[
-                                                            { label: 'Clicks', minKey: 'clicksMin', maxKey: 'clicksMax', step: 1, minHint: '0', maxHint: '∞' },
-                                                            { label: 'Impressions', minKey: 'impressionsMin', maxKey: 'impressionsMax', step: 10, minHint: '0', maxHint: '∞' },
-                                                            { label: 'CTR %', minKey: 'ctrMin', maxKey: 'ctrMax', step: 0.1, minHint: '0', maxHint: '100' },
-                                                            { label: 'Position', minKey: 'positionMin', maxKey: 'positionMax', step: 0.1, minHint: '1', maxHint: '100' },
-                                                        ].map(({ label, minKey, maxKey, step, minHint, maxHint }) => (
-                                                            <div key={label}>
-                                                                <label className="text-[11px] font-black uppercase tracking-wide block mb-2 text-slate-600">{label}</label>
-                                                                <div className="grid grid-cols-2 gap-2">
-                                                                    <div className="relative">
-                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">≥</span>
-                                                                        <input
-                                                                            type="number"
-                                                                            placeholder={minHint}
-                                                                            step={step}
-                                                                            min={0}
-                                                                            value={advancedFilters[minKey]}
-                                                                            onChange={e => setAdvancedFilters(f => ({ ...f, [minKey]: e.target.value }))}
-                                                                            className="w-full pl-7 pr-3 py-2 text-[13px] font-medium border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-emerald-400 outline-none transition-colors"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="relative">
-                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">≤</span>
-                                                                        <input
-                                                                            type="number"
-                                                                            placeholder={maxHint}
-                                                                            step={step}
-                                                                            min={0}
-                                                                            value={advancedFilters[maxKey]}
-                                                                            onChange={e => setAdvancedFilters(f => ({ ...f, [maxKey]: e.target.value }))}
-                                                                            className="w-full pl-7 pr-3 py-2 text-[13px] font-medium border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:border-emerald-400 outline-none transition-colors"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-
-                                                    {/* Footer */}
-                                                    <div className="px-5 py-4 border-t border-slate-100 bg-slate-50/60">
-                                                        <button
-                                                            onClick={() => { setFilterPanelOpen(false); setCurrentPage(1); }}
-                                                            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-[13px] font-bold rounded-xl transition-colors shadow-sm shadow-emerald-600/20"
-                                                        >
-                                                            Apply Filters {activeFilterCount > 0 && `(${activeFilterCount} active)`}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </>
+                                        {addFilterMenuOpen && (
+                                            <div className="absolute left-0 top-full mt-1.5 z-50 w-40 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden py-1">
+                                                {['query', 'page', 'clicks', 'impressions', 'ctr', 'position'].map(dim => (
+                                                    <button
+                                                        key={dim}
+                                                        onClick={() => {
+                                                            setFilterDialog({ dimension: dim });
+                                                            setTempFilter({ operator: ['clicks', 'impressions', 'ctr', 'position'].includes(dim) ? 'greaterThan' : 'contains', expression: '' });
+                                                            setAddFilterMenuOpen(false);
+                                                        }}
+                                                        className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors capitalize"
+                                                    >
+                                                        {dim}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         )}
 
-                                    </div>
-
-                                    {/* ── Active Filter Chips ── */}
-                                    {advancedFilters.urlPattern && (
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-[11px] font-bold text-emerald-700">
-                                            {advancedFilters.urlIsRegex ? '.*' : '🔍'} {advancedFilters.urlPattern.length > 18 ? advancedFilters.urlPattern.slice(0, 18) + '…' : advancedFilters.urlPattern}
-                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, urlPattern: '' }))} className="text-emerald-500 hover:text-emerald-700"><XMarkIcon className="w-3 h-3" /></button>
-                                        </span>
-                                    )}
-                                    {(advancedFilters.clicksMin || advancedFilters.clicksMax) && (
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-50 border border-sky-200 rounded-full text-[11px] font-bold text-sky-700">
-                                            Clicks {advancedFilters.clicksMin && `≥${advancedFilters.clicksMin}`}{advancedFilters.clicksMin && advancedFilters.clicksMax && ' '}{advancedFilters.clicksMax && `≤${advancedFilters.clicksMax}`}
-                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, clicksMin: '', clicksMax: '' }))} className="text-sky-500 hover:text-sky-700"><XMarkIcon className="w-3 h-3" /></button>
-                                        </span>
-                                    )}
-                                    {(advancedFilters.impressionsMin || advancedFilters.impressionsMax) && (
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-violet-50 border border-violet-200 rounded-full text-[11px] font-bold text-violet-700">
-                                            Impr {advancedFilters.impressionsMin && `≥${advancedFilters.impressionsMin}`}{advancedFilters.impressionsMin && advancedFilters.impressionsMax && ' '}{advancedFilters.impressionsMax && `≤${advancedFilters.impressionsMax}`}
-                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, impressionsMin: '', impressionsMax: '' }))} className="text-violet-500 hover:text-violet-700"><XMarkIcon className="w-3 h-3" /></button>
-                                        </span>
-                                    )}
-                                    {(advancedFilters.ctrMin || advancedFilters.ctrMax) && (
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-full text-[11px] font-bold text-amber-700">
-                                            CTR {advancedFilters.ctrMin && `≥${advancedFilters.ctrMin}%`}{advancedFilters.ctrMin && advancedFilters.ctrMax && ' '}{advancedFilters.ctrMax && `≤${advancedFilters.ctrMax}%`}
-                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, ctrMin: '', ctrMax: '' }))} className="text-amber-500 hover:text-amber-700"><XMarkIcon className="w-3 h-3" /></button>
-                                        </span>
-                                    )}
-                                    {(advancedFilters.positionMin || advancedFilters.positionMax) && (
-                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 border border-rose-200 rounded-full text-[11px] font-bold text-rose-700">
-                                            Pos {advancedFilters.positionMin && `≥${advancedFilters.positionMin}`}{advancedFilters.positionMin && advancedFilters.positionMax && ' '}{advancedFilters.positionMax && `≤${advancedFilters.positionMax}`}
-                                            <button onClick={() => setAdvancedFilters(f => ({ ...f, positionMin: '', positionMax: '' }))} className="text-rose-500 hover:text-rose-700"><XMarkIcon className="w-3 h-3" /></button>
-                                        </span>
-                                    )}
-                                    <div className="flex items-center gap-2 ml-2">
-                                        {['clicks', 'impressions', 'ctr', 'position'].map(id => (
-                                            <button 
-                                                key={id} 
-                                                onClick={() => toggleMetric(id)}
-                                                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all border shadow-sm ${activeMetrics[id] ? metricStyles[id].bg + ' ' + metricStyles[id].text + ' ' + metricStyles[id].border : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50 hover:text-slate-500'}`}
-                                            >
-                                                {metricStyles[id].icon}
-                                            </button>
-                                        ))}
+                                        {filterDialog && (
+                                            <div className="absolute left-0 top-full mt-1.5 z-50 w-80 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200" ref={filterDialogRef}>
+                                                <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                                    <span className="text-[14px] font-bold text-slate-800 capitalize">{filterDialog.dimension}</span>
+                                                    <button onClick={() => setFilterDialog(null)} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="w-4 h-4" /></button>
+                                                </div>
+                                                <div className="p-5 flex flex-col gap-4">
+                                                    <select
+                                                        value={tempFilter.operator}
+                                                        onChange={e => setTempFilter(f => ({ ...f, operator: e.target.value }))}
+                                                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                    >
+                                                        {['clicks', 'impressions', 'ctr', 'position'].includes(filterDialog.dimension) ? (
+                                                            <>
+                                                                <option value="greaterThan">Greater than (&gt;)</option>
+                                                                <option value="lessThan">Less than (&lt;)</option>
+                                                                <option value="equals">Equals (=)</option>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <option value="contains">{filterDialog.dimension === 'query' ? 'Queries' : 'URLs'} containing</option>
+                                                                <option value="notContains">{filterDialog.dimension === 'query' ? 'Queries' : 'URLs'} not containing</option>
+                                                                <option value="equals">Exact {filterDialog.dimension}</option>
+                                                                <option value="includingRegex">Custom (regex)</option>
+                                                            </>
+                                                        )}
+                                                    </select>
+                                                    <input
+                                                        type={['clicks', 'impressions', 'ctr', 'position'].includes(filterDialog.dimension) ? 'number' : 'text'}
+                                                        step={['ctr', 'position'].includes(filterDialog.dimension) ? '0.1' : '1'}
+                                                        value={tempFilter.expression}
+                                                        onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value }))}
+                                                        placeholder={`Enter ${filterDialog.dimension}...`}
+                                                        className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                        autoFocus
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter' && tempFilter.expression.trim()) {
+                                                                setGscFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
+                                                                setFilterDialog(null);
+                                                                setCurrentPage(1);
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+                                                    <button onClick={() => setFilterDialog(null)} className="px-4 py-1.5 text-[13px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Cancel</button>
+                                                    <button 
+                                                        onClick={() => {
+                                                            if (tempFilter.expression.trim()) {
+                                                                setGscFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
+                                                            }
+                                                            setFilterDialog(null);
+                                                            setCurrentPage(1);
+                                                        }}
+                                                        className="px-4 py-1.5 text-[13px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                                                    >
+                                                        Apply
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 

@@ -133,9 +133,32 @@ class GSCService:
             logger.error(f"Unexpected error verifying property: {str(e)}")
             return False
 
-    async def get_pages_with_queries(self, property_url: str, days: int = 90) -> List[Dict]:
+    def _apply_filter(self, request: dict, filters_json: str):
+        """Helper to append dimension filter group to a GSC query request."""
+        if filters_json:
+            import json
+            try:
+                filters_list = json.loads(filters_json)
+                if filters_list:
+                    request['dimensionFilterGroups'] = [{
+                        'filters': [
+                            {
+                                'dimension': f['dimension'],
+                                'operator': f['operator'],
+                                'expression': f['expression']
+                            }
+                            for f in filters_list
+                        ]
+                    }]
+            except json.JSONDecodeError:
+                pass
+
+    async def get_pages_with_queries(
+        self, property_url: str, days: int = 90, 
+        filters_json: str = None
+    ) -> List[Dict]:
         """Fetch all pages from a property with their ranking queries. Cached for 30 min."""
-        cache_key = (self.user_email, 'pages', property_url, days)
+        cache_key = (self.user_email, 'pages', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: pages {property_url}")
@@ -155,6 +178,7 @@ class GSCService:
                 'startRow': 0,
                 'dataState': 'all'
             }
+            self._apply_filter(request, filters_json)
 
             response = self.service.searchanalytics().query(
                 siteUrl=property_url,
@@ -211,9 +235,12 @@ class GSCService:
             logger.error(f"Unexpected error fetching pages: {str(e)}")
             raise Exception(f"Failed to fetch pages: {str(e)}")
 
-    async def get_search_analytics(self, property_url: str, days: int = 365, group_by: str = 'daily') -> Dict:
+    async def get_search_analytics(
+        self, property_url: str, days: int = 365, group_by: str = 'daily',
+        filters_json: str = None
+    ) -> Dict:
         """Fetch search analytics time-series data for charts, totals, and period-over-period deltas. Cached for 15 min."""
-        cache_key = (self.user_email, 'analytics', property_url, days, group_by)
+        cache_key = (self.user_email, 'analytics', property_url, days, group_by, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: analytics {property_url}")
@@ -224,15 +251,18 @@ class GSCService:
 
             def _fetch_period(start: 'date', end: 'date') -> Dict:
                 """Helper: query GSC for a single date range and return aggregated totals."""
+                req_body = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate': end.strftime('%Y-%m-%d'),
+                    'dimensions': ['date'],
+                    'rowLimit': 25000,
+                    'dataState': 'all'
+                }
+                self._apply_filter(req_body, filters_json)
+                
                 response = self.service.searchanalytics().query(
                     siteUrl=property_url,
-                    body={
-                        'startDate': start.strftime('%Y-%m-%d'),
-                        'endDate': end.strftime('%Y-%m-%d'),
-                        'dimensions': ['date'],
-                        'rowLimit': 25000,
-                        'dataState': 'all'
-                    }
+                    body=req_body
                 ).execute()
                 rows = response.get('rows', [])
                 t_clicks, t_impressions, t_position = 0, 0, 0
@@ -334,9 +364,12 @@ class GSCService:
             raise Exception(f"Failed to fetch analytics: {str(e)}")
 
 
-    async def get_countries(self, property_url: str, days: int = 28) -> List[Dict]:
+    async def get_countries(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
         """Fetch clicks/impressions/ctr/position broken down by country. Cached 15 min."""
-        cache_key = (self.user_email, 'countries', property_url, days)
+        cache_key = (self.user_email, 'countries', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: countries {property_url}")
@@ -403,9 +436,12 @@ class GSCService:
             logger.error(f"Unexpected error fetching countries: {str(e)}")
             raise Exception(f"Failed to fetch countries: {str(e)}")
 
-    async def get_top_pages(self, property_url: str, days: int = 28) -> List[Dict]:
+    async def get_top_pages(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
         """Return top pages with clicks/impressions/ctr/position + delta vs prior period. Cached 15 min."""
-        cache_key = (self.user_email, 'top_pages', property_url, days)
+        cache_key = (self.user_email, 'top_pages', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: top_pages {property_url}")
@@ -419,15 +455,17 @@ class GSCService:
             prev_start = prev_end - timedelta(days=days)
 
             def _fetch(start, end):
+                req_body = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate':   end.strftime('%Y-%m-%d'),
+                    'dimensions': ['page'],
+                    'rowLimit':   100,
+                    'dataState':  'all',
+                }
+                self._apply_filter(req_body, filters_json)
                 resp = self.service.searchanalytics().query(
                     siteUrl=property_url,
-                    body={
-                        'startDate': start.strftime('%Y-%m-%d'),
-                        'endDate':   end.strftime('%Y-%m-%d'),
-                        'dimensions': ['page'],
-                        'rowLimit':   25000,
-                        'dataState':  'all',
-                    }
+                    body=req_body
                 ).execute()
                 result = {}
                 for row in resp.get('rows', []):
@@ -470,9 +508,12 @@ class GSCService:
             logger.error(f"Unexpected error fetching top_pages: {str(e)}")
             raise Exception(f"Failed to fetch pages: {str(e)}")
 
-    async def get_top_queries(self, property_url: str, days: int = 28) -> List[Dict]:
+    async def get_top_queries(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
         """Return top queries with clicks/impressions/ctr/position + delta vs prior period. Cached 15 min."""
-        cache_key = (self.user_email, 'top_queries', property_url, days)
+        cache_key = (self.user_email, 'top_queries', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: top_queries {property_url}")
@@ -486,15 +527,17 @@ class GSCService:
             prev_start = prev_end - timedelta(days=days)
 
             def _fetch(start, end):
+                req_body = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate':   end.strftime('%Y-%m-%d'),
+                    'dimensions': ['query'],
+                    'rowLimit':   25000,
+                    'dataState':  'all',
+                }
+                self._apply_filter(req_body, filters_json)
                 resp = self.service.searchanalytics().query(
                     siteUrl=property_url,
-                    body={
-                        'startDate': start.strftime('%Y-%m-%d'),
-                        'endDate':   end.strftime('%Y-%m-%d'),
-                        'dimensions': ['query'],
-                        'rowLimit':   25000,
-                        'dataState':  'all',
-                    }
+                    body=req_body
                 ).execute()
                 result = {}
                 for row in resp.get('rows', []):
@@ -540,9 +583,12 @@ class GSCService:
             logger.error(f"Unexpected error fetching top_queries: {str(e)}")
             raise Exception(f"Failed to fetch queries: {str(e)}")
 
-    async def get_devices(self, property_url: str, days: int = 28) -> List[Dict]:
+    async def get_devices(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
         """Fetch clicks/impressions/ctr/position broken down by device. Cached 15 min."""
-        cache_key = (self.user_email, 'devices', property_url, days)
+        cache_key = (self.user_email, 'devices', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: devices {property_url}")
@@ -557,15 +603,17 @@ class GSCService:
             prev_start = prev_end - timedelta(days=days)
 
             def _fetch(start, end):
+                req_body = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate': end.strftime('%Y-%m-%d'),
+                    'dimensions': ['device'],
+                    'rowLimit': 10,
+                    'dataState': 'all'
+                }
+                self._apply_filter(req_body, filters_json)
                 resp = self.service.searchanalytics().query(
                     siteUrl=property_url,
-                    body={
-                        'startDate': start.strftime('%Y-%m-%d'),
-                        'endDate': end.strftime('%Y-%m-%d'),
-                        'dimensions': ['device'],
-                        'rowLimit': 10,
-                        'dataState': 'all'
-                    }
+                    body=req_body
                 ).execute()
                 result = {}
                 for row in resp.get('rows', []):
@@ -613,13 +661,16 @@ class GSCService:
             logger.error(f"Unexpected error fetching devices: {str(e)}")
             raise Exception(f"Failed to fetch devices: {str(e)}")
 
-    async def get_daily_stats(self, property_url: str, days: int = 28) -> List[Dict]:
+    async def get_daily_stats(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
         """
         Return per-day unique query counts, page counts, and position-bucket impressions.
         Used to power the Query Counting and Pages Ranking charts.
         Cached 15 min.
         """
-        cache_key = (self.user_email, 'daily_stats', property_url, days)
+        cache_key = (self.user_email, 'daily_stats', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: daily_stats {property_url}")
@@ -632,27 +683,31 @@ class GSCService:
             start_date = end_date - timedelta(days=days)
 
             # --- Query-level rows (date × query) to count unique queries/day and position buckets ---
+            query_req = {
+                'startDate': start_date.strftime('%Y-%m-%d'),
+                'endDate': end_date.strftime('%Y-%m-%d'),
+                'dimensions': ['date', 'query'],
+                'rowLimit': 25000,
+                'dataState': 'all',
+            }
+            self._apply_filter(query_req, filters_json)
             query_resp = self.service.searchanalytics().query(
                 siteUrl=property_url,
-                body={
-                    'startDate': start_date.strftime('%Y-%m-%d'),
-                    'endDate': end_date.strftime('%Y-%m-%d'),
-                    'dimensions': ['date', 'query'],
-                    'rowLimit': 25000,
-                    'dataState': 'all',
-                }
+                body=query_req
             ).execute()
 
             # --- Page-level rows (date × page) to count unique pages/day ---
+            page_req = {
+                'startDate': start_date.strftime('%Y-%m-%d'),
+                'endDate': end_date.strftime('%Y-%m-%d'),
+                'dimensions': ['date', 'page'],
+                'rowLimit': 25000,
+                'dataState': 'all',
+            }
+            self._apply_filter(page_req, filters_json)
             page_resp = self.service.searchanalytics().query(
                 siteUrl=property_url,
-                body={
-                    'startDate': start_date.strftime('%Y-%m-%d'),
-                    'endDate': end_date.strftime('%Y-%m-%d'),
-                    'dimensions': ['date', 'page'],
-                    'rowLimit': 25000,
-                    'dataState': 'all',
-                }
+                body=page_req
             ).execute()
 
             # Aggregate by date
@@ -717,14 +772,17 @@ class GSCService:
             logger.error(f"Unexpected error fetching daily_stats: {str(e)}")
             raise Exception(f"Failed to fetch daily stats: {str(e)}")
 
-    async def get_new_lost_rankings(self, property_url: str, days: int = 28) -> Dict:
+    async def get_new_lost_rankings(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> Dict:
         """
         Compare current vs previous period to find:
         - New queries/pages  (appear in current, absent in previous)
         - Lost queries/pages (appear in previous, absent in current)
         Cached 15 min.
         """
-        cache_key = (self.user_email, 'new_lost_rankings', property_url, days)
+        cache_key = (self.user_email, 'new_lost_rankings', property_url, days, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: new_lost_rankings {property_url}")
@@ -739,15 +797,17 @@ class GSCService:
             prev_start = prev_end - timedelta(days=days)
 
             def _fetch(dimension: str, start, end) -> Dict[str, Dict]:
+                req_body = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate':   end.strftime('%Y-%m-%d'),
+                    'dimensions': [dimension],
+                    'rowLimit':   25000,
+                    'dataState':  'all',
+                }
+                self._apply_filter(req_body, filters_json)
                 resp = self.service.searchanalytics().query(
                     siteUrl=property_url,
-                    body={
-                        'startDate': start.strftime('%Y-%m-%d'),
-                        'endDate':   end.strftime('%Y-%m-%d'),
-                        'dimensions': [dimension],
-                        'rowLimit':   25000,
-                        'dataState':  'all',
-                    }
+                    body=req_body
                 ).execute()
                 result = {}
                 for row in resp.get('rows', []):
