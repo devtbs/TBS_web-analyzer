@@ -41,6 +41,42 @@ const ssSet = (key, data) => {
     try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 };
 
+
+/* ── Country list for filter dropdown ─────────────────────── */
+const COUNTRY_LIST = [
+    { code: 'usa', name: 'United States' }, { code: 'gbr', name: 'United Kingdom' },
+    { code: 'can', name: 'Canada' }, { code: 'aus', name: 'Australia' },
+    { code: 'fra', name: 'France' }, { code: 'deu', name: 'Germany' },
+    { code: 'ind', name: 'India' }, { code: 'phl', name: 'Philippines' },
+    { code: 'mys', name: 'Malaysia' }, { code: 'sgp', name: 'Singapore' },
+    { code: 'mmr', name: 'Myanmar' }, { code: 'tha', name: 'Thailand' },
+    { code: 'vnm', name: 'Vietnam' }, { code: 'idn', name: 'Indonesia' },
+    { code: 'jpn', name: 'Japan' }, { code: 'kor', name: 'South Korea' },
+    { code: 'chn', name: 'China' }, { code: 'hkg', name: 'Hong Kong' },
+    { code: 'twn', name: 'Taiwan' }, { code: 'nzl', name: 'New Zealand' },
+    { code: 'irl', name: 'Ireland' }, { code: 'zaf', name: 'South Africa' },
+    { code: 'nga', name: 'Nigeria' }, { code: 'pak', name: 'Pakistan' },
+    { code: 'bgd', name: 'Bangladesh' }, { code: 'lka', name: 'Sri Lanka' },
+    { code: 'nld', name: 'Netherlands' }, { code: 'esp', name: 'Spain' },
+    { code: 'ita', name: 'Italy' }, { code: 'bra', name: 'Brazil' },
+    { code: 'mex', name: 'Mexico' }, { code: 'arg', name: 'Argentina' },
+    { code: 'col', name: 'Colombia' }, { code: 'chl', name: 'Chile' },
+    { code: 'pol', name: 'Poland' }, { code: 'swe', name: 'Sweden' },
+    { code: 'nor', name: 'Norway' }, { code: 'dnk', name: 'Denmark' },
+    { code: 'fin', name: 'Finland' }, { code: 'che', name: 'Switzerland' },
+    { code: 'aut', name: 'Austria' }, { code: 'bel', name: 'Belgium' },
+    { code: 'prt', name: 'Portugal' }, { code: 'grc', name: 'Greece' },
+    { code: 'tur', name: 'Turkey' }, { code: 'sau', name: 'Saudi Arabia' },
+    { code: 'are', name: 'United Arab Emirates' }, { code: 'egy', name: 'Egypt' },
+    { code: 'ken', name: 'Kenya' }, { code: 'gha', name: 'Ghana' },
+    { code: 'ukr', name: 'Ukraine' }, { code: 'rus', name: 'Russia' },
+];
+const DEVICE_OPTIONS = [
+    { value: 'DESKTOP', label: 'Desktop' },
+    { value: 'MOBILE',  label: 'Mobile' },
+    { value: 'TABLET',  label: 'Tablet' },
+];
+
 /* ── Skeleton primitives ───────────────────────────────── */
 const Shimmer = ({ className = '' }) => (
     <div className={`bg-slate-100 rounded-lg animate-pulse ${className}`} />
@@ -241,6 +277,7 @@ const SEOAnalytics = () => {
     // Data states
     const [loading, setLoading] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
+    const [isBreakdownUpdating, setIsBreakdownUpdating] = useState(false);
     const [analytics, setAnalytics] = useState(null);
     const [deltas, setDeltas] = useState(null);
     const [pages, setPages] = useState([]);
@@ -265,6 +302,7 @@ const SEOAnalytics = () => {
     const [filterDialog, setFilterDialog] = useState(null); // null or { dimension: 'page' | 'query' }
     const [tableFilterDialog, setTableFilterDialog] = useState(null);
     const [tempFilter, setTempFilter] = useState({ operator: 'contains', expression: '' });
+    const [countrySearch, setCountrySearch] = useState('');
     const filterMenuRef = useRef(null);
     const tableFilterMenuRef = useRef(null);
     const tableFilterDialogRef = useRef(null);
@@ -372,39 +410,34 @@ const SEOAnalytics = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Load Analytics data when property changes
+    // Load Analytics data when property/date/filters change
     useEffect(() => {
         if (!selectedProperty) return;
 
-        const apiFilters = gscFilters.filter(f => ['query', 'page'].includes(f.dimension));
+        // Immediately clear old data so skeleton shows — never flash stale results
+        setPages([]);
+        setChartData([]);
+        setAnalytics(null);
+        setDeltas(null);
+        setIsUpdating(true);
+
+        const apiFilters = gscFilters.filter(f => ['query', 'page', 'country', 'device'].includes(f.dimension));
         const filterHash = apiFilters.length > 0 ? '_' + btoa(JSON.stringify(apiFilters)) : '';
         const cacheKey = `seo_analytics_${selectedProperty}_${chartGrouping}_${days}${filterHash}`;
-        const cached = ssGet(cacheKey);
-        if (cached) {
-            setAnalytics(cached.totals);
-            setDeltas(cached.deltas || null);
-            setChartData(cached.chart_data);
-            setPages(cached.pages);
-            setCurrentPage(1);
-            setLoading(false);
-            return;
-        }
+
+        // Delete this key so filters always fetch fresh — never serve stale cache on filter change
+        try { sessionStorage.removeItem(cacheKey); } catch {}
 
         const fetchAnalytics = async () => {
-            if (!analytics) {
-                setLoading(true);
-            } else {
-                setIsUpdating(true);
-            }
             try {
-                const queryParams = { 
-                    group_by: chartGrouping, 
+                const queryParams = {
+                    group_by: chartGrouping,
                     days: days,
                     ...(apiFilters.length > 0 && {
                         filters_json: JSON.stringify(apiFilters)
                     })
                 };
-                const res = await api.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, { 
+                const res = await api.get(`/auth/gsc/analytics/${encodeURIComponent(selectedProperty)}`, {
                     params: queryParams
                 });
                 const payload = {
@@ -438,18 +471,21 @@ const SEOAnalytics = () => {
     // Fetch countries & devices when property or days change
     useEffect(() => {
         if (!selectedProperty) return;
+
+        // Immediately clear old data and show skeleton — never flash stale results
+        setRealCountries([]);
+        setRealDevices([]);
+        setRealDailyStats([]);
+        setIsBreakdownUpdating(true);
+
         const fetchBreakdowns = async () => {
-            const apiFilters = gscFilters.filter(f => ['query', 'page'].includes(f.dimension));
+            const apiFilters = gscFilters.filter(f => ['query', 'page', 'country', 'device'].includes(f.dimension));
             const filterHash = apiFilters.length > 0 ? '_' + btoa(JSON.stringify(apiFilters)) : '';
             const bdKey = `seo_breakdowns_${selectedProperty}_${days}${filterHash}`;
-            const bdCached = ssGet(bdKey);
-            if (bdCached) {
-                setRealCountries(bdCached.countries || []);
-                setCountriesTotal(bdCached.total || 0);
-                setRealDevices(bdCached.devices || []);
-                setRealDailyStats(bdCached.daily_stats || []);
-                return;
-            }
+
+            // Delete cache so filter changes always fetch fresh data
+            try { sessionStorage.removeItem(bdKey); } catch {}
+
             try {
                 const queryParams = { 
                     days,
@@ -478,6 +514,8 @@ const SEOAnalytics = () => {
                     console.warn('Could not load country/device/daily breakdown:', err.message);
                 }
                 // 403 on breakdowns is expected when main analytics already shows the banner
+            } finally {
+                setIsBreakdownUpdating(false);
             }
         };
         fetchBreakdowns();
@@ -838,51 +876,59 @@ const SEOAnalytics = () => {
     // Table Filtering
     const filteredPages = useMemo(() => {
         return activeTabList.filter((item) => {
-            const text = item.url?.toLowerCase() ?? '';
-
-            // ── GSC Filters (Local fallback for UI instant update) ───────────────────────
+            // ── GSC Filters (local client-side) ──────────────────────────────────
             for (const f of gscFilters) {
                 if (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension)) {
-                    const clicks     = item.total_clicks      ?? item.clicks      ?? 0;
-                    const imps       = item.total_impressions ?? item.impressions  ?? 0;
-                    const ctr        = imps > 0 ? (clicks / imps) * 100 : 0;
-                    const pos        = item.avg_position      ?? item.position    ?? 0;
-                    
-                    const val = f.dimension === 'clicks' ? clicks : f.dimension === 'impressions' ? imps : f.dimension === 'ctr' ? ctr : pos;
+                    // Numeric metric filter
+                    const clicks = item.total_clicks      ?? item.clicks      ?? 0;
+                    const imps   = item.total_impressions ?? item.impressions  ?? 0;
+                    const ctr    = imps > 0 ? (clicks / imps) * 100 : 0;
+                    const pos    = item.avg_position      ?? item.position    ?? 0;
+
+                    const val    = f.dimension === 'clicks'      ? clicks
+                                 : f.dimension === 'impressions' ? imps
+                                 : f.dimension === 'ctr'         ? ctr
+                                 : pos;
                     const target = Number(f.expression);
                     if (isNaN(target)) continue;
-                    
+
                     if (f.operator === 'greaterThan' && val <= target) return false;
-                    if (f.operator === 'lessThan' && val >= target) return false;
-                    if (f.operator === 'equals' && val !== target) return false;
+                    if (f.operator === 'lessThan'    && val >= target) return false;
+                    if (f.operator === 'equals'      && val !== target) return false;
+
                 } else {
-                    const isRegex = f.operator === 'includingRegex';
-                    const isExact = f.operator === 'equals';
+                    // Text / regex filter (query or page dimension)
+                    const isRegex       = f.operator === 'includingRegex';
+                    const isExact       = f.operator === 'equals';
                     const isNotContains = f.operator === 'notContains';
+
+                    let pattern;
                     try {
-                        const pattern = isRegex 
+                        pattern = isRegex
                             ? new RegExp(f.expression, 'i')
-                            : new RegExp(f.expression.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'i');
-                        
-                        if (f.dimension === 'page') {
-                            if (isExact) {
-                                if (item.url !== f.expression) return false;
-                            } else if (isNotContains) {
-                                if (pattern.test(item.url || '')) return false;
-                            } else {
-                                if (!pattern.test(item.url || '')) return false;
-                            }
-                        } else if (f.dimension === 'query') {
-                            const qStr = item.queries?.map(q => q.query).join(' ') || item.query || item['Query'] || '';
-                            if (isExact) {
-                                if (!item.queries?.some(q => q.query === f.expression) && item.query !== f.expression && item['Query'] !== f.expression) return false;
-                            } else if (isNotContains) {
-                                if (pattern.test(qStr)) return false;
-                            } else {
-                                if (!pattern.test(qStr)) return false;
-                            }
+                            : new RegExp(f.expression.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+                    } catch { continue; }
+
+                    if (f.dimension === 'page') {
+                        if (activeTab === 'Pages') {
+                            const target = item.url || '';
+                            if (isExact       && target !== f.expression)    return false;
+                            if (isNotContains && pattern.test(target))        return false;
+                            if (!isExact && !isNotContains && !pattern.test(target)) return false;
                         }
-                    } catch { /* invalid regex */ }
+                    } else if (f.dimension === 'query') {
+                        let qStr = '';
+                        if (activeTab === 'Queries') {
+                            qStr = item.url || '';
+                        } else if (activeTab === 'Pages') {
+                            qStr = item.queries?.map(q => q.query).join(' ') || '';
+                        } else if (activeTab === 'Clusters') {
+                            qStr = item.label || item.url || '';
+                        }
+                        if (isExact       && qStr !== f.expression)    return false;
+                        if (isNotContains && pattern.test(qStr))        return false;
+                        if (!isExact && !isNotContains && !pattern.test(qStr)) return false;
+                    }
                 }
             }
 
@@ -1045,8 +1091,18 @@ const SEOAnalytics = () => {
             ) : (
                 <AnimatePresence>
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}
-                        className={`transition-opacity duration-300 ${isUpdating ? 'opacity-60 pointer-events-none' : ''}`}
+                        className="relative"
                     >
+                        {/* ── Loading overlay when filter changes trigger a new fetch ── */}
+                        {isUpdating && (
+                            <div className="absolute inset-0 z-30 bg-white/75 backdrop-blur-[1px] flex flex-col items-center justify-start pt-32 rounded-2xl pointer-events-none">
+                                <div className="flex flex-col items-center gap-3 bg-white rounded-2xl px-8 py-5 shadow-lg border border-slate-100">
+                                    <div className="w-9 h-9 border-[3px] border-slate-200 border-t-emerald-500 rounded-full animate-spin" />
+                                    <span className="text-[13px] font-semibold text-slate-500">Applying filter…</span>
+                                </div>
+                            </div>
+                        )}
+
                         {/* ── Top Header Context (Mocked to match screenshot) ── */}
                         <div className="flex flex-col mb-8 px-1">         
                             {/* Row 2: Toggles and Search/Date */}
@@ -1054,11 +1110,11 @@ const SEOAnalytics = () => {
                                 {/* Left: Filter & Toggles */}
                                 <div className="flex items-center gap-2 flex-wrap">
                                     {/* ── Active GSC Filter Chips ── */}
-                                    {gscFilters.map((f, i) => ['query', 'page'].includes(f.dimension) ? (
+                                    {gscFilters.map((f, i) => ['query', 'page', 'country', 'device'].includes(f.dimension) ? (
                                         <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
                                             <span className="capitalize text-slate-500">{f.dimension}:</span>
-                                            {f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
-                                            <span className="text-slate-900 mx-1">{['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
+                                            {f.dimension === 'country' || f.dimension === 'device' ? '=' : f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
+                                            <span className="text-slate-900 mx-1">{f.dimension === 'country' ? (COUNTRY_LIST.find(c => c.code === f.expression)?.name || f.expression) : f.dimension === 'device' ? (f.expression.charAt(0) + f.expression.slice(1).toLowerCase()) : ['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
                                             <button 
                                                 disabled={isUpdating}
                                                 onClick={() => {
@@ -1071,6 +1127,17 @@ const SEOAnalytics = () => {
                                             </button>
                                         </span>
                                     ) : null)}
+
+                                    {/* ── Clear all filters ── */}
+                                    {gscFilters.length > 0 && (
+                                        <button
+                                            onClick={() => { setGscFilters([]); setCurrentPage(1); }}
+                                            disabled={isUpdating}
+                                            className="text-[12px] font-semibold text-slate-400 hover:text-red-500 transition-colors disabled:opacity-50 ml-1"
+                                        >
+                                            Clear all
+                                        </button>
+                                    )}
 
                                     {/* ── GSC Style Add Filter Button ── */}
                                     <div className="relative" ref={filterMenuRef}>
@@ -1089,17 +1156,18 @@ const SEOAnalytics = () => {
 
                                         {addFilterMenuOpen && (
                                             <div className="absolute left-0 top-full mt-1.5 z-50 w-40 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden py-1">
-                                                {['query', 'page'].map(dim => (
+                                                {['query', 'page', 'country', 'device'].map(dim => (
                                                     <button
                                                         key={dim}
                                                         onClick={() => {
                                                             setFilterDialog({ dimension: dim });
                                                             setTempFilter({ operator: ['clicks', 'impressions', 'ctr', 'position'].includes(dim) ? 'greaterThan' : 'contains', expression: '' });
+                                                            setCountrySearch('');
                                                             setAddFilterMenuOpen(false);
                                                         }}
                                                         className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors capitalize"
                                                     >
-                                                        {dim}
+                                                        {dim === 'country' ? 'Country' : dim === 'device' ? 'Device' : dim.charAt(0).toUpperCase() + dim.slice(1)}
                                                     </button>
                                                 ))}
                                             </div>
@@ -1112,51 +1180,97 @@ const SEOAnalytics = () => {
                                                     <button onClick={() => setFilterDialog(null)} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="w-4 h-4" /></button>
                                                 </div>
                                                 <div className="p-5 flex flex-col gap-4">
-                                                    <select
-                                                        value={tempFilter.operator}
-                                                        onChange={e => setTempFilter(f => ({ ...f, operator: e.target.value }))}
-                                                        className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
-                                                    >
-                                                        {['clicks', 'impressions', 'ctr', 'position'].includes(filterDialog.dimension) ? (
-                                                            <>
-                                                                <option value="greaterThan">Greater than (&gt;)</option>
-                                                                <option value="lessThan">Less than (&lt;)</option>
-                                                                <option value="equals">Equals (=)</option>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <option value="contains">{filterDialog.dimension === 'query' ? 'Queries' : 'URLs'} containing</option>
-                                                                <option value="notContains">{filterDialog.dimension === 'query' ? 'Queries' : 'URLs'} not containing</option>
-                                                                <option value="equals">Exact {filterDialog.dimension}</option>
-                                                                <option value="includingRegex">Custom (regex)</option>
-                                                            </>
-                                                        )}
-                                                    </select>
-                                                    <input
-                                                        type={['clicks', 'impressions', 'ctr', 'position'].includes(filterDialog.dimension) ? 'number' : 'text'}
-                                                        step={['ctr', 'position'].includes(filterDialog.dimension) ? '0.1' : '1'}
-                                                        value={tempFilter.expression}
-                                                        onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value }))}
-                                                        placeholder={`Enter ${filterDialog.dimension}...`}
-                                                        className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
-                                                        autoFocus
-                                                        onKeyDown={e => {
-                                                            if (e.key === 'Enter' && tempFilter.expression.trim()) {
-                                                                setGscFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
-                                                                setFilterDialog(null);
-                                                                setCurrentPage(1);
-                                                            }
-                                                        }}
-                                                    />
+                                                    {filterDialog.dimension === 'device' ? (
+                                                        // Device: single select, no operator needed
+                                                        <select
+                                                            value={tempFilter.expression}
+                                                            onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value, operator: 'equals' }))}
+                                                            className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                            autoFocus
+                                                        >
+                                                            <option value="">Select device…</option>
+                                                            {DEVICE_OPTIONS.map(d => (
+                                                                <option key={d.value} value={d.value}>{d.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    ) : filterDialog.dimension === 'country' ? (
+                                                        // Country: searchable dropdown list
+                                                        <div className="flex flex-col gap-2">
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Search country…"
+                                                                value={countrySearch}
+                                                                onChange={e => setCountrySearch(e.target.value)}
+                                                                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                                autoFocus
+                                                            />
+                                                            <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200">
+                                                                {COUNTRY_LIST.filter(c =>
+                                                                    c.name.toLowerCase().includes(countrySearch.toLowerCase()) ||
+                                                                    c.code.toLowerCase().includes(countrySearch.toLowerCase())
+                                                                ).map(c => (
+                                                                    <button
+                                                                        key={c.code}
+                                                                        type="button"
+                                                                        onClick={() => setTempFilter(f => ({ ...f, expression: c.code, operator: 'equals' }))}
+                                                                        className={`w-full text-left px-3 py-2 text-[13px] transition-colors ${tempFilter.expression === c.code ? 'bg-emerald-50 text-emerald-700 font-bold' : 'text-slate-700 hover:bg-slate-50'}`}
+                                                                    >
+                                                                        {c.name}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        // Query / Page: operator select + text input
+                                                        <>
+                                                            <select
+                                                                value={tempFilter.operator}
+                                                                onChange={e => setTempFilter(f => ({ ...f, operator: e.target.value }))}
+                                                                className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                            >
+                                                                {['clicks', 'impressions', 'ctr', 'position'].includes(filterDialog.dimension) ? (
+                                                                    <>
+                                                                        <option value="greaterThan">Greater than (&gt;)</option>
+                                                                        <option value="lessThan">Less than (&lt;)</option>
+                                                                        <option value="equals">Equals (=)</option>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <option value="contains">{filterDialog.dimension === 'query' ? 'Queries' : 'URLs'} containing</option>
+                                                                        <option value="notContains">{filterDialog.dimension === 'query' ? 'Queries' : 'URLs'} not containing</option>
+                                                                        <option value="equals">Exact {filterDialog.dimension}</option>
+                                                                        <option value="includingRegex">Custom (regex)</option>
+                                                                    </>
+                                                                )}
+                                                            </select>
+                                                            <input
+                                                                type={['clicks', 'impressions', 'ctr', 'position'].includes(filterDialog.dimension) ? 'number' : 'text'}
+                                                                step={['ctr', 'position'].includes(filterDialog.dimension) ? '0.1' : '1'}
+                                                                value={tempFilter.expression}
+                                                                onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value }))}
+                                                                placeholder={`Enter ${filterDialog.dimension}...`}
+                                                                className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                                autoFocus
+                                                                onKeyDown={e => {
+                                                                    if (e.key === 'Enter' && tempFilter.expression.trim()) {
+                                                                        setGscFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
+                                                                        setFilterDialog(null);
+                                                                        setCurrentPage(1);
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </>
+                                                    )}
                                                 </div>
                                                 <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
-                                                    <button onClick={() => setFilterDialog(null)} className="px-4 py-1.5 text-[13px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Cancel</button>
+                                                    <button onClick={() => { setFilterDialog(null); setCountrySearch(''); }} className="px-4 py-1.5 text-[13px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Cancel</button>
                                                     <button 
                                                         onClick={() => {
                                                             if (tempFilter.expression.trim()) {
                                                                 setGscFilters(prev => [...prev.filter(f => f.dimension !== filterDialog.dimension), { dimension: filterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
                                                             }
                                                             setFilterDialog(null);
+                                                            setCountrySearch('');
                                                             setCurrentPage(1);
                                                         }}
                                                         className="px-4 py-1.5 text-[13px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
@@ -1722,8 +1836,8 @@ const SEOAnalytics = () => {
                                     {gscFilters.map((f, i) => ['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? (
                                         <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
                                             <span className="capitalize text-slate-500">{f.dimension}:</span>
-                                            {f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
-                                            <span className="text-slate-900 mx-1">{['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
+                                            {f.dimension === 'country' || f.dimension === 'device' ? '=' : f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
+                                            <span className="text-slate-900 mx-1">{f.dimension === 'country' ? (COUNTRY_LIST.find(c => c.code === f.expression)?.name || f.expression) : f.dimension === 'device' ? (f.expression.charAt(0) + f.expression.slice(1).toLowerCase()) : ['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
                                             <button 
                                                 onClick={() => {
                                                     setGscFilters(prev => prev.filter((_, idx) => idx !== i));
@@ -1848,7 +1962,7 @@ const SEOAnalytics = () => {
                                     )}
                                     {activeTab === 'Countries' && (
                                         <span className="text-[12px] sm:text-[13px] text-slate-500">
-                                            {realCountries.length.toLocaleString()} countries
+                                            {isBreakdownUpdating ? '…' : realCountries.length.toLocaleString() + ' countries'}
                                         </span>
                                     )}
                                 </div>
@@ -1892,7 +2006,16 @@ const SEOAnalytics = () => {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 bg-white">
-                                                {realCountries.length === 0 ? (
+                                                {isBreakdownUpdating ? (
+                                                    Array.from({ length: 6 }).map((_, i) => (
+                                                        <tr key={i} className="border-b border-slate-50">
+                                                            <td className="py-3 px-4"><div className="h-3 bg-slate-100 rounded animate-pulse" style={{ width: `${50 + (i % 3) * 20}px`, animationDelay: `${i * 40}ms` }} /></td>
+                                                            <td className="py-3 px-4 text-right"><div className="h-3 w-10 bg-slate-100 rounded animate-pulse ml-auto" style={{ animationDelay: `${i * 40 + 20}ms` }} /></td>
+                                                            <td className="py-3 px-4 text-right"><div className="h-3 w-14 bg-slate-100 rounded animate-pulse ml-auto" style={{ animationDelay: `${i * 40 + 40}ms` }} /></td>
+                                                            <td className="py-3 px-4 text-right"><div className="h-3 w-10 bg-slate-100 rounded animate-pulse ml-auto" style={{ animationDelay: `${i * 40 + 60}ms` }} /></td>
+                                                        </tr>
+                                                    ))
+                                                ) : realCountries.length === 0 ? (
                                                     <tr><td colSpan={6} className="py-12 text-center text-slate-500 font-medium">No country data available.</td></tr>
                                                 ) : realCountries.map((row, idx) => (
                                                     <motion.tr
