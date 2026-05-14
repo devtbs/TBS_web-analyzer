@@ -295,9 +295,6 @@ const SEOAnalytics = () => {
             if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
                 setIsDatePickerOpen(false);
             }
-            if (filterPanelRef.current && !filterPanelRef.current.contains(event.target)) {
-                setFilterPanelOpen(false);
-            }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
