@@ -261,9 +261,13 @@ const SEOAnalytics = () => {
     // GSC-style filters
     const [gscFilters, setGscFilters] = useState([]);
     const [addFilterMenuOpen, setAddFilterMenuOpen] = useState(false);
+    const [addTableFilterMenuOpen, setAddTableFilterMenuOpen] = useState(false);
     const [filterDialog, setFilterDialog] = useState(null); // null or { dimension: 'page' | 'query' }
+    const [tableFilterDialog, setTableFilterDialog] = useState(null);
     const [tempFilter, setTempFilter] = useState({ operator: 'contains', expression: '' });
     const filterMenuRef = useRef(null);
+    const tableFilterMenuRef = useRef(null);
+    const tableFilterDialogRef = useRef(null);
     const filterDialogRef = useRef(null);
     
     // Pagination
@@ -361,6 +365,8 @@ const SEOAnalytics = () => {
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (filterMenuRef.current && !filterMenuRef.current.contains(e.target)) setAddFilterMenuOpen(false);
+            if (tableFilterMenuRef.current && !tableFilterMenuRef.current.contains(e.target)) setAddTableFilterMenuOpen(false);
+            if (tableFilterDialogRef.current && !tableFilterDialogRef.current.contains(e.target)) setTableFilterDialog(null);
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -1048,7 +1054,7 @@ const SEOAnalytics = () => {
                                 {/* Left: Filter & Toggles */}
                                 <div className="flex items-center gap-2 flex-wrap">
                                     {/* ── Active GSC Filter Chips ── */}
-                                    {gscFilters.map((f, i) => (
+                                    {gscFilters.map((f, i) => ['query', 'page'].includes(f.dimension) ? (
                                         <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
                                             <span className="capitalize text-slate-500">{f.dimension}:</span>
                                             {f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
@@ -1064,7 +1070,7 @@ const SEOAnalytics = () => {
                                                 <XMarkIcon className="w-3.5 h-3.5" />
                                             </button>
                                         </span>
-                                    ))}
+                                    ) : null)}
 
                                     {/* ── GSC Style Add Filter Button ── */}
                                     <div className="relative" ref={filterMenuRef}>
@@ -1083,7 +1089,7 @@ const SEOAnalytics = () => {
 
                                         {addFilterMenuOpen && (
                                             <div className="absolute left-0 top-full mt-1.5 z-50 w-40 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden py-1">
-                                                {['query', 'page', 'clicks', 'impressions', 'ctr', 'position'].map(dim => (
+                                                {['query', 'page'].map(dim => (
                                                     <button
                                                         key={dim}
                                                         onClick={() => {
@@ -1710,7 +1716,108 @@ const SEOAnalytics = () => {
 
                             {/* Secondary Filters & Pagination Row */}
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 sm:gap-0 mb-4">
-                                <div className="flex items-center gap-2 sm:gap-4">
+                                <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                                    
+                                    {/* ── Active Table Metric Chips ── */}
+                                    {gscFilters.map((f, i) => ['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? (
+                                        <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-[13px] font-bold text-slate-700 shadow-sm">
+                                            <span className="capitalize text-slate-500">{f.dimension}:</span>
+                                            {f.operator === 'contains' ? 'containing' : f.operator === 'notContains' ? 'not containing' : f.operator === 'equals' ? (['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? '=' : 'exact') : f.operator === 'greaterThan' ? '>' : f.operator === 'lessThan' ? '<' : 'regex'}
+                                            <span className="text-slate-900 mx-1">{['clicks', 'impressions', 'ctr', 'position'].includes(f.dimension) ? f.expression : `"${f.expression}"`}</span>
+                                            <button 
+                                                onClick={() => {
+                                                    setGscFilters(prev => prev.filter((_, idx) => idx !== i));
+                                                    setCurrentPage(1);
+                                                }} 
+                                                className="text-slate-400 hover:text-slate-600 transition-colors ml-1"
+                                            >
+                                                <XMarkIcon className="w-3.5 h-3.5" />
+                                            </button>
+                                        </span>
+                                    ) : null)}
+
+                                    {/* ── Table Metric Filter Button ── */}
+                                    {activeTab !== 'Countries' && (
+                                        <div className="relative" ref={tableFilterMenuRef}>
+                                            <button
+                                                onClick={() => setAddTableFilterMenuOpen(p => !p)}
+                                                className="flex items-center gap-1.5 px-3.5 py-1.5 border border-slate-200 rounded-full text-[13px] font-bold text-slate-600 bg-white shadow-sm hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                                            >
+                                                <PlusIcon className="w-4 h-4 text-emerald-600" />
+                                                Add metric filter
+                                            </button>
+
+                                            {addTableFilterMenuOpen && (
+                                                <div className="absolute left-0 top-full mt-1.5 z-50 w-40 bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden py-1">
+                                                    {['clicks', 'impressions', 'ctr', 'position'].map(dim => (
+                                                        <button
+                                                            key={dim}
+                                                            onClick={() => {
+                                                                setTableFilterDialog({ dimension: dim });
+                                                                setTempFilter({ operator: 'greaterThan', expression: '' });
+                                                                setAddTableFilterMenuOpen(false);
+                                                            }}
+                                                            className="w-full text-left px-4 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors capitalize"
+                                                        >
+                                                            {dim}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {tableFilterDialog && (
+                                                <div className="absolute left-0 top-full mt-1.5 z-50 w-80 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200" ref={tableFilterDialogRef}>
+                                                    <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                                                        <span className="text-[14px] font-bold text-slate-800 capitalize">{tableFilterDialog.dimension}</span>
+                                                        <button onClick={() => setTableFilterDialog(null)} className="text-slate-400 hover:text-slate-600"><XMarkIcon className="w-4 h-4" /></button>
+                                                    </div>
+                                                    <div className="p-5 flex flex-col gap-4">
+                                                        <select
+                                                            value={tempFilter.operator}
+                                                            onChange={e => setTempFilter(f => ({ ...f, operator: e.target.value }))}
+                                                            className="w-full px-3 py-2 text-[13px] font-medium bg-white border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                        >
+                                                            <option value="greaterThan">Greater than (&gt;)</option>
+                                                            <option value="lessThan">Less than (&lt;)</option>
+                                                            <option value="equals">Equals (=)</option>
+                                                        </select>
+                                                        <input
+                                                            type="number"
+                                                            step={['ctr', 'position'].includes(tableFilterDialog.dimension) ? '0.1' : '1'}
+                                                            value={tempFilter.expression}
+                                                            onChange={e => setTempFilter(f => ({ ...f, expression: e.target.value }))}
+                                                            placeholder={`Enter ${tableFilterDialog.dimension}...`}
+                                                            className="w-full px-3 py-2 text-[13px] border border-slate-200 rounded-lg outline-none focus:border-emerald-400 transition-colors"
+                                                            autoFocus
+                                                            onKeyDown={e => {
+                                                                if (e.key === 'Enter' && tempFilter.expression.trim()) {
+                                                                    setGscFilters(prev => [...prev.filter(f => f.dimension !== tableFilterDialog.dimension), { dimension: tableFilterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
+                                                                    setTableFilterDialog(null);
+                                                                    setCurrentPage(1);
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 bg-slate-50/50">
+                                                        <button onClick={() => setTableFilterDialog(null)} className="px-4 py-1.5 text-[13px] font-bold text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">Cancel</button>
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (tempFilter.expression.trim()) {
+                                                                    setGscFilters(prev => [...prev.filter(f => f.dimension !== tableFilterDialog.dimension), { dimension: tableFilterDialog.dimension, operator: tempFilter.operator, expression: tempFilter.expression }]);
+                                                                }
+                                                                setTableFilterDialog(null);
+                                                                setCurrentPage(1);
+                                                            }}
+                                                            className="px-4 py-1.5 text-[13px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-sm"
+                                                        >
+                                                            Apply
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {activeTab !== 'Countries' && <div className="relative">
                                         <select 
                                             value={statusFilter}
