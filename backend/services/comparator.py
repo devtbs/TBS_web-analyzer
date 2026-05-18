@@ -58,52 +58,63 @@ class Comparator:
         if not competitor_summaries:
             return None
 
-        system_prompt = """You are a senior SEO strategist specialising in competitive topical authority analysis.
-Your job is to analyse a primary website versus its competitors and produce a clear, highly actionable battle-plan
-that tells the primary site EXACTLY what content to create, update, or optimise to outrank and out-authorise the competition.
+        competitor_urls = [s['url'] for s in competitor_summaries]
+        competitor_list_str = "\n".join(f"  - {u}" for u in competitor_urls)
+
+        system_prompt = f"""You are an aggressive SEO strategist whose sole job is to help the PRIMARY site beat its competitors in search rankings and topical authority.
+You have been given data on the PRIMARY site and its competitors. Your output must be a concrete, specific battle-plan — not a generic gap analysis.
+Every recommendation MUST name the specific competitor it targets and explain exactly what content to create to outrank them.
+The primary site's goal is to DOMINATE these competitors:
+{competitor_list_str}
 Return ONLY valid JSON without markdown formatting or explanation."""
 
         prompt = f"""PRIMARY SITE:
 {json.dumps(primary_summary, indent=2)}
 
-COMPETITORS:
+COMPETITORS TO BEAT:
 {json.dumps(competitor_summaries, indent=2)}
 
-Analyse the data above and return a JSON object with the following fields:
+Your task: produce a BATTLE-PLAN that tells the primary site exactly what to do to outrank and out-authorise every competitor listed above.
+
+Return this exact JSON structure:
 
 {{
-  "gap_summary": "A 3-5 sentence executive summary explaining the primary site's current position relative to competitors and the single most important action to take.",
+  "gap_summary": "3-5 sentences: current position of the primary site vs competitors, its biggest weakness, and the #1 action that would have the highest ranking impact. Be direct and specific — name the competitors.",
 
   "topic_gaps": [
-    "List of 8-15 specific topic areas that competitors cover but the primary site does NOT. Be specific — use real topic names from the competitor data."
+    "Each item MUST follow this format: '[Topic name] — covered by [competitor domain] but absent from {primary_summary.get('url','primary site')}. Creating this content would directly challenge [competitor domain] for [keyword/intent].'",
+    "Provide 8-15 items."
   ],
 
   "entity_gaps": [
-    "List of 6-10 semantic entities/concepts that appear prominently in competitor content but are absent or weak on the primary site."
+    "Each item MUST follow this format: '[Entity name] — prominent on [competitor domain]. Adding this entity to the primary site's content would improve semantic relevance and challenge [competitor domain] on [topic].'",
+    "Provide 6-10 items."
   ],
 
   "quick_wins": [
-    "5-7 high-priority content actions the primary site can take RIGHT NOW to close the gap fastest. Start each with an action verb. Be very specific."
+    "Each item MUST follow this format: '[Action verb] [specific content piece] to directly compete with [competitor domain] on [specific keyword/topic]. Expected impact: [brief impact statement].'",
+    "Provide 5-7 items ordered by estimated impact (highest first)."
   ],
 
   "content_opportunities": [
-    "5-8 longer-term strategic content opportunities the primary site should invest in over the next 3-6 months to build topical authority."
+    "Each item MUST follow this format: 'Build topical authority on [topic cluster] — currently owned by [competitor domain]. A series of [N] articles would challenge their dominance within [timeframe].'",
+    "Provide 5-8 strategic opportunities for 3-6 month horizon."
   ],
 
   "recommended_articles": [
     {{
-      "title": "Exact proposed article title (SEO-friendly)",
-      "reason": "Why this article will close a gap vs a specific competitor",
+      "title": "Exact SEO-optimised article title (include primary keyword)",
+      "reason": "This article directly competes with [competitor domain] for [keyword]. They rank for this because [brief reason]. Our angle: [differentiation].",
       "priority": 1,
-      "competitor_source": "URL of the competitor that covers this topic"
+      "competitor_source": "URL of the specific competitor this article targets"
     }}
   ]
 }}
 
-Rules:
-- recommended_articles: provide 8-12 articles, with 3-4 at priority 1, 3-4 at priority 2, 2-4 at priority 3.
-- Be specific — reference actual topics, competitor URLs, and real content themes from the data.
-- Do NOT make generic suggestions like "write more blog posts". Every item must be directly derived from the competitive gap.
+RULES:
+- recommended_articles: 8-12 articles. 3-4 at priority 1 (immediate — will close biggest gaps), 3-4 at priority 2 (next 30 days), 2-4 at priority 3 (longer term).
+- Every single item in every array must reference a real competitor by domain/URL.
+- Do NOT write generic advice like "publish more content". Every item must be traceable to specific competitor data above.
 - Return ONLY the JSON object.
 """
 

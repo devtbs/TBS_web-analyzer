@@ -36,17 +36,20 @@ class TopicalMapGenerator:
         # Return unique themes
         return list(set(themes))[:15]
     
-    async def generate_topical_map_with_ai(self, scraped_data: Dict) -> TopicalMapData:
+    async def generate_topical_map_with_ai(
+        self,
+        scraped_data: Dict,
+        competitor_context: List[Dict] = None,
+    ) -> TopicalMapData:
         """
         Generate comprehensive topical map using AI with detailed 8-part semantic analysis.
-        
-        This method performs:
-        1. Multi-page content scraping from sitemap
-        2. Comprehensive semantic analysis using DeepSeek AI
-        3. Real competitor detection from SERP data
-        4. Expansive content plan generation (150-200+ articles)
+
+        competitor_context (optional): list of dicts, each with keys:
+            url, key_topics, core_topics, content_gaps
+        When provided (primary site only), the AI is told which topics competitors
+        already own so it can suggest gap-filling articles.
         """
-        
+
         url = scraped_data.get('url', '')
         title = scraped_data.get('title', '')
         description = scraped_data.get('description', '')
@@ -353,17 +356,36 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                 from models.schemas import CompetitiveAnalysis
                 competitive_analysis = CompetitiveAnalysis(**result['competitive_analysis'])
             
-            # ── CALL 2: Generate content_articles separately (dedicated call to avoid token limit) ──
+            # ── CALL 2: Generate content_articles separately (competitor-aware) ──
             content_articles = None
             try:
                 core_topics = result.get('content_strategy', {}).get('core_topics', [])
                 outer_topics = result.get('content_strategy', {}).get('outer_topics', [])
                 key_topics = result.get('key_topics', [])
+
+                # Build competitor context block if provided
+                comp_block = ''
+                if competitor_context:
+                    comp_lines = []
+                    for c in competitor_context:
+                        comp_lines.append(
+                            f"  - {c['url']}: topics={c.get('key_topics', [])[:6]}, "
+                            f"core={c.get('core_topics', [])[:4]}, "
+                            f"gaps they fill={c.get('content_gaps', [])[:3]}"
+                        )
+                    comp_block = (
+                        "\n\nCOMPETITOR INTELLIGENCE (topics these competitors rank for that {domain} does NOT yet cover):\n"
+                        + "\n".join(comp_lines)
+                        + "\n\nPRIORITY RULE: At least 8 of the 15 articles must directly target a gap "
+                          "identified from the competitor list above. For those articles, set "
+                          "source_context to start with 'Gap vs [competitor domain]: ...'"
+                    ).format(domain=domain)
+
                 articles_prompt = f"""Generate 15 SEO article ideas for {domain} ({result.get('business_model', 'business')}).
 
 Key topics: {', '.join(key_topics[:5])}
 Core content areas: {', '.join(core_topics[:4])}
-Outer content areas: {', '.join(outer_topics[:4])}
+Outer content areas: {', '.join(outer_topics[:4])}{comp_block}
 
 Return ONLY a JSON array (no markdown):
 [
@@ -375,7 +397,7 @@ Return ONLY a JSON array (no markdown):
     "category_l2": "Subcategory",
     "category_l3": "Sub-topic",
     "priority": 1,
-    "source_context": "One sentence on content angle."
+    "source_context": "One sentence on content angle (start with 'Gap vs [competitor]: ' for gap articles)."
   }}
 ]
 
@@ -671,34 +693,71 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
     
     async def generate_multiple(self, scraped_data_list: List[Dict]) -> List[TopicalMapData]:
         """
-        Generate topical maps for multiple URLs using AI.
-        
-        Processes multiple URLs in parallel for efficiency.
+        Generate topical maps for multiple URLs.
+
+        The PRIMARY site (index 0) is generated with competitor context so its
+        article suggestions are gap-driven rather than generic.
+        Competitor sites are still analysed independently for their own data.
         """
         import asyncio
-        
+
+        if not scraped_data_list:
+            return []
+
+        # ── Step 1: generate competitor maps first (needed as context for primary) ──
+        primary_data = scraped_data_list[0] if scraped_data_list[0].get('status') == 'success' else None
+        competitor_data_list = [d for d in scraped_data_list[1:] if d.get('status') == 'success']
+
+        # Generate competitor maps in parallel (no competitor context needed for these)
+        competitor_tasks = [self.generate_topical_map_with_ai(d) for d in competitor_data_list]
+        competitor_results_raw = await asyncio.gather(*competitor_tasks, return_exceptions=True)
+
+        competitor_maps = []
+        for r in competitor_results_raw:
+            if isinstance(r, Exception):
+                print(f"⚠️ Competitor topical map failed: {r}")
+            else:
+                competitor_maps.append(r)
+
+        # ── Step 2: build competitor context summaries for primary ──
+        competitor_context = []
+        for cm in competitor_maps:
+            competitor_context.append({
+                'url': cm.url,
+                'key_topics': cm.key_topics or [],
+                'core_topics': (cm.content_strategy.core_topics if cm.content_strategy else []),
+                'content_gaps': (cm.content_strategy.content_gaps if cm.content_strategy else []),
+            })
+
+        # ── Step 3: generate primary map with competitor context ──
         tasks = []
-        for data in scraped_data_list:
-            if data.get('status') == 'success':
-                tasks.append(self.generate_topical_map_with_ai(data))
+        if primary_data:
+            tasks.append(self.generate_topical_map_with_ai(primary_data, competitor_context=competitor_context or None))
         
         if tasks:
             # Use return_exceptions=True to allow partial success
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Filter out exceptions and return only successful results
-            successful_results = []
+
+            # Filter out exceptions
+            primary_map = None
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    print(f"⚠️ Topical map generation failed for URL {i+1}: {str(result)}")
+                    print(f"⚠️ Primary topical map generation failed: {str(result)}")
                 else:
-                    successful_results.append(result)
-            
-            if not successful_results:
+                    primary_map = result
+
+            if not primary_map and not competitor_maps:
                 raise ValueError("All topical map generations failed")
-            
-            return successful_results
-        return []
+
+            # Return: primary first (index 0), then competitors
+            final = []
+            if primary_map:
+                final.append(primary_map)
+            final.extend(competitor_maps)
+            return final
+
+        # No primary data — return just competitor maps
+        return competitor_maps
 
 
 # Singleton instance
