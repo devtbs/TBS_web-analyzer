@@ -6,7 +6,7 @@
 
 A premium, full-stack SEO powerhouse and web analysis platform. It combines AI-powered website insights (Knowledge Graphs, Topical Mapping) with real-time Google Search Console analytics to provide a comprehensive view of digital performance.
 
-![Premium Dashboard](./frontend/public/SE.png)
+![Premium Dashboard](./frontend/public/SEO.png)
 
 ## 🌟 Core Features
 
