@@ -21,14 +21,14 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 /* ── Recent row ── */
 const RecentRow = ({ analysis, onClick }) => {
     const domain = analysis.urls?.[0] ?? 'Unknown';
-    const extra  = (analysis.urls?.length ?? 1) - 1;
+    const extra = (analysis.urls?.length ?? 1) - 1;
     const statusMap = {
         completed: { color: 'text-emerald-600', bg: 'bg-emerald-50', dot: 'bg-emerald-500', ring: 'ring-emerald-500/20' },
-        failed:    { color: 'text-rose-600',    bg: 'bg-rose-50',    dot: 'bg-rose-500',    ring: 'ring-rose-500/20'    },
-        processing:{ color: 'text-blue-600',    bg: 'bg-blue-50',    dot: 'bg-blue-500',    ring: 'ring-blue-500/20'    },
-        scraping:  { color: 'text-indigo-600',  bg: 'bg-indigo-50',  dot: 'bg-indigo-500',  ring: 'ring-indigo-500/20'  },
-        fetching:  { color: 'text-violet-600',  bg: 'bg-violet-50',  dot: 'bg-violet-500',  ring: 'ring-violet-500/20'  },
-        default:   { color: 'text-slate-600',   bg: 'bg-slate-50',   dot: 'bg-slate-500',   ring: 'ring-slate-500/20'   },
+        failed: { color: 'text-rose-600', bg: 'bg-rose-50', dot: 'bg-rose-500', ring: 'ring-rose-500/20' },
+        processing: { color: 'text-blue-600', bg: 'bg-blue-50', dot: 'bg-blue-500', ring: 'ring-blue-500/20' },
+        scraping: { color: 'text-indigo-600', bg: 'bg-indigo-50', dot: 'bg-indigo-500', ring: 'ring-indigo-500/20' },
+        fetching: { color: 'text-violet-600', bg: 'bg-violet-50', dot: 'bg-violet-500', ring: 'ring-violet-500/20' },
+        default: { color: 'text-slate-600', bg: 'bg-slate-50', dot: 'bg-slate-500', ring: 'ring-slate-500/20' },
     };
     const s = statusMap[analysis.status] ?? statusMap.default;
 
@@ -75,13 +75,13 @@ const RecentRow = ({ analysis, onClick }) => {
 };
 
 export default function Dashboard() {
-    const { user }   = useAuth();
-    const navigate   = useNavigate();
-    const [analyses, setAnalyses]           = useState([]);
-    const [allAnalyses, setAllAnalyses]     = useState([]);
-    const [loading, setLoading]             = useState(true);
-    const [deleteDialog, setDeleteDialog]   = useState({ isOpen: false, analysisId: null });
-    const [isVisible, setIsVisible]         = useState(false);
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [analyses, setAnalyses] = useState([]);
+    const [allAnalyses, setAllAnalyses] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [deleteDialog, setDeleteDialog] = useState({ isOpen: false, analysisId: null });
+    const [isVisible, setIsVisible] = useState(false);
 
     const handleDelete = async (id) => {
         try {
@@ -100,21 +100,21 @@ export default function Dashboard() {
                 setAllAnalyses(list);
                 setAnalyses(list.slice(0, 6));
             } catch { /* silently fail */ }
-            finally { 
-                setLoading(false); 
+            finally {
+                setLoading(false);
                 setTimeout(() => setIsVisible(true), 50);
             }
         })();
     }, []);
 
-    const total      = allAnalyses.length;
-    const completed  = allAnalyses.filter(a => a.status === 'completed').length;
-    const failed     = allAnalyses.filter(a => a.status === 'failed').length;
-    const urlsTotal  = allAnalyses.reduce((s, a) => s + (a.urls?.length ?? 0), 0);
+    const total = allAnalyses.length;
+    const completed = allAnalyses.filter(a => a.status === 'completed').length;
+    const failed = allAnalyses.filter(a => a.status === 'failed').length;
+    const urlsTotal = allAnalyses.reduce((s, a) => s + (a.urls?.length ?? 0), 0);
     const successPct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    const hour      = new Date().getHours();
-    const greeting  = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+    const hour = new Date().getHours();
+    const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
     const firstName = user?.name?.split(' ')[0] ?? 'there';
 
     const stats = [
@@ -136,10 +136,10 @@ export default function Dashboard() {
     ];
 
     const quickActions = [
-        { icon: RocketLaunchIcon, label: 'New Analysis',  desc: 'Start a fresh audit',       path: '/new-analysis' },
-        { icon: DocumentTextIcon, label: 'My Documents',  desc: 'View generated articles',  path: '/documents'    },
-        { icon: ChartBarIcon,      label: 'SEO Analytics', desc: 'Search Console insights',   path: '/seo-analytics'},
-        { icon: ClockIcon,        label: 'History',       desc: 'All past analyses',          path: '/history'      },
+        { icon: RocketLaunchIcon, label: 'New Analysis', desc: 'Start a fresh audit', path: '/new-analysis' },
+        { icon: DocumentTextIcon, label: 'My Documents', desc: 'View generated articles', path: '/documents' },
+        { icon: ChartBarIcon, label: 'SEO Analytics', desc: 'Search Console insights', path: '/seo-analytics' },
+        { icon: ClockIcon, label: 'History', desc: 'All past analyses', path: '/history' },
     ];
 
     return (
@@ -172,11 +172,11 @@ export default function Dashboard() {
 
                             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
                                 {greeting},{' '}
-                                <span className="text-emerald-500">{firstName}</span> 
+                                <span className="text-emerald-500">{firstName}</span>
                             </h1>
                             <p className="text-slate-500 text-xs mt-1 leading-relaxed">
                                 You have{' '}
-                                <span className="font-bold text-slate-800">{loading ? '—' : `${total} analyses`}</span>
+                                <span className="font-boldA text-slate-800">{loading ? '—' : `${total} analyses`}</span>
                                 {' '}and{' '}
                                 <span className="font-bold text-slate-800">{loading ? '—' : `${urlsTotal} URLs`}</span>
                                 {' '}tracked across your workspace.
@@ -262,7 +262,7 @@ export default function Dashboard() {
                         <div className="p-3">
                             {loading ? (
                                 <div className="space-y-3 p-3">
-                                    {[1,2,3,4].map(i => (
+                                    {[1, 2, 3, 4].map(i => (
                                         <div key={i} className="h-16 bg-slate-50/50 rounded-[20px] animate-pulse" />
                                     ))}
                                 </div>

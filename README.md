@@ -65,7 +65,7 @@ ALLOWED_ORIGINS=http://localhost:5173
 #### Frontend (`frontend/.env`)
 ```env
 VITE_GOOGLE_CLIENT_ID=your_client_id
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=
 ```
 
 ### 2. Installation
@@ -97,20 +97,109 @@ To enable fully functional Search Console integration, ensure your Google Cloud 
     - `http://localhost:5173/auth/callback`
 3.  **Client Configuration**: Set `Access Type` to `Offline` to allow the platform to refresh tokens in the background.
 
+## ✍️ AI Content & Custom Writing Prompts
+
+The platform generates comprehensive SEO articles based on a two-step AI generation flow:
+1. **Brief Generation**: Analyzes the topic, category, and article type to output a detailed structure/brief.
+2. **Article Generation**: Uses the brief along with custom style instructions to generate the final article in Markdown.
+
+### Controlling the Writing Style (Writer Prompt Settings)
+Users can fine-tune and control the writing output by customising the **Writing System Prompt**:
+* **Where to find it**: In the **Topical Map** view (after running an analysis), click the **Settings** (gear icon) button next to "Export Map to PDF".
+* **Language Support**: Supports independent settings for both **English** (🇬🇧) and **Thai** (🇹🇭).
+* **How it works**:
+  - The customized prompt is saved in the browser's `localStorage` (`writing_prompt_en` / `writing_prompt_th`).
+  - When generating an article, the frontend passes this prompt as the `system_prompt` field in the payload to `POST /api/article/{analysis_id}`.
+  - If left blank, it falls back to the default SEO-optimized prompts defined in `backend/services/brief_generator.py` (`DEFAULT_EN_SYSTEM_PROMPT` / `DEFAULT_TH_SYSTEM_PROMPT`).
+
+---
+
 ## 📁 Project Structure
 
 ```text
 web/
 ├── backend/
-│   ├── api/routes.py          # SSE Progress & GSC Endpoints
-│   ├── services/gsc_service.py # Search Console Integration logic
-│   ├── utils/progress_tracker.py # Real-time status management
-│   └── database.py            # PostgreSQL configuration
+│   ├── api/
+│   │   └── routes.py              # All REST API endpoints (analysis, GSC, articles, auth)
+│   ├── auth/
+│   │   └── auth.py                # JWT token creation and verification
+│   ├── models/
+│   │   └── schemas.py             # Pydantic request/response schemas
+│   ├── services/
+│   │   ├── ai_service.py          # OpenAI & DeepSeek API integration wrapper
+│   │   ├── brief_generator.py     # SEO article brief + full article generation
+│   │   ├── comparator.py          # Side-by-side competitor comparison logic
+│   │   ├── gsc_service.py         # Google Search Console data integration
+│   │   ├── knowledge_graph.py     # Knowledge graph entity extraction
+│   │   ├── scraper.py             # Web scraping and content extraction
+│   │   ├── serp_service.py        # SerpAPI integration for SERP analysis
+│   │   ├── sitemap_service.py     # Sitemap parsing and URL discovery
+│   │   └── topical_map.py         # Topical map generation and semantic analysis
+│   ├── utils/
+│   │   ├── progress_tracker.py    # SSE-based real-time progress tracking
+│   │   ├── storage.py             # In-memory analysis result storage
+│   │   └── user_manager.py        # User session management helpers
+│   ├── config.py                  # App settings loaded from .env
+│   ├── database.py                # SQLAlchemy engine & PostgreSQL session setup
+│   ├── main.py                    # FastAPI app entry point & CORS configuration
+│   └── requirements.txt           # Python dependencies
 └── frontend/
-    ├── src/pages/SEOAnalytics.jsx # Massive data-dense dashboard
-    ├── src/components/ui/      # High-end glassmorphism components
-    └── src/context/AuthContext.jsx # Global auth & GSC state
+    ├── src/
+    │   ├── api/
+    │   │   └── axios.js           # Axios instance with base URL configuration
+    │   ├── components/
+    │   │   ├── ui/                # Reusable UI primitives (Button, Card, Badge, etc.)
+    │   │   ├── visualizations/
+    │   │   │   ├── KnowledgeGraph.jsx   # Interactive 3D/2D knowledge graph
+    │   │   │   ├── TopicalMap.jsx       # Topical map view with article writer & prompt settings
+    │   │   │   └── Comparison.jsx       # Competitor comparison panel
+    │   │   ├── layout/            # App shell, sidebar, and navigation components
+    │   │   ├── modals/            # Modal dialog components
+    │   │   ├── editor/            # Article/document editor components
+    │   │   ├── gsc/               # GSC-specific chart and data components
+    │   │   └── auth/              # Login and OAuth callback components
+    │   ├── context/
+    │   │   └── AuthContext.jsx    # Global auth state & Google OAuth flow
+    │   ├── pages/
+    │   │   ├── Dashboard.jsx      # Main SEO analytics overview
+    │   │   ├── SEOAnalytics.jsx   # Detailed GSC metrics and query analytics
+    │   │   ├── NewAnalysis.jsx    # Competitor URL input and analysis launcher
+    │   │   ├── Results.jsx        # Analysis results with tab navigation
+    │   │   ├── Documents.jsx      # Article/document management page
+    │   │   ├── DocumentDetail.jsx # Single article editor and publisher
+    │   │   ├── History.jsx        # Past analysis history
+    │   │   ├── MySites.jsx        # User's connected GSC properties
+    │   │   ├── PagesPage.jsx      # Page-level GSC performance data
+    │   │   ├── QueriesPage.jsx    # Keyword/query performance data
+    │   │   ├── CountriesPage.jsx  # Geographic performance breakdown
+    │   │   ├── GlobalReports.jsx  # Aggregated cross-site reporting
+    │   │   ├── NewLostRankingsPage.jsx # New vs. lost keyword rankings
+    │   │   └── PageSelector.jsx   # Property/page selection utility
+    │   ├── App.jsx                # Route definitions
+    │   └── main.jsx               # React app entry point
+    └── index.html                 # HTML shell
 ```
+
+---
+
+## 🚧 Developer Hand-off & Next Steps
+
+This project is ready for final deployment and production hand-off. The following areas are highlighted for future developers to extend and refine:
+
+### 1. AI Writing Engine Optimization
+* **Prompt Tuning**: Adjust the default system and user prompts in `backend/services/brief_generator.py` to match the company's tone of voice guidelines.
+* **DeepSeek Integration**: Ensure your `DEEPSEEK_API_KEY` is configured in `.env`. By default, the heavy generation steps utilize DeepSeek-V3/R1 models for high-quality context reasoning.
+
+### 2. Database & Caching
+* **PostgreSQL**: The project uses PostgreSQL for robust relational data persistence.
+* **Performance**: Currently, the system relies on direct database queries. For future scaling, Redis can be introduced for result caching and session management.
+* **Database Migrations**: Manual schema management is currently in place; integration of Alembic is recommended for future versioning.
+
+### 3. Deployment, CI/CD & Handover
+* **Deployment Guide**: See [DEPLOYMENT.md](./DEPLOYMENT.md) for full instructions on running the app on your Hostinger VPS with Nginx and PM2.
+* **Handover Guide**: Refer to [HANDOVER.md](./HANDOVER.md) for step-by-step instructions on transferring GitHub access, credentials, and CI/CD repository secrets.
+
+---
 
 ## 📄 License
 MIT © TBS Marketing

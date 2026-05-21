@@ -1,84 +1,250 @@
-# Deployment Guide: TBS Web Analysis Platform
+# Production Deployment Guide: Hostinger VPS
 
-This guide provides step-by-step instructions for deploying the Web Analysis Platform to a production environment.
+This guide provides step-by-step instructions for deploying and running the TBS Web Analysis & SEO Platform on your **Hostinger VPS** (`clawdbot@srv1307568`) under `/home/clawdbot/web_analyzer`.
 
-## 🚀 Recommended Architecture
-
-For a modern, scalable deployment, we recommend:
-1.  **Backend**: [Railway](https://railway.app/) or [Render](https://render.com/) (FastAPI + PostgreSQL)
-2.  **Frontend**: [Vercel](https://vercel.com/) or [Netlify](https://netlify.com/) (React/Vite)
-3.  **Database**: [Managed PostgreSQL](https://railway.app/template/postgresql)
-
----
-
-## 1. Backend Deployment (Railway/Render)
-
-### Step 1: Environment Variables
-Create a new project and add the following Environment Variables:
-
-| Variable | Description |
-| :--- | :--- |
-| `DATABASE_URL` | Your production PostgreSQL connection string. |
-| `GOOGLE_CLIENT_ID` | From Google Cloud Console. |
-| `GOOGLE_CLIENT_SECRET` | From Google Cloud Console. |
-| `SECRET_KEY` | A long, random string for JWT signing. |
-| `OPENAI_API_KEY` | (Optional) For AI analysis. |
-| `ANTHROPIC_API_KEY` | (Optional) For AI analysis. |
-| `ENVIRONMENT` | Set to `production`. |
-| `ALLOWED_ORIGINS` | `https://your-frontend.vercel.app` (Your actual frontend URL). |
-
-### Step 2: Build Command
-If your provider doesn't detect the build automatically:
-- **Build Command**: `pip install -r requirements.txt`
-- **Start Command**: `gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 0.0.0.0:$PORT`
-  *(Note: You may need to add `gunicorn` to `requirements.txt` if not already there)*
+It uses:
+* **Backend**: FastAPI running via Gunicorn/Uvicorn, managed as a **Systemd service**.
+* **Frontend**: React/Vite built static files served directly by **Nginx**.
+* **Database**: Local **PostgreSQL** instance with database restoration.
+* **SSL**: Encrypted connections managed via **Certbot (Let's Encrypt)**.
 
 ---
 
-## 2. Frontend Deployment (Vercel)
+## 🛠️ Step 1: System Dependencies
 
-### Step 1: Build Configuration
-Connect your GitHub repository and point to the `frontend/` directory.
-- **Framework Preset**: Vite
-- **Root Directory**: `frontend`
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
+Login to your VPS and ensure the required packages are installed:
 
-### Step 2: Environment Variables
-Add the following variable:
-- `VITE_GOOGLE_CLIENT_ID`: Your Google OAuth Client ID.
-- `VITE_API_BASE_URL`: (Recommended) Set this to your **Backend URL** (e.g., `https://tbs-backend.up.railway.app`).
-
----
-
-## 3. Google OAuth Configuration (CRITICAL)
-
-Once you have your production URLs, you **MUST** update your Google Cloud Console settings:
-
-1.  **Authorized JavaScript Origins**:
-    - `http://localhost:5173` (Keep for development)
-    - `https://your-frontend.vercel.app` (Production)
-2.  **Authorized Redirect URIs**:
-    - `http://localhost:5173/auth/callback`
-    - `https://your-frontend.vercel.app/auth/callback`
-
----
-
-## 🛠️ Unified (Single Server) Deployment via Docker
-
-If you prefer to deploy everything as a single container (e.g., on a VPS or AWS EC2), you can use the provided Dockerfile.
-
-### Build and Run locally:
 ```bash
-docker build -t tbs-web-platform .
-docker run -p 8000:8000 --env-file .env tbs-web-platform
+sudo apt update
+sudo apt install -y python3-pip python3-venv python3-dev postgresql postgresql-contrib nginx certbot python3-certbot-nginx curl
+```
+
+Ensure Node.js 18+ is installed (needed to build the frontend):
+```bash
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt install -y nodejs
 ```
 
 ---
 
-## ✅ Deployment Checklist
-- [ ] DATABASE_URL is pointing to a persistent PostgreSQL instance.
-- [ ] ALLOWED_ORIGINS includes your production frontend URL.
-- [ ] Google OAuth origins and redirects are updated in Cloud Console.
-- [ ] `npm run build` succeeds locally before pushing.
-- [ ] Tokens and API keys are stored in "Secrets" (not `.env` files in git).
+## 💾 Step 2: Database Setup & Restoration
+
+1. **Create PostgreSQL User and Database:**
+   Switch to the `postgres` user and create the database credentials match your `.env`:
+   ```bash
+   sudo -i -u postgres
+   psql
+   ```
+   Run the following SQL commands:
+   ```sql
+   CREATE DATABASE tbs_marketing;
+   CREATE USER tbs_user WITH PASSWORD 'tbs_secure_2024';
+   GRANT ALL PRIVILEGES ON DATABASE tbs_marketing TO tbs_user;
+   \q
+   exit
+   ```
+
+2. **Restore Database from Backup:**
+   Restore the `tbs_backup.sql` file located in your `/home/clawdbot/` directory:
+   ```bash
+   psql -U tbs_user -d tbs_marketing -h localhost -f /home/clawdbot/tbs_backup.sql
+   ```
+   *(Note: Enter the password `tbs_secure_2024` when prompted).*
+
+---
+
+## 🐍 Step 3: Backend Configuration & PM2
+
+1. **Configure Environment Variables:**
+   Create the production `.env` file in the backend directory:
+   ```bash
+   nano /home/clawdbot/web_analyzer/backend/.env
+   ```
+   Add the following values (replacing placeholders with actual keys):
+   ```env
+   ENVIRONMENT=production
+   DATABASE_URL=postgresql://tbs_user:tbs_secure_2024@localhost:5432/tbs_marketing
+   SECRET_KEY=09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
+   GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your_google_client_secret
+   GROQ_API_KEY=your_groq_key
+   DEEPSEEK_API_KEY=your_deepseek_key
+   SERPAPI_KEY=your_serpapi_key
+   FIRECRAWL_API_KEY=your_firecrawl_key
+   ALLOWED_ORIGINS=https://yourdomain.com
+   ```
+
+2. **Build Virtual Environment:**
+   ```bash
+   cd /home/clawdbot/web_analyzer/backend
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   pip install gunicorn uvicorn
+   deactivate
+   ```
+
+3. **Install PM2 globally (if not already installed):**
+   ```bash
+   sudo npm install -g pm2
+   ```
+
+4. **Start the Backend Service with PM2:**
+   Start the app using Gunicorn and assign it the name `tbs-backend`:
+   ```bash
+   cd /home/clawdbot/web_analyzer/backend
+   pm2 start "venv/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app --bind 127.0.0.1:8000 --timeout 120" --name tbs-backend
+   ```
+
+5. **Ensure PM2 starts on VPS boot:**
+   Generate and configure the startup script for PM2 to persist processes across server reboots:
+   ```bash
+   pm2 startup
+   ```
+   *(Note: Copy and run the command printed by the output of `pm2 startup` in your terminal to enable startup hooks, then save the process list).*
+   ```bash
+   pm2 save
+   ```
+
+---
+
+## ⚛️ Step 4: Frontend Configuration & Build
+
+1. **Configure Production URL:**
+   Create the production environment variables for the frontend:
+   ```bash
+   nano /home/clawdbot/web_analyzer/frontend/.env
+   ```
+   Add the API endpoint and client settings:
+   ```env
+   VITE_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+   VITE_API_BASE_URL=https://yourdomain.com
+   ```
+
+2. **Build static assets:**
+   ```bash
+   cd /home/clawdbot/web_analyzer/frontend
+   npm install
+   npm run build
+   ```
+   This compiles your React application into optimized static assets under `/home/clawdbot/web_analyzer/frontend/dist`.
+
+---
+
+## 🌐 Step 5: Nginx Web Server Mapping
+
+1. **Configure Web Block:**
+   Your Nginx configuration file is located at `/etc/nginx/sites-enabled/analysis.phyominthein.com` and is configured to route traffic for `analysis.phyominthein.com`.
+
+   Here is the configuration block for your reference:
+
+   ```nginx
+   server {
+       server_name analysis.phyominthein.com;
+
+       # 1. Serve the built React Frontend
+       root /home/clawdbot/web_analyzer/frontend/dist;
+       index index.html;
+
+       location / {
+           try_files $uri $uri/ /index.html;
+       }
+
+       # 2. Route API traffic to the Python Backend
+       location /auth/ {
+           proxy_pass http://127.0.0.1:8000;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+
+       location /api/ {
+           proxy_pass http://127.0.0.1:8000;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_buffering off;
+           proxy_read_timeout 300s;
+       }
+
+       listen 443 ssl; # managed by Certbot
+       ssl_certificate /etc/letsencrypt/live/analysis.phyominthein.com/fullchain.pem; # managed by Certbot
+       ssl_certificate_key /etc/letsencrypt/live/analysis.phyominthein.com/privkey.pem; # managed by Certbot
+       include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+       ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+   }
+
+   server {
+       if ($host = analysis.phyominthein.com) {
+           return 301 https://$host$request_uri;
+       } # managed by Certbot
+
+       listen 80;
+       server_name analysis.phyominthein.com;
+       return 404; # managed by Certbot
+   }
+   ```
+2. **Test & Restart Nginx:**
+   After applying changes to Nginx, run:
+   ```bash
+   # Test configuration syntax
+   sudo nginx -t
+   # Reload Nginx server
+   sudo systemctl restart nginx
+   ```
+
+---
+
+## 🔒 Step 6: Secure with Let's Encrypt SSL
+
+If you ever need to recreate or renew your SSL certificates:
+
+```bash
+sudo certbot --nginx -d analysis.phyominthein.com
+```
+Follow the interactive prompts. Certbot will handle the verification process, request the certificates, and automatically configure Nginx to use them.
+
+---
+
+## 🤖 Step 7: Automated Deployment & CI/CD
+
+To make deployments easy and hands-free, we have configured a **GitHub Actions** workflow along with a local `/home/clawdbot/web_analyzer/deploy.sh` script.
+
+Each time you push to the `main` branch, GitHub will automatically SSH into your Hostinger VPS and execute the update script to pull new code, update backend dependencies, restart PM2, and rebuild your frontend assets.
+
+### 1. The Deployment Script (`deploy.sh`)
+This script resides in your project root. When executed on your VPS, it automates:
+* Git pulling the latest changes.
+* Installing updated Python packages inside the backend virtual environment.
+* Restarting your `tbs-backend` PM2 process.
+* Running `npm install` and `npm run build` to generate the new frontend dist folder.
+
+### 2. GitHub Actions Setup
+The workflow configuration is located in `.github/workflows/deploy.yml`. To enable it:
+
+1. **Generate an SSH Keypair on your local machine or the VPS:**
+   ```bash
+   ssh-keygen -t rsa -b 4096 -C "github-actions-deploy"
+   ```
+2. **Authorize the public key on the VPS:**
+   Add the contents of the generated `.pub` key to `/home/clawdbot/.ssh/authorized_keys`.
+3. **Add Secrets to GitHub Repository:**
+   Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions** and add the following repository secrets:
+   * `VPS_HOST`: Your VPS IP or Hostname (e.g., `srv1307568` / IP).
+   * `VPS_USERNAME`: `clawdbot`
+   * `VPS_SSH_KEY`: The contents of the **private** key file you generated (starts with `-----BEGIN OPENSSH PRIVATE KEY-----`).
+   * `VPS_PORT`: `22` (or your custom SSH port).
+
+Now, whenever you push changes, GitHub Actions will trigger and output the live build and deployment logs directly under your repository's **Actions** tab.
+
+---
+
+## 🛠️ Management Commands
+
+* **Run Manual Deploy**: `/home/clawdbot/web_analyzer/deploy.sh`
+* **Backend Status**: `pm2 status` or `pm2 info tbs-backend`
+* **Backend Logs**: `pm2 logs tbs-backend`
+* **Restart Backend**: `pm2 restart tbs-backend`
+* **Stop Backend**: `pm2 stop tbs-backend`
+* **Restart Nginx**: `sudo systemctl restart nginx`
+* **Nginx Error Logs**: `tail -f /var/log/nginx/error.log`
