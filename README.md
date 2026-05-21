@@ -33,7 +33,7 @@ A premium, full-stack SEO powerhouse and web analysis platform. It combines AI-p
 - **FastAPI**: Ultra-fast Python framework with async capabilities.
 - **SQLAlchemy & PostgreSQL**: Robust data persistence for user history and tokens.
 - **Google OAuth 2.0**: Secure authentication for user accounts and Search Console access.
-- **OpenAI/Anthropic**: Powering the semantic analysis and knowledge extraction.
+- **Groq/DeepSeek**: Powering the semantic analysis and knowledge extraction.
 
 ### Frontend
 - **React 18**: Built for performance and reliability.
