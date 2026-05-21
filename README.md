@@ -22,10 +22,9 @@ A premium, full-stack SEO powerhouse and web analysis platform. It combines AI-p
 - **Knowledge Graph**: Interactive 3D/2D visualization of entity relationships and service maps.
 - **Topical Mapping**: Semantic depth analysis, audience segmentation, and search intent discovery.
 - **Competitive Comparison**: Side-by-side analysis of business models, tech stacks, and geographic reach.
+-**ContentWriter**: Professional, high-quality article generation based on the analysis (English and Thai).
+- **Custom Writing Prompts**: Users can fine-tune and control the writing output by customising the Writing System Prompt.
 - **Multi-URL Processing**: Analyze up to 5 competitors simultaneously.
-
-### ⚡ Real-Time Progress Engine
-- **SSE-Powered Tracking**: Watch the AI work in real-time with step-by-step progress updates.
 - **Background Processing**: Heavy analysis tasks run asynchronously, allowing you to browse while the AI thinks.
 
 ## 🛠️ Tech Stack
