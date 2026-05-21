@@ -18,7 +18,11 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
+            source ~/.bashrc || true
+            source ~/.profile || true
+            export PATH="$PATH:/usr/local/bin:$HOME/.npm-global/bin"
             cd /home/clawdbot/web_analyzer
             git pull origin main
             cd frontend && npm install && npm run build
             pm2 restart tbs-backend
+
