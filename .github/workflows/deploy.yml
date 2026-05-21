@@ -1,4 +1,4 @@
-name: Deploy to Hostinger VPS
+name: Deploy to VPS
 
 on:
   push:
@@ -10,29 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
-
-      - name: Deploy to VPS via Tailscale tunnel
+      - name: Deploy to VPS
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.VPS_TAILSCALE_IP }}
+          host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
           script: |
             cd /home/clawdbot/web_analyzer
             git pull origin main
-            cd backend
-            source venv/bin/activate
-            pip install -r requirements.txt
-            deactivate
+            cd frontend && npm install && npm run build
             pm2 restart tbs-backend
-            cd ../frontend
-            npm install
-            npm run build
