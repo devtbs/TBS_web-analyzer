@@ -183,20 +183,15 @@ web/
 
 ## 🚧 Developer Hand-off & Next Steps
 
-This project is ready for final deployment and production hand-off. The following areas are highlighted for future developers to extend and refine:
+This project is ready for production hand-off. Key areas for future developers:
 
-### 1. AI Writing Engine Optimization
-* **Prompt Tuning**: Adjust the default system and user prompts in `backend/services/brief_generator.py` to match the company's tone of voice guidelines.
-* **DeepSeek Integration**: Ensure your `DEEPSEEK_API_KEY` is configured in `.env`. By default, the heavy generation steps utilize DeepSeek-V3/R1 models for high-quality context reasoning.
+### 1. Database
+* **PostgreSQL**: The project uses PostgreSQL for data persistence via SQLAlchemy.
+* **Database Migrations**: Schema changes are currently applied manually. Alembic can be added for structured versioned migrations.
 
-### 2. Database & Caching
-* **PostgreSQL**: The project uses PostgreSQL for robust relational data persistence.
-* **Performance**: Currently, the system relies on direct database queries. For future scaling, Redis can be introduced for result caching and session management.
-* **Database Migrations**: Manual schema management is currently in place; integration of Alembic is recommended for future versioning.
-
-### 3. Deployment, CI/CD & Handover
+### 2. Deployment & CI/CD
 * **Deployment Guide**: See [DEPLOYMENT.md](./DEPLOYMENT.md) for full instructions on running the app on your Hostinger VPS with Nginx and PM2.
-* **Handover Guide**: Refer to [HANDOVER.md](./HANDOVER.md) for step-by-step instructions on transferring GitHub access, credentials, and CI/CD repository secrets.
+* **Local Setup**: See [QUICKSTART.md](./QUICKSTART.md) for running the app locally.
 
 ---
 
