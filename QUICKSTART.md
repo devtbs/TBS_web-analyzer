@@ -17,8 +17,8 @@ The app is already live at [analysis.phyominthein.com](https://analysis.phyomint
 ## 1. Clone the Repo
 
 ```bash
-git clone https://github.com/kweephyo-pmt/web_analyzer.git
-cd web_analyzer
+git clone https://github.com/kweephyo-pmt/TBS_web-analyzer.git
+cd TBS_web-analyzer
 ```
 
 ---
@@ -114,7 +114,7 @@ git commit -m "your changes"
 git push origin main
 ```
 
-Watch the deploy at: `https://github.com/kweephyo-pmt/web_analyzer/actions`
+Watch the deploy at: `https://github.com/kweephyo-pmt/TBS_web-analyzer/actions`
 
 ---
 
