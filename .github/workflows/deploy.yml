@@ -18,8 +18,21 @@ jobs:
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
 
-      - name: Deploy to VPS via Tailscale SSH
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USERNAME }}@${{ secrets.VPS_TAILSCALE_IP }} \
-            'chmod +x /home/clawdbot/web_analyzer/deploy.sh && /home/clawdbot/web_analyzer/deploy.sh'
-
+      - name: Deploy to VPS via Tailscale tunnel
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.VPS_TAILSCALE_IP }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/clawdbot/web_analyzer
+            git pull origin main
+            cd backend
+            source venv/bin/activate
+            pip install -r requirements.txt
+            deactivate
+            pm2 restart tbs-backend
+            cd ../frontend
+            npm install
+            npm run build
