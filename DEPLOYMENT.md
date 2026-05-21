@@ -219,23 +219,27 @@ This script resides in your project root. When executed on your VPS, it automate
 * Restarting your `tbs-backend` PM2 process.
 * Running `npm install` and `npm run build` to generate the new frontend dist folder.
 
-### 2. GitHub Actions Setup
-The workflow configuration is located in `.github/workflows/deploy.yml`. To enable it:
+### 2. GitHub Actions Setup (via Tailscale)
 
-1. **Generate an SSH Keypair on your local machine or the VPS:**
-   ```bash
-   ssh-keygen -t rsa -b 4096 -C "github-actions-deploy"
-   ```
-2. **Authorize the public key on the VPS:**
-   Add the contents of the generated `.pub` key to `/home/clawdbot/.ssh/authorized_keys`.
-3. **Add Secrets to GitHub Repository:**
-   Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions** and add the following repository secrets:
-   * `VPS_HOST`: Your VPS IP or Hostname (e.g., `srv1307568` / IP).
-   * `VPS_USERNAME`: `clawdbot`
-   * `VPS_SSH_KEY`: The contents of the **private** key file you generated (starts with `-----BEGIN OPENSSH PRIVATE KEY-----`).
-   * `VPS_PORT`: `22` (or your custom SSH port).
+The workflow in `.github/workflows/deploy.yml` connects to the VPS via your **Tailscale private network** before SSHing in — more secure than exposing SSH on the public IP.
 
-Now, whenever you push changes, GitHub Actions will trigger and output the live build and deployment logs directly under your repository's **Actions** tab.
+**Add these secrets to GitHub:**  
+Go to repo → **Settings** → **Secrets and variables** → **Actions**
+
+| Secret | Value |
+|---|---|
+| `TS_AUTHKEY` | Tailscale auth key — see below how to generate |
+| `VPS_TAILSCALE_IP` | Your VPS Tailscale IP (e.g. `100.x.x.x`) — find it in Tailscale Admin → Machines |
+| `VPS_USERNAME` | `clawdbot` |
+| `VPS_SSH_KEY` | Your deploy private key (`cat ~/.ssh/github_deploy`) |
+
+**Generate a Tailscale Auth Key:**
+1. Go to [tailscale.com/admin](https://tailscale.com/admin) → **Settings** → **Keys**
+2. Click **Generate auth key**
+3. Check ✅ **Reusable** and ✅ **Ephemeral**
+4. Click **Generate key** and copy it into the `TS_AUTHKEY` GitHub Secret
+
+Now every push to `main` automatically deploys through your secure Tailscale tunnel.
 
 ---
 
