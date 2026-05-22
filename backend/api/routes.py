@@ -195,9 +195,11 @@ async def disconnect_gsc(
 ):
     """Disconnect Google Search Console"""
     from utils.user_manager import clear_gsc_token
-    
+    from services.gsc_service import invalidate_cache
+
     try:
         clear_gsc_token(db, current_user.email)
+        invalidate_cache(user_email=current_user.email)  # ← clear stale cached properties
         return {"message": "Successfully disconnected from Google Search Console"}
     except Exception as e:
         raise HTTPException(
