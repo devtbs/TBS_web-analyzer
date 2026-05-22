@@ -559,16 +559,6 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
 
                 <div className="flex items-center gap-2 self-start sm:self-auto sm:ml-auto">
-                    {/* Writing settings button */}
-                    <button
-                        onClick={() => setShowPromptSettings(true)}
-                        className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-xl font-bold text-sm transition-all"
-                        title="Writing settings"
-                    >
-                        <Cog6ToothIcon className="w-4 h-4" />
-                        <span className="hidden sm:inline">Settings</span>
-                        {language === 'th' && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-black">ไทย</span>}
-                    </button>
                     <button
                         onClick={exportAllToPDF}
                         className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
@@ -1191,14 +1181,54 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             {/* Content Plan — merged primary + competitor articles */}
             {mergedArticles.length > 0 && (
                 <div id="export-content-plan" className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                    <SectionHeader
-                        title="Content Plan"
-                        color="from-slate-800 to-slate-900"
-                        icon={DocumentTextIcon}
-                        section="articles"
-                        count={mergedArticles.length}
-                        elementId="export-content-plan"
-                    />
+                    {/* Content Plan header with Settings button */}
+                    <div className={`flex items-center justify-between p-4 bg-gradient-to-r from-slate-800 to-slate-900`}>
+                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => toggleSection('articles')}>
+                            <DocumentTextIcon className="w-5 h-5 text-white" />
+                            <h2 className="text-lg font-bold text-white">Content Plan</h2>
+                            <span className="px-2.5 py-1 bg-white/20 rounded-md text-white text-sm font-semibold">
+                                {mergedArticles.length}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2" data-html2canvas-ignore="true">
+                            {/* Writing settings button */}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setShowPromptSettings(true); }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 text-white rounded-lg font-bold text-xs transition-all"
+                                title="Writing settings"
+                            >
+                                <Cog6ToothIcon className="w-4 h-4" />
+                                <span className="hidden sm:inline">Settings</span>
+                                {language === 'th' && <span className="text-[10px] px-1.5 py-0.5 bg-white/20 rounded font-black">ไทย</span>}
+                            </button>
+                            {/* PNG export */}
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (!expandedSections.articles) {
+                                        setExpandedSections(prev => ({ ...prev, articles: true }));
+                                        setTimeout(() => exportToPNG('export-content-plan', 'content-plan-export'), 500);
+                                    } else {
+                                        exportToPNG('export-content-plan', 'content-plan-export');
+                                    }
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/80 hover:bg-emerald-500 rounded-md transition-colors text-white text-xs font-black uppercase tracking-wider shadow-sm"
+                                title="Export to PNG"
+                            >
+                                <ArrowDownTrayIcon className="w-4 h-4" />
+                                PNG
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); toggleSection('articles'); }}
+                                className="p-1.5 hover:bg-white/20 rounded-md transition-colors text-white"
+                            >
+                                {expandedSections.articles
+                                    ? <ChevronUpIcon className="w-5 h-5" />
+                                    : <ChevronDownIcon className="w-5 h-5" />
+                                }
+                            </button>
+                        </div>
+                    </div>
                     {expandedSections.articles && (
                         <div className="p-4">
                             {/* Table */}
