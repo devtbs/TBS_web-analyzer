@@ -95,12 +95,19 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
 
     const checkGSCStatus = async () => {
         setIsCheckingStatus(true);
+        setProperties([]);  // clear stale data from previous account before fetching
         try {
-            const authToken = localStorage.getItem('access_token');
             const res = await api.get('/auth/gsc/properties');
-            if (res.data.properties) { setIsConnected(true); setProperties(res.data.properties); }
+            if (res.data.properties?.length) {
+                setIsConnected(true);
+                setProperties(res.data.properties);
+            } else {
+                // Connected but no properties — treat as disconnected
+                setIsConnected(false);
+            }
         } catch (err) {
             if (err.response?.status !== 404) console.error('GSC status error:', err);
+            setIsConnected(false);
         } finally {
             setIsCheckingStatus(false);
         }

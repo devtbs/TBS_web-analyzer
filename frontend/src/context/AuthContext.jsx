@@ -95,6 +95,7 @@ export const AuthProvider = ({ children }) => {
             localStorage.removeItem('access_token');
             localStorage.removeItem('user_data');
             localStorage.removeItem('gsc_selected_property');
+            localStorage.removeItem('gsc_token');  // ← fix: monitor needs this cleared
             sessionStorage.clear();
             setUser(null);
         }
