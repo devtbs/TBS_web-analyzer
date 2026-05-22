@@ -1,38 +1,60 @@
 from services.ai_service import ai_service
 from typing import Dict, Any, Optional
 
-# ── Default prompts ──────────────────────────────────────────────────────────
+# ── Tone definitions ─────────────────────────────────────────────────────────
 
-DEFAULT_EN_SYSTEM_PROMPT = """You are an expert, award-winning travel and lifestyle writer.
-Your goal is to write a highly engaging, sensorily descriptive, and culturally respectful comprehensive article based on a provided content brief.
+TONE_DESCRIPTIONS = {
+    "professional":  "formal, authoritative, and credible — suitable for B2B, legal, finance, or technical readers",
+    "conversational": "friendly, warm, and easy to read — like talking to a knowledgeable friend",
+    "persuasive":    "compelling and sales-driven — motivates readers to take action",
+    "educational":   "clear, structured, and informative — great for how-tos, guides, and explainers",
+    "storytelling":  "narrative-driven with vivid scenes, anecdotes, and emotional hooks",
+    "journalistic":  "factual, balanced, and direct — written like a quality news or magazine feature",
+}
 
-Your writing style MUST closely mimic the following tonal guidelines:
-1. **Sensory & Descriptive Hook**: Start the introduction with a powerful hook that immerses the reader in the experience (e.g., "A journey into [Topic] is a journey for the senses...").
-2. **Engaging Narrative Voice**: Write with a rustic, hearty, yet professional tone. Express the culture, values, and deep connections to the topic.
-3. **Structured Headings**: Frame subheadings exactly as they appear in the brief, or use creative variations that sound premium (e.g., "Welcome to the World of...").
-4. **Rich Detail**: Focus on natural, robust flavors/characteristics, sensory details, and an unapologetic celebration of the subject. 
-5. **Short, Punchy Sentences mixed with Flowing Prose**: E.g., "You will learn not only what to eat but also how to eat. The overarching dish has a fiery taste."
-6. **Cultural & Practical Respect**: Focus on the 'why' and 'how'. Explain etiquette, traditions, sustainable practices, or deep-seated values.
-7. **Concluding Takeaway & FAQs**: Always end with a strong Conclusion paragraph that ties the topic back to human connection/experience, followed immediately by 3-4 highly relevant FAQs.
+LENGTH_TARGETS = {
+    "short":   "600–800 words",
+    "medium":  "1,000–1,400 words",
+    "long":    "1,800–2,400 words",
+    "in-depth": "3,000+ words — comprehensive, exhaustive coverage",
+}
 
-Do NOT use generic AI intro phrasing (like "In today's fast-paced world..."). Dive right into the sensory hook.
-Your output MUST be entirely in valid Markdown, without code blocks surrounding it if possible, starting with the main H1 Title.
-"""
 
-DEFAULT_TH_SYSTEM_PROMPT = """คุณคือนักเขียนท่องเที่ยวและไลฟ์สไตล์ที่ได้รับรางวัล ผู้เชี่ยวชาญด้านการเขียนเชิงวัฒนธรรมไทย
-เป้าหมายของคุณคือเขียนบทความที่น่าสนใจ สมจริง และให้เกียรติวัฒนธรรม โดยอิงจาก content brief ที่ให้มา
+def build_system_prompt(
+    tone: str = "professional",
+    length: str = "medium",
+    audience: str = "",
+    custom_instructions: str = "",
+    language: str = "en",
+) -> str:
+    """Dynamically build a system prompt from user-controlled settings."""
 
-แนวทางการเขียน:
-1. **Hook ที่กระตุ้นประสาทสัมผัส**: เริ่มต้นด้วย hook ที่ดึงดูดผู้อ่านให้จมอยู่กับประสบการณ์นั้น
-2. **น้ำเสียงที่เป็นมิตรแต่เป็นมืออาชีพ**: เขียนด้วยความอบอุ่น จริงใจ สะท้อนวัฒนธรรมและคุณค่าของหัวข้อ
-3. **หัวข้อที่มีโครงสร้างชัดเจน**: ใช้หัวข้อตาม brief หรือปรับให้ฟังดูมีคุณค่า
-4. **รายละเอียดที่สมบูรณ์**: เน้นลักษณะเฉพาะ รายละเอียดที่สัมผัสได้ และการเฉลิมฉลองหัวข้ออย่างไม่ลังเล
-5. **ประโยคสั้นกระชับผสมกับประโยคยาวที่ไหลลื่น**
-6. **ความเคารพทางวัฒนธรรม**: อธิบาย 'ทำไม' และ 'อย่างไร' ขนบธรรมเนียมและค่านิยม
-7. **สรุปและ FAQ**: จบด้วยบทสรุปที่แข็งแกร่งและ FAQ 3-4 ข้อ
+    tone_desc = TONE_DESCRIPTIONS.get(tone, TONE_DESCRIPTIONS["professional"])
+    length_target = LENGTH_TARGETS.get(length, LENGTH_TARGETS["medium"])
+    audience_line = f"**Target audience:** {audience.strip()}" if audience and audience.strip() else ""
+    custom_line   = f"\n**Additional instructions from the user:**\n{custom_instructions.strip()}" if custom_instructions and custom_instructions.strip() else ""
 
-ห้ามใช้ประโยคเปิดแบบ AI ทั่วไป เช่น "ในโลกปัจจุบัน..." ให้เริ่มด้วย hook เลย
-ผลลัพธ์ต้องเป็น Markdown ที่ถูกต้อง เขียนทั้งบทความเป็นภาษาไทย
+    lang_instruction = (
+        "Write the ENTIRE article in Thai (ภาษาไทย). Every heading, paragraph, and FAQ must be in Thai."
+        if language == "th"
+        else "Write the entire article in English."
+    )
+
+    return f"""You are an expert content writer and SEO specialist.
+
+**Your writing tone:** {tone_desc}
+**Article length target:** {length_target}
+{audience_line}
+
+**Core writing rules:**
+1. Open with a compelling hook — never start with generic AI phrases like "In today's fast-paced world..." or "In this article, we will...".
+2. Use clear H2 and H3 headings that match or creatively expand on the provided outline.
+3. Keep paragraphs short (2–4 sentences). Mix punchy sentences with flowing prose for rhythm.
+4. Naturally weave in the provided keywords — never stuff them.
+5. End with a strong conclusion and 3–4 relevant FAQs.
+6. {lang_instruction}
+7. Output clean, valid Markdown starting with the H1 title. Do NOT wrap output in a code block.
+{custom_line}
 """
 
 
@@ -84,35 +106,46 @@ async def generate_full_article(
     brief_data: Dict[str, Any],
     system_prompt: Optional[str] = None,
     language: Optional[str] = "en",
+    # New user-controllable settings
+    tone: Optional[str] = "professional",
+    length: Optional[str] = "medium",
+    audience: Optional[str] = "",
+    custom_instructions: Optional[str] = "",
 ) -> str:
     """Generate a full article.
 
     Args:
-        topic: The article topic / title.
-        brief_data: Structured content brief from generate_content_brief().
-        system_prompt: Optional custom system prompt. Falls back to the default
-                       English or Thai prompt based on the ``language`` argument.
-        language: "en" (default) or "th". When "th", the Thai system prompt is
-                  used and the user prompt instructs the AI to write in Thai.
+        topic:               The article topic / title.
+        brief_data:          Structured content brief from generate_content_brief().
+        system_prompt:       Fully custom system prompt (overrides everything else).
+        language:            "en" (default) or "th".
+        tone:                One of professional | conversational | persuasive |
+                             educational | storytelling | journalistic.
+        length:              One of short | medium | long | in-depth.
+        audience:            Free-text description of the target reader.
+        custom_instructions: Any extra instructions from the user.
     """
 
-    # Resolve which system prompt to use
+    # If the caller provides a fully custom system prompt, use it as-is.
+    # Otherwise build one dynamically from user settings.
     if system_prompt and system_prompt.strip():
         effective_system_prompt = system_prompt.strip()
-    elif language == "th":
-        effective_system_prompt = DEFAULT_TH_SYSTEM_PROMPT
     else:
-        effective_system_prompt = DEFAULT_EN_SYSTEM_PROMPT
+        effective_system_prompt = build_system_prompt(
+            tone=tone or "professional",
+            length=length or "medium",
+            audience=audience or brief_data.get("target_audience", ""),
+            custom_instructions=custom_instructions or "",
+            language=language or "en",
+        )
 
     outline_str = "\n".join([
         f"{'#' * item['level']} {item['heading']}\n" + "\n".join([f"- {pt}" for pt in item.get('talking_points', [])])
         for item in brief_data.get('outline', [])
     ])
 
-    language_instruction = "\nWrite the entire article in Thai (ภาษาไทย). All headings, body text, and FAQs must be in Thai.\n" if language == "th" else ""
+    prompt = f"""Write a comprehensive, SEO-optimized article about: {topic}
 
-    prompt = f"""Write a comprehensive, SEO-optimized, engaging article about: {topic}
-{language_instruction}
 Here is the structured content brief you MUST follow and expand upon:
 
 **Target Audience:** {brief_data.get('target_audience', 'General readers')}
@@ -122,11 +155,10 @@ Here is the structured content brief you MUST follow and expand upon:
 **Outline to follow:**
 {outline_str}
 
-**Competitor Insights to cover:**
+**Competitor insights to address:**
 {chr(10).join(brief_data.get('competitor_insights', []))}
 
-Format the final output beautifully in Markdown containing Headings, paragraphs, and a final FAQ section. 
-Remember to adopt the highly engaging, deeply cultural, and sensory writing style described in your system instructions.
+Follow the tone, length, and style defined in your system instructions exactly.
 """
 
     try:

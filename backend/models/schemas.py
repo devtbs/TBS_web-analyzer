@@ -232,8 +232,12 @@ class BriefRequest(BaseModel):
     category: str
     article_type: str
     domain: Optional[str] = ""
-    system_prompt: Optional[str] = None   # custom writing style prompt
-    language: Optional[str] = "en"        # "en" or "th"
+    system_prompt: Optional[str] = None       # fully custom system prompt (overrides everything)
+    language: Optional[str] = "en"            # "en" or "th"
+    tone: Optional[str] = "professional"      # professional | conversational | persuasive | educational | storytelling | journalistic
+    length: Optional[str] = "medium"          # short | medium | long | in-depth
+    audience: Optional[str] = ""             # free-text target reader description
+    custom_instructions: Optional[str] = ""  # any extra user instructions
 
 class DocumentResponse(BaseModel):
     id: str

@@ -989,6 +989,10 @@ async def create_full_article_direct(
             brief_data=brief,
             system_prompt=getattr(request, 'system_prompt', None),
             language=getattr(request, 'language', 'en'),
+            tone=getattr(request, 'tone', 'professional'),
+            length=getattr(request, 'length', 'medium'),
+            audience=getattr(request, 'audience', ''),
+            custom_instructions=getattr(request, 'custom_instructions', ''),
         )
         
         brief["article_markdown"] = article_markdown
@@ -1217,10 +1221,14 @@ async def create_full_article(
     if not doc.content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document has no brief content to generate from.")
         
-    # Accept an optional JSON body for prompt / language overrides
+    # Accept an optional JSON body for prompt / language / style overrides
     class _ArticleOptions(BaseModel):
         system_prompt: Optional[str] = None
         language: Optional[str] = "en"
+        tone: Optional[str] = "professional"
+        length: Optional[str] = "medium"
+        audience: Optional[str] = ""
+        custom_instructions: Optional[str] = ""
 
     try:
         body = await request.json()
@@ -1234,6 +1242,10 @@ async def create_full_article(
             brief_data=doc.content,
             system_prompt=opts.system_prompt,
             language=opts.language,
+            tone=opts.tone,
+            length=opts.length,
+            audience=opts.audience,
+            custom_instructions=opts.custom_instructions,
         )
         
         # Update the document

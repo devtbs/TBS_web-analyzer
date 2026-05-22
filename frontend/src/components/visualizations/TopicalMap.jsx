@@ -21,25 +21,47 @@ import {
     ArrowDownTrayIcon,
     Cog6ToothIcon,
     XMarkIcon,
-    LanguageIcon,
 } from '@heroicons/react/24/outline';
 import Favicon from '../ui/Favicon';
 import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 
-const LS_PROMPT_EN = 'writing_prompt_en';
-const LS_PROMPT_TH = 'writing_prompt_th';
-const LS_LANGUAGE  = 'writing_language';
+const LS_LANGUAGE     = 'writing_language';
+const LS_TONE         = 'writing_tone';
+const LS_LENGTH       = 'writing_length';
+const LS_AUDIENCE     = 'writing_audience';
+const LS_CUSTOM       = 'writing_custom_instructions';
 
-const DEFAULT_EN_HINT = `You are an expert, award-winning travel and lifestyle writer.
-Write with a rich, sensory, culturally respectful tone.
-Avoid generic AI intros — dive straight into a vivid hook.
-Output valid Markdown starting with H1.`;
+const TONE_OPTIONS = [
+    { value: 'professional',   label: 'Professional',   desc: 'Formal & authoritative' },
+    { value: 'conversational', label: 'Conversational', desc: 'Friendly & approachable' },
+    { value: 'persuasive',     label: 'Persuasive',     desc: 'Compelling & action-driven' },
+    { value: 'educational',    label: 'Educational',    desc: 'Clear & instructional' },
+    { value: 'storytelling',   label: 'Storytelling',   desc: 'Narrative & immersive' },
+    { value: 'journalistic',   label: 'Journalistic',   desc: 'Factual & magazine-style' },
+];
 
-const DEFAULT_TH_HINT = `คุณคือนักเขียนท่องเที่ยวและไลฟ์สไตล์ที่เชี่ยวชาญ
-เขียนด้วยน้ำเสียงที่สมจริง กระตุ้นประสาทสัมผัส และให้เกียรติวัฒนธรรม
-หลีกเลี่ยงประโยคเปิดแบบ AI ทั่วไป เขียนทั้งบทความเป็นภาษาไทย
-ผลลัพธ์ต้องเป็น Markdown ที่ถูกต้อง`;
+const LENGTH_OPTIONS = [
+    { value: 'short',    label: 'Short',    desc: '600–800 words' },
+    { value: 'medium',   label: 'Medium',   desc: '1,000–1,400 words' },
+    { value: 'long',     label: 'Long',     desc: '1,800–2,400 words' },
+    { value: 'in-depth', label: 'In-Depth', desc: '3,000+ words' },
+];
+
+const OptionChip = ({ selected, onClick, label, desc }) => (
+    <button
+        type="button"
+        onClick={onClick}
+        className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-all text-sm ${
+            selected
+                ? 'bg-emerald-50 border-emerald-400 text-emerald-700'
+                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+        }`}
+    >
+        <span className="font-bold leading-tight">{label}</span>
+        {desc && <span className="text-[11px] opacity-70 mt-0.5">{desc}</span>}
+    </button>
+);
 
 const getDomain = (url) => { try { return new URL(url).hostname.replace('www.', ''); } catch { return url; } };
 
@@ -55,31 +77,34 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     const navigate = useNavigate();
     const [generatingArticle, setGeneratingArticle] = useState(null);
     const [showPromptSettings, setShowPromptSettings] = useState(false);
-    const [language, setLanguage] = useState(() => localStorage.getItem(LS_LANGUAGE) || 'en');
-    const [promptEn, setPromptEn] = useState(() => localStorage.getItem(LS_PROMPT_EN) || '');
-    const [promptTh, setPromptTh] = useState(() => localStorage.getItem(LS_PROMPT_TH) || '');
+    const [language, setLanguage]           = useState(() => localStorage.getItem(LS_LANGUAGE) || 'en');
+    const [tone, setTone]                   = useState(() => localStorage.getItem(LS_TONE)     || 'professional');
+    const [length, setLength]               = useState(() => localStorage.getItem(LS_LENGTH)   || 'medium');
+    const [audience, setAudience]           = useState(() => localStorage.getItem(LS_AUDIENCE) || '');
+    const [customInstructions, setCustomInstructions] = useState(() => localStorage.getItem(LS_CUSTOM) || '');
 
     const savePromptSettings = () => {
         localStorage.setItem(LS_LANGUAGE, language);
-        localStorage.setItem(LS_PROMPT_EN, promptEn);
-        localStorage.setItem(LS_PROMPT_TH, promptTh);
+        localStorage.setItem(LS_TONE,     tone);
+        localStorage.setItem(LS_LENGTH,   length);
+        localStorage.setItem(LS_AUDIENCE, audience);
+        localStorage.setItem(LS_CUSTOM,   customInstructions);
         setShowPromptSettings(false);
         toast.success('Writing settings saved!');
     };
 
     const handleGenerateArticle = async (article) => {
         setGeneratingArticle(article.title);
-        const lang = localStorage.getItem(LS_LANGUAGE) || 'en';
-        const sysPrompt = lang === 'th'
-            ? (localStorage.getItem(LS_PROMPT_TH) || '')
-            : (localStorage.getItem(LS_PROMPT_EN) || '');
         try {
             const response = await api.post(`/api/article/${analysisId}`, {
                 topic: article.title,
                 category: article.category_l1 || 'General',
                 article_type: article.article_type || 'informative',
-                language: lang,
-                system_prompt: sysPrompt || undefined,
+                language,
+                tone,
+                length,
+                audience: audience.trim(),
+                custom_instructions: customInstructions.trim(),
             }, { timeout: 120000 });
             navigate(`/documents/${response.data.document_id}`);
         } catch (error) {
@@ -359,10 +384,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             </button>
                         </div>
 
-                        <div className="px-6 py-5 space-y-5">
-                            {/* Language toggle */}
+                        <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+                            {/* Language */}
                             <div>
-                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Output Language</p>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Language</p>
                                 <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit">
                                     {[{ code: 'en', label: '🇬🇧 English' }, { code: 'th', label: '🇹🇭 ภาษาไทย' }].map(lang => (
                                         <button
@@ -380,32 +405,65 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                 </div>
                             </div>
 
-
-                            {/* Prompt — only the selected language */}
-                            {language === 'en' ? (
-                                <div>
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Writing Prompt <span className="text-slate-300 normal-case tracking-normal font-normal">(leave blank for default)</span></p>
-                                    <textarea
-                                        value={promptEn}
-                                        onChange={e => setPromptEn(e.target.value)}
-                                        placeholder={DEFAULT_EN_HINT}
-                                        rows={6}
-                                        className="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y font-mono"
-                                    />
+                            {/* Tone */}
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tone</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {TONE_OPTIONS.map(opt => (
+                                        <OptionChip
+                                            key={opt.value}
+                                            selected={tone === opt.value}
+                                            onClick={() => setTone(opt.value)}
+                                            label={opt.label}
+                                            desc={opt.desc}
+                                        />
+                                    ))}
                                 </div>
-                            ) : (
-                                <div>
-                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Writing Prompt <span className="text-slate-300 normal-case tracking-normal font-normal">(leave blank for default)</span></p>
-                                    <textarea
-                                        value={promptTh}
-                                        onChange={e => setPromptTh(e.target.value)}
-                                        placeholder={DEFAULT_TH_HINT}
-                                        rows={6}
-                                        className="w-full text-sm border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-y font-mono"
-                                    />
-                                </div>
-                            )}
+                            </div>
 
+                            {/* Length */}
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Length</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {LENGTH_OPTIONS.map(opt => (
+                                        <OptionChip
+                                            key={opt.value}
+                                            selected={length === opt.value}
+                                            onClick={() => setLength(opt.value)}
+                                            label={opt.label}
+                                            desc={opt.desc}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Audience */}
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                    Target Audience <span className="font-normal normal-case text-slate-400">(optional)</span>
+                                </p>
+                                <input
+                                    type="text"
+                                    value={audience}
+                                    onChange={e => setAudience(e.target.value)}
+                                    placeholder="e.g. Small business owners with no SEO experience"
+                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-emerald-400 transition-all"
+                                />
+                            </div>
+
+                            {/* Custom instructions */}
+                            <div>
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                    Custom Instructions <span className="font-normal normal-case text-slate-400">(optional)</span>
+                                </p>
+                                <textarea
+                                    value={customInstructions}
+                                    onChange={e => setCustomInstructions(e.target.value)}
+                                    rows={3}
+                                    placeholder="e.g. Include a comparison table. Avoid jargon. Start with a question."
+                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-emerald-400 transition-all resize-none"
+                                />
+                            </div>
                         </div>
 
                         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
