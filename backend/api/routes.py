@@ -67,8 +67,18 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/auth/logout")
-async def logout(current_user: UserInfo = Depends(get_current_user)):
-    """Logout user"""
+async def logout(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Logout user — also clears stored GSC token and server-side cache."""
+    from utils.user_manager import clear_gsc_token
+    from services.gsc_service import invalidate_cache
+    try:
+        clear_gsc_token(db, current_user.email)
+        invalidate_cache(user_email=current_user.email)
+    except Exception:
+        pass  # don't block logout if cleanup fails
     return {"message": "Successfully logged out"}
 
 
