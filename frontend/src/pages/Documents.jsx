@@ -135,7 +135,10 @@ export default function Documents() {
 
     const handleDeadlineUpdate = async (docId, date) => {
         try {
-            const dateStr = date instanceof Date ? date.toISOString() : date;
+            // Use local date string (YYYY-MM-DD) to avoid UTC timezone offset shifting the day
+            const dateStr = date instanceof Date
+                ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                : date;
             await api.put(`/api/documents/${docId}`, { deadline: dateStr });
             setDocuments(documents.map(doc => 
                 doc.id === docId ? { ...doc, deadline: dateStr } : doc
@@ -172,6 +175,10 @@ export default function Documents() {
         const endDate = endOfWeek(monthEnd);
         const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+        // Get the current deadline for this doc to highlight it on the calendar
+        const currentDoc = documents.find(d => d.id === docId);
+        const selectedDate = currentDoc?.deadline ? new Date(currentDoc.deadline + 'T00:00:00') : null;
+
         return (
             <div className="p-2">
                 <div className="flex items-center justify-between mb-2">
@@ -197,22 +204,29 @@ export default function Documents() {
                     ))}
                 </div>
                 <div className="grid grid-cols-7 gap-0.5">
-                    {calendarDays.map((day, idx) => (
-                        <button
-                            key={idx}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeadlineUpdate(docId, day);
-                            }}
-                            className={`
-                                text-[10px] h-6 w-6 flex items-center justify-center rounded transition-all font-medium
-                                ${!isSameMonth(day, monthStart) ? 'text-slate-200' : 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600'}
-                                ${isSameDay(day, new Date()) ? 'bg-emerald-50 text-emerald-600' : ''}
-                            `}
-                        >
-                            {format(day, 'd')}
-                        </button>
-                    ))}
+                    {calendarDays.map((day, idx) => {
+                        const isSelected = selectedDate && isSameDay(day, selectedDate);
+                        const isToday = isSameDay(day, new Date());
+                        const isOutsideMonth = !isSameMonth(day, monthStart);
+                        return (
+                            <button
+                                key={idx}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeadlineUpdate(docId, day);
+                                }}
+                                className={`
+                                    text-[10px] h-6 w-6 flex items-center justify-center rounded transition-all font-medium
+                                    ${isOutsideMonth ? 'text-slate-200' : ''}
+                                    ${!isOutsideMonth && !isSelected ? 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600' : ''}
+                                    ${isSelected ? 'bg-emerald-500 text-white font-bold' : ''}
+                                    ${isToday && !isSelected ? 'bg-emerald-50 text-emerald-600' : ''}
+                                `}
+                            >
+                                {format(day, 'd')}
+                            </button>
+                        );
+                    })}
                 </div>
                 <button 
                     onClick={(e) => { e.stopPropagation(); setViewMode('options'); }}
