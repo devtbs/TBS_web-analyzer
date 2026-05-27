@@ -177,7 +177,11 @@ export default function Documents() {
 
         // Get the current deadline for this doc to highlight it on the calendar
         const currentDoc = documents.find(d => d.id === docId);
-        const selectedDate = currentDoc?.deadline ? new Date(currentDoc.deadline + 'T00:00:00') : null;
+        const selectedDate = currentDoc?.deadline
+            ? (/^\d{4}-\d{2}-\d{2}$/.test(currentDoc.deadline)
+                ? new Date(currentDoc.deadline + 'T00:00:00')  // YYYY-MM-DD → parse as local time
+                : new Date(currentDoc.deadline))                // ISO string → parse directly
+            : null;
 
         return (
             <div className="p-2">
@@ -617,7 +621,10 @@ export default function Documents() {
                                             {doc.deadline ? (
                                                 <span className="flex items-center gap-1">
                                                     <CalendarIconSolid className="w-3.5 h-3.5 text-slate-500/80" />
-                                                    {new Date(doc.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                    {(/^\d{4}-\d{2}-\d{2}$/.test(doc.deadline)
+                                                        ? new Date(doc.deadline + 'T00:00:00')
+                                                        : new Date(doc.deadline)
+                                                    ).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                                 </span>
                                             ) : '+ Date'}
                                         </span>
