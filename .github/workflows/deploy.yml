@@ -20,6 +20,7 @@ jobs:
           script: |
             export PATH="$HOME/.nvm/versions/node/v24.13.0/bin:$PATH"
             cd /home/clawdbot/web_analyzer
+            git remote set-url origin https://github.com/kweephyo-pmt/TBS_web-analyzer.git
             git pull origin main
             cd frontend && npm install && npm run build
             pm2 restart tbs-backend
