@@ -210,7 +210,6 @@ export default function Documents() {
                 <div className="grid grid-cols-7 gap-0.5">
                     {calendarDays.map((day, idx) => {
                         const isSelected = selectedDate && isSameDay(day, selectedDate);
-                        const isToday = isSameDay(day, new Date());
                         const isOutsideMonth = !isSameMonth(day, monthStart);
                         return (
                             <button
@@ -224,7 +223,6 @@ export default function Documents() {
                                     ${isOutsideMonth ? 'text-slate-200' : ''}
                                     ${!isOutsideMonth && !isSelected ? 'text-slate-600 hover:bg-emerald-50 hover:text-emerald-600' : ''}
                                     ${isSelected ? 'bg-emerald-500 text-white font-bold' : ''}
-                                    ${isToday && !isSelected ? 'bg-emerald-50 text-emerald-600' : ''}
                                 `}
                             >
                                 {format(day, 'd')}
