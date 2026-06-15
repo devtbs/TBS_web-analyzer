@@ -1099,66 +1099,110 @@ class GSCService:
             logger.error(f"Error fetching CTR analysis: {str(e)}")
             raise Exception(f"Failed to fetch CTR analysis: {str(e)}")
 
-    async def get_content_decay(self, property_url: str, days: int = 28,
-                                filters_json: str = None) -> List[Dict]:
-        """Pages losing clicks vs the previous equal-length period — early decay signal.
-        Returns declining pages sorted by clicks lost."""
-        cache_key = (self.user_email, 'decay', property_url, days, filters_json)
+    async def get_query_decay(self, property_url: str, periods: int = 16,
+                              granularity: str = 'month', filters_json: str = None) -> Dict:
+        """Per-query performance over time, bucketed by month or week, for the
+        Query Decay heatmap. Each query row carries a cell per period with
+        clicks / impressions / position / ctr so the client can shade trends.
+
+        granularity: 'month' (bucket = YYYY-MM) or 'week' (bucket = Monday YYYY-MM-DD).
+        Returns up to `periods` most-recent buckets and the top queries by clicks.
+        """
+        granularity = 'week' if granularity == 'week' else 'month'
+        periods = max(2, min(int(periods or 16), 24))
+        cache_key = (self.user_email, 'query_decay', property_url, periods, granularity, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             return cached
         try:
             from datetime import datetime, timedelta
-            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
-            start_date = end_date - timedelta(days=days)
-            prev_end = start_date - timedelta(days=1)
-            prev_start = prev_end - timedelta(days=days)
+            from collections import defaultdict
 
-            def _fetch(start, end):
-                req = {
-                    'startDate': start.strftime('%Y-%m-%d'),
-                    'endDate': end.strftime('%Y-%m-%d'),
-                    'dimensions': ['page'], 'rowLimit': 25000, 'dataState': 'all',
-                }
-                self._apply_filter(req, filters_json)
-                resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
-                out = {}
-                for row in resp.get('rows', []):
-                    key = row['keys'][0].rstrip('/')
-                    out[key] = {
-                        'clicks': row.get('clicks', 0),
-                        'impressions': row.get('impressions', 0),
-                        'position': round(row.get('position', 0), 1),
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+
+            # Build one window (key, start, end) per period. We query each window with
+            # dimension ['query'] only — so every window can return up to 25k DISTINCT
+            # queries, instead of burning the row budget on the date dimension.
+            windows = []
+            if granularity == 'week':
+                this_monday = end_date - timedelta(days=end_date.weekday())
+                for i in range(periods):
+                    ws = this_monday - timedelta(weeks=(periods - 1 - i))
+                    we = min(ws + timedelta(days=6), end_date)
+                    windows.append((ws.strftime('%Y-%m-%d'), ws, we))
+            else:
+                starts = [end_date.replace(day=1)]
+                for _ in range(periods - 1):
+                    starts.insert(0, (starts[0] - timedelta(days=1)).replace(day=1))
+                for ms in starts:
+                    nm = ms.replace(year=ms.year + 1, month=1) if ms.month == 12 else ms.replace(month=ms.month + 1)
+                    me = min(nm - timedelta(days=1), end_date)
+                    windows.append((ms.strftime('%Y-%m'), ms, me))
+
+            def _fetch_all(start, end):
+                """All query rows for a window, paginating past the 25k/row cap."""
+                out, start_row = [], 0
+                while True:
+                    req = {
+                        'startDate': start.strftime('%Y-%m-%d'),
+                        'endDate': end.strftime('%Y-%m-%d'),
+                        'dimensions': ['query'], 'rowLimit': 25000,
+                        'startRow': start_row, 'dataState': 'all',
                     }
+                    self._apply_filter(req, filters_json)
+                    resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+                    batch = resp.get('rows', [])
+                    out.extend(batch)
+                    if len(batch) < 25000 or start_row >= 225000:
+                        break
+                    start_row += 25000
                 return out
 
-            current = _fetch(start_date, end_date)
-            previous = _fetch(prev_start, prev_end)
-            results = []
-            for page, cur in current.items():
-                prev = previous.get(page)
-                if not prev or prev['clicks'] == 0:
-                    continue
-                clicks_delta = cur['clicks'] - prev['clicks']
-                if clicks_delta < 0:  # losing clicks
-                    pct = round((clicks_delta / prev['clicks']) * 100, 1)
-                    results.append({
-                        'page': page,
-                        'clicks': cur['clicks'],
-                        'prev_clicks': prev['clicks'],
-                        'clicks_lost': abs(clicks_delta),
-                        'clicks_change_pct': pct,
-                        'position': cur['position'],
-                        'prev_position': prev['position'],
-                        'position_change': round(cur['position'] - prev['position'], 1),  # +ve = worse
-                        'impressions': cur['impressions'],
-                    })
-            results.sort(key=lambda x: x['clicks_lost'], reverse=True)
-            _cache_set(cache_key, results, _TTL_ANALYTICS)
-            return results
+            periods_list = [w[0] for w in windows]
+            overall_start = windows[0][1]  # earliest period start
+
+            # 1) Query universe + true period totals. One long window clears far more
+            #    queries from Google's per-request anonymization than month-by-month does.
+            totals = {}
+            for row in _fetch_all(overall_start, end_date):
+                q = row['keys'][0]
+                totals[q] = {'clicks': row.get('clicks', 0), 'impressions': row.get('impressions', 0)}
+
+            # 2) Per-period cell values (sparser — rare queries hide in short windows)
+            cells_map = defaultdict(dict)  # query -> period_key -> cell
+            for key, ws, we in windows:
+                for row in _fetch_all(ws, we):
+                    q = row['keys'][0]
+                    clk = row.get('clicks', 0)
+                    imp = row.get('impressions', 0)
+                    cells_map[q][key] = {
+                        'period': key,
+                        'clicks': clk,
+                        'impressions': imp,
+                        'ctr': round(clk / imp * 100, 2) if imp else 0,
+                        'position': round(row.get('position', 0), 1) if imp else None,
+                    }
+
+            # 3) Build rows from the full universe; fill cells where each month had data
+            queries_out = []
+            for q, t in totals.items():
+                bmap = cells_map.get(q, {})
+                cells = [bmap.get(key, {'period': key, 'clicks': 0, 'impressions': 0, 'ctr': 0, 'position': None})
+                         for key in periods_list]
+                queries_out.append({
+                    'query': q,
+                    'clicks': t['clicks'],
+                    'impressions': t['impressions'],
+                    'cells': cells,
+                })
+
+            queries_out.sort(key=lambda x: x['clicks'], reverse=True)
+            result = {'queries': queries_out, 'periods': periods_list, 'granularity': granularity}
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
         except Exception as e:
-            logger.error(f"Error fetching content decay: {str(e)}")
-            raise Exception(f"Failed to fetch content decay: {str(e)}")
+            logger.error(f"Error fetching query decay: {str(e)}")
+            raise Exception(f"Failed to fetch query decay: {str(e)}")
 
     async def get_cannibalization(self, property_url: str, days: int = 28,
                                   min_impressions: int = 10, filters_json: str = None) -> List[Dict]:

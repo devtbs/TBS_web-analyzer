@@ -53,7 +53,7 @@ const PROPERTY_NAV = [
         items: [
             { label: 'Striking Distance',   path: '/seo-analytics/striking-distance',  icon: ArrowTrendingUpIcon },
             { label: 'CTR Analysis',        path: '/seo-analytics/ctr-opportunities',  icon: PresentationChartLineIcon },
-            { label: 'Content Decay',       path: '/seo-analytics/content-decay',      icon: ArrowsUpDownIcon },
+            { label: 'Query Decay',         path: '/seo-analytics/query-decay',        icon: ArrowsUpDownIcon },
         ],
     },
     {

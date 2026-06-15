@@ -559,18 +559,18 @@ async def gsc_ctr_opportunities(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
 
 
-@router.get("/auth/gsc/content-decay/{property_url:path}")
-async def gsc_content_decay(
-    property_url: str, days: int = 28, filters_json: str = None,
+@router.get("/auth/gsc/query-decay/{property_url:path}")
+async def gsc_query_decay(
+    property_url: str, periods: int = 16, granularity: str = "month", filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    """Pages losing clicks vs the previous period."""
+    """Per-query performance over time (month/week buckets) for the decay heatmap."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
     try:
         service = _gsc_service_for(db, current_user.email)
-        data = await service.get_content_decay(property_url, days, filters_json=filters_json)
-        return {"pages": data, "total": len(data)}
+        data = await service.get_query_decay(property_url, periods, granularity, filters_json=filters_json)
+        return data
     except HTTPException:
         raise
     except Exception as e:

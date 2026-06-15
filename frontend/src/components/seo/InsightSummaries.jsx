@@ -128,29 +128,6 @@ export function CtrSummary({ rows, meta }) {
     );
 }
 
-/* ════════════════════ Content Decay ════════════════════════ */
-export function DecaySummary({ rows }) {
-    const top = [...rows].sort((a, b) => b.clicks_lost - a.clicks_lost).slice(0, 8)
-        .map(r => ({ name: trunc(r.page.replace(/^https?:\/\//, ''), 24), lost: r.clicks_lost }));
-    return (
-        <div className="space-y-4">
-            <div className="flex flex-wrap gap-3">
-                <Kpi label="Declining pages" value={rows.length.toLocaleString()} accent="text-rose-600" />
-                <Kpi label="Total clicks lost" value={`−${sum(rows, 'clicks_lost').toLocaleString()}`} accent="text-rose-600" sub="vs previous period" />
-            </div>
-            <ChartCard title="Biggest click losses — refresh these first">
-                <BarChart data={top} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} width={150} />
-                    <Tooltip contentStyle={tooltipStyle} />
-                    <Bar dataKey="lost" fill="#f43f5e" radius={[0, 4, 4, 0]} name="Clicks lost" />
-                </BarChart>
-            </ChartCard>
-        </div>
-    );
-}
-
 /* ════════════════════ Cannibalization ════════════════════ */
 export function CannibalSummary({ rows }) {
     const top = [...rows].sort((a, b) => b.total_impressions - a.total_impressions).slice(0, 8)
