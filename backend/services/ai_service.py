@@ -11,20 +11,55 @@ class AIService:
     def __init__(self):
         self.groq_client = None
         self.deepseek_client = None
-        
+        self.anthropic_client = None
+
         # Initialize Groq (uses OpenAI-compatible API)
         if hasattr(settings, 'GROQ_API_KEY') and settings.GROQ_API_KEY:
             self.groq_client = AsyncOpenAI(
                 api_key=settings.GROQ_API_KEY,
                 base_url="https://api.groq.com/openai/v1"
             )
-        
+
         # Initialize DeepSeek (uses OpenAI-compatible API)
         if hasattr(settings, 'DEEPSEEK_API_KEY') and settings.DEEPSEEK_API_KEY:
             self.deepseek_client = AsyncOpenAI(
                 api_key=settings.DEEPSEEK_API_KEY,
                 base_url="https://api.deepseek.com"
             )
+
+        # Initialize Anthropic (Claude) — used for client-facing monthly reports,
+        # where narrative quality matters most.
+        if hasattr(settings, 'ANTHROPIC_API_KEY') and settings.ANTHROPIC_API_KEY:
+            from anthropic import AsyncAnthropic
+            self.anthropic_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    async def analyze_with_anthropic(
+        self,
+        prompt: str,
+        system_prompt: str = None,
+        model: str = "claude-opus-4-8",
+        max_tokens: int = 16000,
+    ) -> str:
+        """Generate text with Claude. Streams (recommended for long report output)
+        and uses adaptive thinking for higher-quality reasoning."""
+        if not self.anthropic_client:
+            raise ValueError("Anthropic API key not configured (ANTHROPIC_API_KEY).")
+
+        kwargs = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "thinking": {"type": "adaptive"},
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system_prompt:
+            kwargs["system"] = system_prompt
+
+        async with self.anthropic_client.messages.stream(**kwargs) as stream:
+            message = await stream.get_final_message()
+
+        return "".join(
+            block.text for block in message.content if getattr(block, "type", None) == "text"
+        )
     
     async def analyze_with_groq(self, prompt: str, system_prompt: str = None) -> str:
         """Analyze content using Groq (fast, free tier available)"""

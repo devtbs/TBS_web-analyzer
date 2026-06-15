@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     SERPAPI_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
+    SERANKING_API_KEY: str = ""  # SE Ranking Project API — TBS's account key (API > Dashboard)
     
     # App Settings
     ENVIRONMENT: str = "development"

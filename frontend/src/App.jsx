@@ -21,6 +21,11 @@ import CountriesPage from './pages/CountriesPage';
 import NewLostRankingsPage from './pages/NewLostRankingsPage';
 import PagesPage from './pages/PagesPage';
 import QueriesPage from './pages/QueriesPage';
+import StrikingDistancePage from './pages/StrikingDistancePage';
+import CtrOpportunitiesPage from './pages/CtrOpportunitiesPage';
+import ContentDecayPage from './pages/ContentDecayPage';
+import CannibalizationPage from './pages/CannibalizationPage';
+import TopicClustersPage from './pages/TopicClustersPage';
 import GlobalReports from './pages/GlobalReports';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
@@ -156,6 +161,11 @@ function AppContent() {
                     <Route path="/seo-analytics/new-lost-rankings" element={<NewLostRankingsPage />} />
                     <Route path="/seo-analytics/pages" element={<PagesPage />} />
                     <Route path="/seo-analytics/queries" element={<QueriesPage />} />
+                    <Route path="/seo-analytics/striking-distance" element={<StrikingDistancePage />} />
+                    <Route path="/seo-analytics/ctr-opportunities" element={<CtrOpportunitiesPage />} />
+                    <Route path="/seo-analytics/content-decay" element={<ContentDecayPage />} />
+                    <Route path="/seo-analytics/cannibalization" element={<CannibalizationPage />} />
+                    <Route path="/seo-analytics/topic-clusters" element={<TopicClustersPage />} />
                     <Route path="/new-analysis" element={<NewAnalysis />} />
                     <Route path="/history" element={<History />} />
                     <Route path="/select-pages" element={<PageSelector />} />

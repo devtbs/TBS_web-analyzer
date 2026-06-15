@@ -504,6 +504,303 @@ async def get_gsc_new_lost_rankings(
         )
 
 
+# ============= GSC Insight Tools (Wizard-style) =============
+# All computed from existing Search Console data — no new data source needed.
+
+def _gsc_service_for(db, email):
+    """Helper: build a GSCService from the user's stored token, or raise 404."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    gsc_token, is_refresh = get_user_gsc_token(db, email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
+    return GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=email)
+
+
+@router.get("/auth/gsc/striking-distance/{property_url:path}")
+async def gsc_striking_distance(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Keywords at positions 4–20 — the quickest page-1 wins."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_striking_distance(property_url, days, filters_json=filters_json)
+        return {"keywords": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/ctr-opportunities/{property_url:path}")
+async def gsc_ctr_opportunities(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Full CTR analysis: site CTR curve (1–20) + every query vs benchmark."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_ctr_analysis(property_url, days, filters_json=filters_json)
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/content-decay/{property_url:path}")
+async def gsc_content_decay(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Pages losing clicks vs the previous period."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_content_decay(property_url, days, filters_json=filters_json)
+        return {"pages": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/cannibalization/{property_url:path}")
+async def gsc_cannibalization(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Queries where 2+ of your pages compete in search results."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_cannibalization(property_url, days, filters_json=filters_json)
+        return {"queries": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/query-insights/{property_url:path}")
+async def gsc_query_insights(
+    property_url: str, days: int = 28, history_months: int = 6, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Per-query deltas + monthly time-series (powers user-defined Topic Clusters)."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_query_insights(property_url, days, history_months, filters_json=filters_json)
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/topic-clusters/{property_url:path}")
+async def gsc_topic_clusters(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Group queries into topic clusters with aggregate metrics."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_topic_clusters(property_url, days, filters_json=filters_json)
+        return {"clusters": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+# ============= Google Analytics (GA4) Routes =============
+# GA4 reuses the SAME stored Google refresh token as GSC — the OAuth consent now
+# also requests the analytics.readonly scope, so one sign-in covers both. Users who
+# connected before this change must reconnect once to grant Analytics access.
+
+@router.get("/auth/ga4/properties")
+async def get_ga4_properties(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List the GA4 properties accessible by the user."""
+    from services.analytics_service import get_user_ga4_properties
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Google account not connected. Please connect your Google account first."
+        )
+    try:
+        properties = await get_user_ga4_properties(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        return {"properties": properties}
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg or "insufficient" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No Analytics access. Reconnect your Google account to grant Analytics permission."
+            )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 properties: {error_msg}")
+
+
+@router.get("/auth/ga4/overview/{property_id}")
+async def get_ga4_overview(
+    property_id: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get headline GA4 metrics, daily time-series, deltas and traffic-by-channel."""
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Google account not connected. Please connect your Google account first."
+        )
+    try:
+        service = AnalyticsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        overview = await service.get_overview(property_id, days)
+        return overview
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg or "insufficient" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No Analytics access for this property. Reconnect Google or check property permissions."
+            )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 overview: {error_msg}")
+
+
+@router.post("/auth/ga4/cache/invalidate")
+async def invalidate_ga4_cache(current_user: UserInfo = Depends(get_current_user)):
+    """Force a fresh fetch of GA4 data for the current user."""
+    from services.analytics_service import invalidate_cache
+    invalidate_cache(user_email=current_user.email)
+    return {"message": "GA4 cache cleared. Next request will fetch fresh data."}
+
+
+# ============= SE Ranking Routes =============
+# SE Ranking uses TBS's single account API key (settings.SERANKING_API_KEY), shared
+# across the tool — no per-user OAuth. These power true keyword rank tracking.
+
+@router.get("/api/seranking/status")
+async def seranking_status(current_user: UserInfo = Depends(get_current_user)):
+    """Quick check that the SE Ranking key is configured and valid (lists 1 project)."""
+    from services.seranking_service import SERankingService
+    if not settings.SERANKING_API_KEY:
+        return {"configured": False, "message": "SERANKING_API_KEY not set."}
+    try:
+        projects = await SERankingService().get_projects()
+        return {"configured": True, "connected": True, "project_count": len(projects)}
+    except Exception as e:
+        return {"configured": True, "connected": False, "error": str(e)}
+
+
+@router.get("/api/seranking/projects")
+async def seranking_projects(current_user: UserInfo = Depends(get_current_user)):
+    """List SE Ranking projects (tracked client sites)."""
+    from services.seranking_service import SERankingService
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured (SERANKING_API_KEY missing).")
+    try:
+        projects = await SERankingService().get_projects()
+        return {"projects": projects, "total": len(projects)}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch SE Ranking projects: {str(e)}")
+
+
+@router.get("/api/seranking/positions/{site_id}")
+async def seranking_positions(
+    site_id: int,
+    days: int = 30,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Get keyword positions + summary for one SE Ranking project."""
+    from services.seranking_service import SERankingService
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured (SERANKING_API_KEY missing).")
+    try:
+        data = await SERankingService().get_keyword_positions(site_id, days)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch SE Ranking positions: {str(e)}")
+
+
+# ============= AI Monthly Report Routes =============
+
+@router.post("/api/report/generate/{site_id}")
+async def generate_report(
+    site_id: int,
+    days: int = 30,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate an AI monthly SEO report for a SE Ranking project, and save it as a Document."""
+    from services.report_generator import generate_monthly_report
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Anthropic (Claude) API key not configured — needed to write reports.")
+    try:
+        result = await generate_monthly_report(site_id, days)
+
+        # Persist as a Document so it shows up in the existing Documents UI
+        doc_id = str(uuid.uuid4())
+        new_doc = Document(
+            id=doc_id,
+            user_email=current_user.email,
+            title=f"Monthly SEO Report — {result['domain']}",
+            content_type="SEO Report",
+            content={
+                "article_markdown": result["report_markdown"],
+                "report_context": result["context"],
+            },
+        )
+        db.add(new_doc)
+        db.commit()
+        db.refresh(new_doc)
+
+        return {"status": "success", "document_id": doc_id, **result}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate report: {str(e)}")
+
+
 # ============= Analysis Routes =============
 
 @router.get("/api/progress/{analysis_id}")

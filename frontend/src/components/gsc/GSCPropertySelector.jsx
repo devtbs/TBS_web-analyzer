@@ -14,13 +14,18 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 
 /* ─── Small helpers ───────────────────────────────────────────────── */
-const getDomain = (url) => {
-    try { return new URL(url).hostname.replace('www.', ''); }
-    catch { return url; }
+// Domain properties arrive as "sc-domain:example.com" (no scheme), which breaks
+// `new URL()`. Normalize to a bare hostname for both display and favicon lookup.
+const getDomain = (property) => {
+    const raw = typeof property === 'string' ? property : (property?.display || property?.url || '');
+    const cleaned = raw.replace(/^sc-domain:/, '');
+    try { return new URL(cleaned).hostname.replace('www.', ''); }
+    catch { return cleaned.replace('www.', ''); }
 };
 
-const getFaviconUrl = (url) => {
-    try { return `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(url)}`; }
+const getFaviconUrl = (property) => {
+    const domain = getDomain(property);
+    try { return `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(domain)}`; }
     catch { return null; }
 };
 
@@ -124,7 +129,9 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
             // so users can connect a *different* Google account than the one they're logged in with.
             const client = window.google.accounts.oauth2.initCodeClient({
                 client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-                scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+                // Request BOTH Search Console and Analytics (GA4) read access in one
+                // consent, so a single connection powers both data sources.
+                scope: 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly',
                 ux_mode: 'popup',
                 prompt: 'select_account',   // ← CRITICAL: always show account chooser
                 callback: async (response) => {
@@ -218,7 +225,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         navigate(`/select-pages?property=${encodeURIComponent(property.url)}`);
     };
 
-    const filtered = properties.filter(p => p.url.toLowerCase().includes(searchQuery.toLowerCase()));
+    const filtered = properties.filter(p => (p.display || p.url).toLowerCase().includes(searchQuery.toLowerCase()));
 
     /* ── Loading ── */
     if (isCheckingStatus) return <FullSkeleton />;
@@ -344,9 +351,10 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                         <AnimatePresence>
                             {filtered.map((property, idx) => {
                                 const isSelected = selectedProperties.some(p => p.url === property.url);
-                                const domain = getDomain(property.url);
-                                const faviconUrl = getFaviconUrl(property.url);
+                                const domain = getDomain(property);
+                                const faviconUrl = getFaviconUrl(property);
                                 const permLabel = property.permission_level?.replace(/_/g, ' ');
+                                const isDomainProp = property.type === 'domain';
 
                                 return (
                                     <motion.div
@@ -373,7 +381,14 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
 
                                             {/* Domain & Permission */}
                                             <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-center">
-                                                <p className="text-base font-bold text-slate-800 truncate">{domain}</p>
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <p className="text-base font-bold text-slate-800 truncate">{domain}</p>
+                                                    {isDomainProp && (
+                                                        <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                                            Domain
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-sm font-medium text-slate-500 capitalize hidden sm:block truncate">{permLabel}</p>
                                                 
                                                 <div className="hidden lg:flex items-center gap-2 text-emerald-500 font-bold text-sm">

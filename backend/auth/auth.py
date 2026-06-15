@@ -41,9 +41,10 @@ async def verify_google_token(token: str) -> UserInfo:
     """Verify Google OAuth token"""
     try:
         idinfo = id_token.verify_oauth2_token(
-            token, 
-            requests.Request(), 
-            settings.GOOGLE_CLIENT_ID
+            token,
+            requests.Request(),
+            settings.GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10,  # tolerate minor clock drift (e.g. Docker VM on Windows)
         )
         
         if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
@@ -55,6 +56,7 @@ async def verify_google_token(token: str) -> UserInfo:
             picture=idinfo.get('picture')
         )
     except Exception as e:
+        print(f"🔴 Google token verification failed: {type(e).__name__}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid Google token: {str(e)}"
