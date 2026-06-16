@@ -109,6 +109,7 @@ const NAV_GROUPS = [
         section: 'Writing',
         items: [
             { label: 'Documents',    path: '/documents',    icon: DocumentTextIcon },
+            { label: 'AI Presentation', path: '/presentation', icon: PresentationChartLineIcon },
         ],
     },
 ];

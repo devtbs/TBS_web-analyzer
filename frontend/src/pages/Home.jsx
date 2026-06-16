@@ -6,7 +6,7 @@ import GoogleAuth from '../components/auth/GoogleAuth';
 import { ChartBarIcon } from '@heroicons/react/24/outline';
 
 const Home = () => {
-    const { user, loading } = useAuth();
+    const { user, loading, devLogin } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -58,6 +58,18 @@ const Home = () => {
                 <div className="w-full flex justify-center pb-2">
                     <GoogleAuth />
                 </div>
+
+                {import.meta.env.DEV && (
+                    <button
+                        onClick={async () => {
+                            try { await devLogin(); navigate('/presentation', { replace: true }); }
+                            catch { /* dev-login only works when backend ENVIRONMENT=development */ }
+                        }}
+                        className="mt-4 text-xs font-semibold text-slate-400 hover:text-[#26397A] transition-colors"
+                    >
+                        Dev login (localhost only)
+                    </button>
+                )}
             </motion.div>
         </div>
     );

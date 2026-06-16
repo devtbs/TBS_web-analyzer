@@ -29,6 +29,7 @@ import TopicClustersPage from './pages/TopicClustersPage';
 import GlobalReports from './pages/GlobalReports';
 import Documents from './pages/Documents';
 import DocumentDetail from './pages/DocumentDetail';
+import Presentation from './pages/Presentation';
 
 /* ── Protected Route ─────────────────────────────────────── */
 /* ── Persistent Layout for Authenticated Pages ─────────── */
@@ -172,6 +173,7 @@ function AppContent() {
                     <Route path="/results/:analysisId" element={<Results />} />
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/documents/:documentId" element={<DocumentDetail />} />
+                    <Route path="/presentation" element={<Presentation />} />
                 </Route>
             </Routes>
             

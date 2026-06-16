@@ -23,6 +23,17 @@ class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
     SERANKING_API_KEY: str = ""  # SE Ranking Project API — TBS's account key (API > Dashboard)
+    SLIDESPEAK_API_KEY: str = ""  # SlideSpeak API — AI presentation generation (slidespeak.co)
+
+    # Additional provider keys (optional)
+    QWEN_API_KEY: str = ""        # Alibaba Qwen
+    KIMI_API_KEY: str = ""        # Moonshot Kimi
+    BYTEDANCE_API_KEY: str = ""   # ByteDance / Doubao
+    REPLICATE_API_KEY: str = ""   # Replicate
+    XAI_API_KEY: str = ""         # xAI (Grok)
+    MINIMAX_API_KEY: str = ""     # MiniMax
+    PEXELS_API_KEY: str = ""      # Pexels stock images
+    PIXABAY_API_KEY: str = ""     # Pixabay stock images
     
     # App Settings
     ENVIRONMENT: str = "development"
