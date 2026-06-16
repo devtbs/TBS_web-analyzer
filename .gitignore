@@ -6,6 +6,7 @@
 # Dependencies
 node_modules/
 venv/
+.venv/
 env/
 __pycache__/
 *.pyc
@@ -27,3 +28,14 @@ yarn-error.log*
 # Build outputs
 dist/
 build/
+
+# Generated presentations & QA renders (scratch, not source)
+demo_deck/
+backend/*.pptx
+backend/*.pdf
+backend/slide-*.jpg
+backend/seo-*.jpg
+backend/real-*.jpg
+
+# User-editable AI prompt (runtime config, not source)
+backend/prompt_config.json

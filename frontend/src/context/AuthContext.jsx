@@ -86,6 +86,17 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Local development only: sign in without Google OAuth (backend gates this to
+    // ENVIRONMENT=development). Lets the app be used on localhost.
+    const devLogin = async () => {
+        const response = await api.post('/auth/dev-login', {});
+        const { access_token, user: userData } = response.data;
+        localStorage.setItem('access_token', access_token);
+        localStorage.setItem('user_data', JSON.stringify(userData));
+        setUser(userData);
+        return userData;
+    };
+
     const logout = async () => {
         try {
             await api.post('/auth/logout', {});
@@ -105,6 +116,7 @@ export const AuthProvider = ({ children }) => {
         user,
         loading,
         login,
+        devLogin,
         logout,
     }), [user, loading]);
 

@@ -47,6 +47,23 @@ const PROPERTY_NAV = [
             { label: 'New & Lost Rankings', path: '/seo-analytics/new-lost-rankings',       icon: ArrowTrendingUpIcon },
         ],
     },
+    {
+        section: 'OPTIMIZATION',
+        collapsible: true,
+        items: [
+            { label: 'Striking Distance',   path: '/seo-analytics/striking-distance',  icon: ArrowTrendingUpIcon },
+            { label: 'CTR Analysis',        path: '/seo-analytics/ctr-opportunities',  icon: PresentationChartLineIcon },
+            { label: 'Query Decay',         path: '/seo-analytics/query-decay',        icon: ArrowsUpDownIcon },
+        ],
+    },
+    {
+        section: 'SITE ANALYSIS',
+        collapsible: true,
+        items: [
+            { label: 'Cannibalization',     path: '/seo-analytics/cannibalization',    icon: DocumentDuplicateIcon },
+            { label: 'Topic Clusters',      path: '/seo-analytics/topic-clusters',     icon: RectangleGroupIcon },
+        ],
+    },
 ];
 
 /* ── Helper to read stored property ────────────────────────────── */
@@ -92,6 +109,7 @@ const NAV_GROUPS = [
         section: 'Writing',
         items: [
             { label: 'Documents',    path: '/documents',    icon: DocumentTextIcon },
+            { label: 'AI Presentation', path: '/presentation', icon: PresentationChartLineIcon },
         ],
     },
 ];

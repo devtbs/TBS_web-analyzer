@@ -18,6 +18,12 @@ _TTL_PROPERTIES   =  5 * 60   #  5 min  – property list rarely changes
 _TTL_ANALYTICS    = 15 * 60   # 15 min  – chart / KPI data
 _TTL_PAGES        = 30 * 60   # 30 min  – per-page breakdown is expensive
 
+# Google Search Console finalizes data ~2–3 days behind real time. Querying up to
+# "today" pulls in incomplete partial days and makes our totals read LOW versus the
+# GSC UI (which ends its default range ~3 days ago). We offset every range end by
+# this many days so our numbers match what clients see in Search Console.
+GSC_DATA_LAG_DAYS = 3
+
 def _cache_get(key: tuple):
     """Return cached value if still valid, else None."""
     entry = _CACHE.get(key)
@@ -102,13 +108,21 @@ class GSCService:
 
             for site in site_entries:
                 site_url = site.get('siteUrl')
-                if site_url and not site_url.startswith('sc-domain:'):
-                    properties.append({
-                        'url': site_url,
-                        'permission_level': site.get('permissionLevel'),
-                    })
+                if not site_url:
+                    continue
+                # Include BOTH URL-prefix and Domain (sc-domain:) properties. Domain
+                # properties were previously dropped, which hid traffic for any client
+                # set up that way in GSC. Keep the raw `url` (required for API calls) and
+                # add a human-friendly `display` + a `type` tag for the frontend.
+                is_domain = site_url.startswith('sc-domain:')
+                properties.append({
+                    'url': site_url,
+                    'display': site_url.replace('sc-domain:', '') if is_domain else site_url,
+                    'type': 'domain' if is_domain else 'url-prefix',
+                    'permission_level': site.get('permissionLevel'),
+                })
 
-            logger.info(f"Found {len(properties)} URL prefix properties")
+            logger.info(f"Found {len(properties)} properties ({sum(1 for p in properties if p['type'] == 'domain')} domain, {sum(1 for p in properties if p['type'] == 'url-prefix')} url-prefix)")
             _cache_set(cache_key, properties, _TTL_PROPERTIES)
             return properties
 
@@ -204,7 +218,7 @@ class GSCService:
         try:
             from datetime import datetime, timedelta
 
-            end_date = datetime.now().date()
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
 
             request = {
@@ -254,8 +268,13 @@ class GSCService:
 
             for page_url, data in pages_data.items():
                 if data['queries']:
-                    total_position = sum(q['position'] for q in data['queries'])
-                    data['avg_position'] = round(total_position / len(data['queries']), 1)
+                    # Impression-weighted average position — matches how GSC (and our own
+                    # get_search_analytics) computes it. A plain mean over queries
+                    # over-weights low-impression long-tail terms and disagrees with the
+                    # position shown elsewhere in the app.
+                    total_imp = sum(q['impressions'] for q in data['queries'])
+                    weighted_pos = sum(q['position'] * q['impressions'] for q in data['queries'])
+                    data['avg_position'] = round(weighted_pos / total_imp, 1) if total_imp else 0
                     data['queries'].sort(key=lambda x: x['clicks'], reverse=True)
 
             pages_list = list(pages_data.values())
@@ -336,7 +355,7 @@ class GSCService:
                 }
 
             # ── Current period ──────────────────────────────────────────
-            end_date = datetime.now().date()
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
             current = _fetch_period(start_date, end_date)
 
@@ -415,7 +434,7 @@ class GSCService:
         try:
             from datetime import datetime, timedelta
 
-            end_date = datetime.now().date()
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
@@ -488,7 +507,7 @@ class GSCService:
     
         try:
             from datetime import datetime, timedelta
-            end_date   = datetime.now().date()
+            end_date   = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
             prev_end   = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
@@ -560,7 +579,7 @@ class GSCService:
 
         try:
             from datetime import datetime, timedelta
-            end_date   = datetime.now().date()
+            end_date   = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
             prev_end   = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
@@ -636,7 +655,7 @@ class GSCService:
         try:
             from datetime import datetime, timedelta
 
-            end_date = datetime.now().date()
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
@@ -718,7 +737,7 @@ class GSCService:
         try:
             from datetime import datetime, timedelta
 
-            end_date = datetime.now().date()
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
 
             # --- Query-level rows (date × query) to count unique queries/day and position buckets ---
@@ -830,7 +849,7 @@ class GSCService:
         try:
             from datetime import datetime, timedelta
 
-            end_date   = datetime.now().date()
+            end_date   = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
             prev_end   = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
@@ -920,6 +939,462 @@ class GSCService:
             logger.error(f"Unexpected error fetching new_lost_rankings: {str(e)}")
             raise Exception(f"Failed to fetch new/lost rankings: {str(e)}")
 
+    # ─────────────────────────────────────────────────────────────────────
+    #  GSC Wizard-style insight tools (all computed from existing GSC data)
+    # ─────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _expected_ctr(position: float) -> float:
+        """Typical organic click-through rate for a given average position (0–1).
+        Industry-standard benchmark curve; used to spot under-performing CTR."""
+        p = round(position)
+        table = {
+            1: 0.281, 2: 0.158, 3: 0.110, 4: 0.080, 5: 0.061,
+            6: 0.047, 7: 0.038, 8: 0.031, 9: 0.027, 10: 0.024,
+        }
+        if p <= 0:
+            return 0.281
+        if p in table:
+            return table[p]
+        if p <= 20:
+            return 0.015
+        return 0.005
+
+    async def _fetch_query_page_rows(self, property_url: str, days: int, filters_json: str = None) -> List[Dict]:
+        """Fetch raw query×page rows (clicks/impressions/ctr/position) for the period."""
+        from datetime import datetime, timedelta
+        end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+        req = {
+            'startDate': start_date.strftime('%Y-%m-%d'),
+            'endDate': end_date.strftime('%Y-%m-%d'),
+            'dimensions': ['query', 'page'],
+            'rowLimit': 25000,
+            'dataState': 'all',
+        }
+        self._apply_filter(req, filters_json)
+        resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+        rows = []
+        for row in resp.get('rows', []):
+            rows.append({
+                'query': row['keys'][0],
+                'page': row['keys'][1],
+                'clicks': row.get('clicks', 0),
+                'impressions': row.get('impressions', 0),
+                'ctr': row.get('ctr', 0),
+                'position': row.get('position', 0),
+            })
+        return rows
+
+    async def get_striking_distance(self, property_url: str, days: int = 28,
+                                    min_pos: float = 4, max_pos: float = 20,
+                                    filters_json: str = None) -> List[Dict]:
+        """Keywords ranking just off page 1 (positions 4–20) — the quickest wins.
+        Returns each with its page, metrics, and estimated extra clicks if pushed to top 3."""
+        cache_key = (self.user_email, 'striking', property_url, days, min_pos, max_pos, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            rows = await self._fetch_query_page_rows(property_url, days, filters_json)
+            results = []
+            for r in rows:
+                pos = r['position']
+                if min_pos <= pos <= max_pos and r['impressions'] > 0:
+                    target_ctr = self._expected_ctr(3)
+                    potential = max(0, round(r['impressions'] * target_ctr) - r['clicks'])
+                    results.append({
+                        'query': r['query'],
+                        'page': r['page'].rstrip('/'),
+                        'position': round(pos, 1),
+                        'clicks': r['clicks'],
+                        'impressions': r['impressions'],
+                        'ctr': round(r['ctr'] * 100, 2),
+                        'potential_clicks': potential,
+                    })
+            results.sort(key=lambda x: x['impressions'], reverse=True)
+            _cache_set(cache_key, results, _TTL_ANALYTICS)
+            return results
+        except Exception as e:
+            logger.error(f"Error fetching striking distance: {str(e)}")
+            raise Exception(f"Failed to fetch striking distance: {str(e)}")
+
+    async def get_ctr_opportunities(self, property_url: str, days: int = 28,
+                                    min_impressions: int = 50, filters_json: str = None) -> List[Dict]:
+        """Queries whose CTR is well below the benchmark for their position —
+        usually a weak title tag / meta description. Ranked by missed clicks."""
+        cache_key = (self.user_email, 'ctr_opps', property_url, days, min_impressions, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            queries = await self.get_top_queries(property_url, days, filters_json)
+            results = []
+            for q in queries:
+                if q['impressions'] < min_impressions:
+                    continue
+                expected = self._expected_ctr(q['position']) * 100  # as %
+                actual = q['ctr']  # already %
+                if expected > 0 and actual < expected * 0.7:  # 30%+ below benchmark
+                    gap = expected - actual
+                    missed = round(q['impressions'] * (gap / 100))
+                    results.append({
+                        'query': q['query'],
+                        'position': q['position'],
+                        'impressions': q['impressions'],
+                        'clicks': q['clicks'],
+                        'actual_ctr': round(actual, 2),
+                        'expected_ctr': round(expected, 2),
+                        'ctr_gap': round(gap, 2),
+                        'missed_clicks': missed,
+                    })
+            results.sort(key=lambda x: x['missed_clicks'], reverse=True)
+            _cache_set(cache_key, results, _TTL_ANALYTICS)
+            return results
+        except Exception as e:
+            logger.error(f"Error fetching CTR opportunities: {str(e)}")
+            raise Exception(f"Failed to fetch CTR opportunities: {str(e)}")
+
+    async def get_ctr_analysis(self, property_url: str, days: int = 28,
+                               filters_json: str = None) -> Dict:
+        """Full CTR analysis: the site's real CTR at each position 1–20 (for the
+        benchmark chart) plus every query with its CTR vs the position benchmark."""
+        cache_key = (self.user_email, 'ctr_analysis', property_url, days, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            queries = await self.get_top_queries(property_url, days, filters_json)
+
+            # Per-position aggregation → the site's own CTR curve (impression-weighted)
+            pos_agg = {p: {'clicks': 0, 'impr': 0} for p in range(1, 21)}
+            out_queries = []
+            for q in queries:
+                p = round(q['position'])
+                if 1 <= p <= 20:
+                    pos_agg[p]['clicks'] += q['clicks']
+                    pos_agg[p]['impr'] += q['impressions']
+                expected = round(self._expected_ctr(q['position']) * 100, 2)
+                out_queries.append({
+                    'query': q['query'],
+                    'position': q['position'],
+                    'ctr': q['ctr'],
+                    'expected_ctr': expected,
+                    'vs_expected': round(q['ctr'] - expected, 2),  # +ve = beating benchmark
+                    'clicks': q['clicks'],
+                    'impressions': q['impressions'],
+                })
+
+            curve = []
+            for p in range(1, 21):
+                a = pos_agg[p]
+                ctr = round(a['clicks'] / a['impr'] * 100, 2) if a['impr'] > 0 else None
+                curve.append({'position': p, 'ctr': ctr, 'impressions': a['impr']})
+
+            out_queries.sort(key=lambda x: x['impressions'], reverse=True)
+            result = {'curve': curve, 'queries': out_queries, 'total': len(out_queries)}
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching CTR analysis: {str(e)}")
+            raise Exception(f"Failed to fetch CTR analysis: {str(e)}")
+
+    async def get_query_decay(self, property_url: str, periods: int = 16,
+                              granularity: str = 'month', filters_json: str = None) -> Dict:
+        """Per-query performance over time, bucketed by month or week, for the
+        Query Decay heatmap. Each query row carries a cell per period with
+        clicks / impressions / position / ctr so the client can shade trends.
+
+        granularity: 'month' (bucket = YYYY-MM) or 'week' (bucket = Monday YYYY-MM-DD).
+        Returns up to `periods` most-recent buckets and the top queries by clicks.
+        """
+        granularity = 'week' if granularity == 'week' else 'month'
+        periods = max(2, min(int(periods or 16), 24))
+        cache_key = (self.user_email, 'query_decay', property_url, periods, granularity, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            from datetime import datetime, timedelta
+            from collections import defaultdict
+
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+
+            # Build one window (key, start, end) per period. We query each window with
+            # dimension ['query'] only — so every window can return up to 25k DISTINCT
+            # queries, instead of burning the row budget on the date dimension.
+            windows = []
+            if granularity == 'week':
+                this_monday = end_date - timedelta(days=end_date.weekday())
+                for i in range(periods):
+                    ws = this_monday - timedelta(weeks=(periods - 1 - i))
+                    we = min(ws + timedelta(days=6), end_date)
+                    windows.append((ws.strftime('%Y-%m-%d'), ws, we))
+            else:
+                starts = [end_date.replace(day=1)]
+                for _ in range(periods - 1):
+                    starts.insert(0, (starts[0] - timedelta(days=1)).replace(day=1))
+                for ms in starts:
+                    nm = ms.replace(year=ms.year + 1, month=1) if ms.month == 12 else ms.replace(month=ms.month + 1)
+                    me = min(nm - timedelta(days=1), end_date)
+                    windows.append((ms.strftime('%Y-%m'), ms, me))
+
+            def _fetch_all(start, end):
+                """All query rows for a window, paginating past the 25k/row cap."""
+                out, start_row = [], 0
+                while True:
+                    req = {
+                        'startDate': start.strftime('%Y-%m-%d'),
+                        'endDate': end.strftime('%Y-%m-%d'),
+                        'dimensions': ['query'], 'rowLimit': 25000,
+                        'startRow': start_row, 'dataState': 'all',
+                    }
+                    self._apply_filter(req, filters_json)
+                    resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+                    batch = resp.get('rows', [])
+                    out.extend(batch)
+                    if len(batch) < 25000 or start_row >= 225000:
+                        break
+                    start_row += 25000
+                return out
+
+            periods_list = [w[0] for w in windows]
+            overall_start = windows[0][1]  # earliest period start
+
+            # 1) Query universe + true period totals. One long window clears far more
+            #    queries from Google's per-request anonymization than month-by-month does.
+            totals = {}
+            for row in _fetch_all(overall_start, end_date):
+                q = row['keys'][0]
+                totals[q] = {'clicks': row.get('clicks', 0), 'impressions': row.get('impressions', 0)}
+
+            # 2) Per-period cell values (sparser — rare queries hide in short windows)
+            cells_map = defaultdict(dict)  # query -> period_key -> cell
+            for key, ws, we in windows:
+                for row in _fetch_all(ws, we):
+                    q = row['keys'][0]
+                    clk = row.get('clicks', 0)
+                    imp = row.get('impressions', 0)
+                    cells_map[q][key] = {
+                        'period': key,
+                        'clicks': clk,
+                        'impressions': imp,
+                        'ctr': round(clk / imp * 100, 2) if imp else 0,
+                        'position': round(row.get('position', 0), 1) if imp else None,
+                    }
+
+            # 3) Build rows from the full universe; fill cells where each month had data
+            queries_out = []
+            for q, t in totals.items():
+                bmap = cells_map.get(q, {})
+                cells = [bmap.get(key, {'period': key, 'clicks': 0, 'impressions': 0, 'ctr': 0, 'position': None})
+                         for key in periods_list]
+                queries_out.append({
+                    'query': q,
+                    'clicks': t['clicks'],
+                    'impressions': t['impressions'],
+                    'cells': cells,
+                })
+
+            queries_out.sort(key=lambda x: x['clicks'], reverse=True)
+            result = {'queries': queries_out, 'periods': periods_list, 'granularity': granularity}
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching query decay: {str(e)}")
+            raise Exception(f"Failed to fetch query decay: {str(e)}")
+
+    async def get_cannibalization(self, property_url: str, days: int = 28,
+                                  min_impressions: int = 10, filters_json: str = None) -> List[Dict]:
+        """Queries where 2+ of your pages compete in search, splitting clicks.
+        Returns each such query with its competing pages."""
+        cache_key = (self.user_email, 'cannibal', property_url, days, min_impressions, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            rows = await self._fetch_query_page_rows(property_url, days, filters_json)
+            by_query: Dict[str, List[Dict]] = {}
+            for r in rows:
+                if r['impressions'] < min_impressions:
+                    continue
+                by_query.setdefault(r['query'], []).append({
+                    'page': r['page'].rstrip('/'),
+                    'clicks': r['clicks'],
+                    'impressions': r['impressions'],
+                    'position': round(r['position'], 1),
+                    'ctr': round(r['ctr'] * 100, 2),
+                })
+            results = []
+            for query, pages in by_query.items():
+                if len(pages) < 2:
+                    continue
+                pages.sort(key=lambda x: x['impressions'], reverse=True)
+                results.append({
+                    'query': query,
+                    'page_count': len(pages),
+                    'total_clicks': sum(p['clicks'] for p in pages),
+                    'total_impressions': sum(p['impressions'] for p in pages),
+                    'pages': pages,
+                })
+            results.sort(key=lambda x: x['total_impressions'], reverse=True)
+            _cache_set(cache_key, results, _TTL_ANALYTICS)
+            return results
+        except Exception as e:
+            logger.error(f"Error fetching cannibalization: {str(e)}")
+            raise Exception(f"Failed to fetch cannibalization: {str(e)}")
+
+    async def get_topic_clusters(self, property_url: str, days: int = 28,
+                                 filters_json: str = None) -> List[Dict]:
+        """Group queries into topic clusters by their key term and aggregate metrics.
+        Lightweight whitespace-token clustering (best for space-delimited languages)."""
+        cache_key = (self.user_email, 'clusters', property_url, days, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            queries = await self.get_top_queries(property_url, days, filters_json)
+            STOP = {'the', 'a', 'an', 'and', 'or', 'of', 'for', 'to', 'in', 'on', 'is',
+                    'how', 'what', 'best', 'with', 'my', 'your', 'near', 'me', 'vs'}
+
+            def _key_term(q: str) -> str:
+                tokens = [t for t in q.lower().split() if t and t not in STOP]
+                if not tokens:
+                    return q.strip().lower() or '(other)'
+                # Pick the longest token as the topic anchor
+                return max(tokens, key=len)
+
+            clusters: Dict[str, Dict] = {}
+            for q in queries:
+                key = _key_term(q['query'])
+                c = clusters.setdefault(key, {
+                    'topic': key, 'queries': [], 'clicks': 0, 'impressions': 0,
+                    '_pos_weight': 0.0,
+                })
+                c['queries'].append({
+                    'query': q['query'], 'clicks': q['clicks'],
+                    'impressions': q['impressions'], 'position': q['position'],
+                })
+                c['clicks'] += q['clicks']
+                c['impressions'] += q['impressions']
+                c['_pos_weight'] += q['position'] * max(q['impressions'], 1)
+
+            results = []
+            for c in clusters.values():
+                if len(c['queries']) < 2:  # only show real clusters
+                    continue
+                total_imp = max(c['impressions'], 1)
+                c['queries'].sort(key=lambda x: x['clicks'], reverse=True)
+                results.append({
+                    'topic': c['topic'],
+                    'query_count': len(c['queries']),
+                    'clicks': c['clicks'],
+                    'impressions': c['impressions'],
+                    'avg_position': round(c['_pos_weight'] / total_imp, 1),
+                    'queries': c['queries'][:50],
+                })
+            results.sort(key=lambda x: x['clicks'], reverse=True)
+            _cache_set(cache_key, results, _TTL_ANALYTICS)
+            return results
+        except Exception as e:
+            logger.error(f"Error fetching topic clusters: {str(e)}")
+            raise Exception(f"Failed to fetch topic clusters: {str(e)}")
+
+    async def get_query_insights(self, property_url: str, days: int = 28,
+                                 history_months: int = 6, filters_json: str = None) -> Dict:
+        """Per-query metrics with period-over-period deltas AND a monthly time-series.
+        Powers user-defined Topic Cluster analysis (clusters matched client-side)."""
+        cache_key = (self.user_email, 'query_insights', property_url, days, history_months, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            from datetime import datetime, timedelta
+            from collections import defaultdict
+
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+            start_date = end_date - timedelta(days=days)
+            prev_end = start_date - timedelta(days=1)
+            prev_start = prev_end - timedelta(days=days)
+
+            def _fetch_query(start, end):
+                req = {
+                    'startDate': start.strftime('%Y-%m-%d'),
+                    'endDate': end.strftime('%Y-%m-%d'),
+                    'dimensions': ['query'], 'rowLimit': 25000, 'dataState': 'all',
+                }
+                self._apply_filter(req, filters_json)
+                resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+                out = {}
+                for row in resp.get('rows', []):
+                    out[row['keys'][0]] = {
+                        'clicks': row.get('clicks', 0),
+                        'impressions': row.get('impressions', 0),
+                        'ctr': round(row.get('ctr', 0) * 100, 2),
+                        'position': round(row.get('position', 0), 1),
+                    }
+                return out
+
+            current = _fetch_query(start_date, end_date)
+            previous = _fetch_query(prev_start, prev_end)
+
+            # ── Monthly series (date × query) over the history window ──
+            first_of_month = end_date.replace(day=1)
+            hist_start = first_of_month
+            for _ in range(max(history_months - 1, 0)):
+                hist_start = (hist_start - timedelta(days=1)).replace(day=1)
+
+            mreq = {
+                'startDate': hist_start.strftime('%Y-%m-%d'),
+                'endDate': end_date.strftime('%Y-%m-%d'),
+                'dimensions': ['date', 'query'], 'rowLimit': 25000, 'dataState': 'all',
+            }
+            self._apply_filter(mreq, filters_json)
+            mresp = self.service.searchanalytics().query(siteUrl=property_url, body=mreq).execute()
+
+            monthly = defaultdict(lambda: defaultdict(lambda: {'clicks': 0, 'impressions': 0, 'pw': 0.0}))
+            months_set = set()
+            for row in mresp.get('rows', []):
+                date_str, q = row['keys'][0], row['keys'][1]
+                ym = date_str[:7]
+                months_set.add(ym)
+                cell = monthly[q][ym]
+                imp = row.get('impressions', 0)
+                cell['clicks'] += row.get('clicks', 0)
+                cell['impressions'] += imp
+                cell['pw'] += row.get('position', 0) * max(imp, 1)
+
+            months = sorted(months_set)
+
+            queries_out = []
+            for q, c in current.items():
+                p = previous.get(q, {})
+                m = monthly.get(q, {})
+                monthly_list = []
+                for ym in months:
+                    cell = m.get(ym)
+                    pos = round(cell['pw'] / cell['impressions'], 1) if (cell and cell['impressions']) else None
+                    monthly_list.append({
+                        'month': ym,
+                        'clicks': cell['clicks'] if cell else 0,
+                        'impressions': cell['impressions'] if cell else 0,
+                        'position': pos,
+                    })
+                queries_out.append({
+                    'query': q,
+                    'clicks': c['clicks'], 'impressions': c['impressions'],
+                    'ctr': c['ctr'], 'position': c['position'],
+                    'prev_clicks': p.get('clicks', 0), 'prev_impressions': p.get('impressions', 0),
+                    'prev_position': p.get('position', 0),
+                    'monthly': monthly_list,
+                })
+
+            result = {'queries': queries_out, 'months': months}
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+        except Exception as e:
+            logger.error(f"Error fetching query insights: {str(e)}")
+            raise Exception(f"Failed to fetch query insights: {str(e)}")
 
 
 async def get_user_properties(stored_token: str, is_refresh_token: bool = False, user_email: str = 'default') -> List[Dict[str, str]]:

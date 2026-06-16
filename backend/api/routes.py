@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Body, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from models.schemas import (
     URLAnalysisRequest, AnalysisResponse, TokenResponse,
@@ -64,6 +64,19 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
         access_token=access_token,
         user=user_info
     )
+
+
+@router.post("/auth/dev-login", response_model=TokenResponse)
+async def dev_login():
+    """Local development only: mint a JWT without Google OAuth so the app is usable
+    on localhost (where Google sign-in isn't configured). Disabled outside development."""
+    if settings.ENVIRONMENT != "development":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    user_info = UserInfo(email="dev@tbs-local", name="Local Dev", picture=None)
+    access_token = create_access_token(
+        data={"sub": user_info.email, "name": user_info.name}
+    )
+    return TokenResponse(access_token=access_token, user=user_info)
 
 
 @router.post("/auth/logout")
@@ -502,6 +515,563 @@ async def get_gsc_new_lost_rankings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch new/lost rankings: {error_msg}"
         )
+
+
+# ============= GSC Insight Tools (Wizard-style) =============
+# All computed from existing Search Console data — no new data source needed.
+
+def _gsc_service_for(db, email):
+    """Helper: build a GSCService from the user's stored token, or raise 404."""
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    gsc_token, is_refresh = get_user_gsc_token(db, email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
+    return GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=email)
+
+
+@router.get("/auth/gsc/striking-distance/{property_url:path}")
+async def gsc_striking_distance(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Keywords at positions 4–20 — the quickest page-1 wins."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_striking_distance(property_url, days, filters_json=filters_json)
+        return {"keywords": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/ctr-opportunities/{property_url:path}")
+async def gsc_ctr_opportunities(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Full CTR analysis: site CTR curve (1–20) + every query vs benchmark."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_ctr_analysis(property_url, days, filters_json=filters_json)
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/query-decay/{property_url:path}")
+async def gsc_query_decay(
+    property_url: str, periods: int = 16, granularity: str = "month", filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Per-query performance over time (month/week buckets) for the decay heatmap."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_query_decay(property_url, periods, granularity, filters_json=filters_json)
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/cannibalization/{property_url:path}")
+async def gsc_cannibalization(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Queries where 2+ of your pages compete in search results."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_cannibalization(property_url, days, filters_json=filters_json)
+        return {"queries": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/query-insights/{property_url:path}")
+async def gsc_query_insights(
+    property_url: str, days: int = 28, history_months: int = 6, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Per-query deltas + monthly time-series (powers user-defined Topic Clusters)."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_query_insights(property_url, days, history_months, filters_json=filters_json)
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+@router.get("/auth/gsc/topic-clusters/{property_url:path}")
+async def gsc_topic_clusters(
+    property_url: str, days: int = 28, filters_json: str = None,
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Group queries into topic clusters with aggregate metrics."""
+    from urllib.parse import unquote
+    property_url = unquote(property_url)
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        data = await service.get_topic_clusters(property_url, days, filters_json=filters_json)
+        return {"clusters": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+# ============= Google Analytics (GA4) Routes =============
+# GA4 reuses the SAME stored Google refresh token as GSC — the OAuth consent now
+# also requests the analytics.readonly scope, so one sign-in covers both. Users who
+# connected before this change must reconnect once to grant Analytics access.
+
+@router.get("/auth/ga4/properties")
+async def get_ga4_properties(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List the GA4 properties accessible by the user."""
+    from services.analytics_service import get_user_ga4_properties
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Google account not connected. Please connect your Google account first."
+        )
+    try:
+        properties = await get_user_ga4_properties(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        return {"properties": properties}
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg or "insufficient" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No Analytics access. Reconnect your Google account to grant Analytics permission."
+            )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 properties: {error_msg}")
+
+
+@router.get("/auth/ga4/overview/{property_id}")
+async def get_ga4_overview(
+    property_id: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get headline GA4 metrics, daily time-series, deltas and traffic-by-channel."""
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Google account not connected. Please connect your Google account first."
+        )
+    try:
+        service = AnalyticsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        overview = await service.get_overview(property_id, days)
+        return overview
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "sufficient permission" in error_msg or "insufficient" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No Analytics access for this property. Reconnect Google or check property permissions."
+            )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 overview: {error_msg}")
+
+
+@router.post("/auth/ga4/cache/invalidate")
+async def invalidate_ga4_cache(current_user: UserInfo = Depends(get_current_user)):
+    """Force a fresh fetch of GA4 data for the current user."""
+    from services.analytics_service import invalidate_cache
+    invalidate_cache(user_email=current_user.email)
+    return {"message": "GA4 cache cleared. Next request will fetch fresh data."}
+
+
+# ============= SE Ranking Routes =============
+# SE Ranking uses TBS's single account API key (settings.SERANKING_API_KEY), shared
+# across the tool — no per-user OAuth. These power true keyword rank tracking.
+
+@router.get("/api/seranking/status")
+async def seranking_status(current_user: UserInfo = Depends(get_current_user)):
+    """Quick check that the SE Ranking key is configured and valid (lists 1 project)."""
+    from services.seranking_service import SERankingService
+    if not settings.SERANKING_API_KEY:
+        return {"configured": False, "message": "SERANKING_API_KEY not set."}
+    try:
+        projects = await SERankingService().get_projects()
+        return {"configured": True, "connected": True, "project_count": len(projects)}
+    except Exception as e:
+        return {"configured": True, "connected": False, "error": str(e)}
+
+
+@router.get("/api/seranking/projects")
+async def seranking_projects(current_user: UserInfo = Depends(get_current_user)):
+    """List SE Ranking projects (tracked client sites)."""
+    from services.seranking_service import SERankingService
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured (SERANKING_API_KEY missing).")
+    try:
+        projects = await SERankingService().get_projects()
+        return {"projects": projects, "total": len(projects)}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch SE Ranking projects: {str(e)}")
+
+
+@router.get("/api/seranking/positions/{site_id}")
+async def seranking_positions(
+    site_id: int,
+    days: int = 30,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Get keyword positions + summary for one SE Ranking project."""
+    from services.seranking_service import SERankingService
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured (SERANKING_API_KEY missing).")
+    try:
+        data = await SERankingService().get_keyword_positions(site_id, days)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch SE Ranking positions: {str(e)}")
+
+
+# ============= AI Monthly Report Routes =============
+
+@router.post("/api/report/generate/{site_id}")
+async def generate_report(
+    site_id: int,
+    days: int = 30,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate an AI monthly SEO report for a SE Ranking project, and save it as a Document."""
+    from services.report_generator import generate_monthly_report
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Anthropic (Claude) API key not configured — needed to write reports.")
+    try:
+        result = await generate_monthly_report(site_id, days)
+
+        # Persist as a Document so it shows up in the existing Documents UI
+        doc_id = str(uuid.uuid4())
+        new_doc = Document(
+            id=doc_id,
+            user_email=current_user.email,
+            title=f"Monthly SEO Report — {result['domain']}",
+            content_type="SEO Report",
+            content={
+                "article_markdown": result["report_markdown"],
+                "report_context": result["context"],
+            },
+        )
+        db.add(new_doc)
+        db.commit()
+        db.refresh(new_doc)
+
+        return {"status": "success", "document_id": doc_id, **result}
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate report: {str(e)}")
+
+
+# ============= Presentation (PPTX) Routes =============
+
+PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+
+@router.get("/api/presentation/sample")
+async def presentation_sample(current_user: UserInfo = Depends(get_current_user)):
+    """Download a branded sample Google Ads deck (placeholder data) — proves the
+    rendering pipeline end-to-end without needing any client data or API key."""
+    from services.presentation_generator import build_deck, sample_deck_data
+    pptx_bytes = build_deck(sample_deck_data())
+    return StreamingResponse(
+        iter([pptx_bytes]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="GoogleAds_Report_SAMPLE.pptx"'},
+    )
+
+
+@router.post("/api/presentation/generate")
+async def presentation_generate(
+    data: dict = Body(...),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Render a branded deck from a normalized deck-data dict and return the .pptx.
+
+    The dict shape matches `presentation_generator.sample_deck_data()`. The content
+    layer (LLM digesting a Looker Studio PDF / SE Ranking data into this shape)
+    plugs in ahead of this route as those integrations come online.
+    """
+    from services.presentation_generator import build_deck
+    try:
+        pptx_bytes = build_deck(data)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Could not render deck — check the data shape: {str(e)}")
+    company = (data.get("company") or "report").replace(" ", "_")
+    return StreamingResponse(
+        iter([pptx_bytes]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="GoogleAds_Report_{company}.pptx"'},
+    )
+
+
+@router.post("/api/presentation/generate/{site_id}")
+async def presentation_generate_from_site(
+    site_id: int,
+    days: int = 30,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Generate a branded SEO deck for a SE Ranking project, built from real data.
+
+    Numbers come straight from SE Ranking; the prose is LLM-written (with a
+    templated fallback if no LLM key is configured).
+    """
+    from services.report_generator import generate_deck
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    try:
+        result = await generate_deck(site_id, days)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to generate deck: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_")
+    return StreamingResponse(
+        iter([result["pptx_bytes"]]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="SEO_Report_{domain}.pptx"'},
+    )
+
+
+@router.post("/api/presentation/ai-generate/{site_id}")
+async def presentation_ai_generate(
+    site_id: int,
+    days: int = 30,
+    length: int = 8,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """AI-designed deck (SlideSpeak) built from real SE Ranking data — the AI
+    composes layouts/visuals, not a fixed template."""
+    from services.report_generator import generate_ai_deck
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    if not settings.SLIDESPEAK_API_KEY:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="SlideSpeak not configured — add SLIDESPEAK_API_KEY to generate AI decks.")
+    try:
+        result = await generate_ai_deck(site_id, days, length=length)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"AI deck generation failed: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_")
+    return StreamingResponse(
+        iter([result["pptx_bytes"]]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="AI_SEO_Report_{domain}.pptx"'},
+    )
+
+
+PDF_MEDIA_TYPE = "application/pdf"
+
+
+@router.post("/api/presentation/ai-deck-from-pdf")
+async def presentation_ai_deck_from_pdf(
+    file: UploadFile = File(...),
+    format: str = Form("pdf"),
+    provider: str = Form("deepseek"),
+    prompt_id: str = Form("default"),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Upload a report PDF → AI extracts its data and designs a deck → download as
+    PDF or PPTX, using the chosen prompt + provider.
+
+    Form fields: file (the PDF), format=pdf|pptx, provider, prompt_id.
+    """
+    from services.ai_deck_service import generate_deck_from_pdf
+    from services.prompt_config import get_prompt_text
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "pptx"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
+    try:
+        result = await generate_deck_from_pdf(pdf_bytes, fmt=fmt, provider=provider, prompt=get_prompt_text(prompt_id))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Deck generation failed: {str(e)}")
+    stem = (file.filename or "report").rsplit(".", 1)[0].replace(" ", "_")[:60]
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([result["file_bytes"]]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Deck_{stem}.{fmt}"'},
+    )
+
+
+@router.get("/api/presentation/ai-providers")
+async def presentation_ai_providers(current_user: UserInfo = Depends(get_current_user)):
+    """Which AI providers are configured (have a key) — for the UI picker."""
+    from services.ai_service import AIService
+    return {"providers": AIService.configured_providers()}
+
+
+@router.get("/api/presentation/prompts")
+async def list_prompts_route(current_user: UserInfo = Depends(get_current_user)):
+    """List selectable prompts (built-in default + saved) and the default's text."""
+    from services.prompt_config import list_prompts, default_prompt
+    return {"prompts": list_prompts(), "default_prompt": default_prompt()}
+
+
+@router.get("/api/presentation/prompts/{prompt_id}")
+async def get_prompt_route(prompt_id: str, current_user: UserInfo = Depends(get_current_user)):
+    """Get one prompt's full text (use 'default' for the built-in)."""
+    from services.prompt_config import get_prompt
+    return get_prompt(prompt_id)
+
+
+@router.post("/api/presentation/prompts")
+async def save_prompt_route(body: dict = Body(...), current_user: UserInfo = Depends(get_current_user)):
+    """Save a prompt. Body: {name, prompt, id?}. With id → update; without → create new.
+    The required HTML output contract is always applied automatically — no need to include it."""
+    from services.prompt_config import upsert_prompt, list_prompts
+    if not (body.get("prompt") or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt text is required.")
+    saved = upsert_prompt(body.get("name", ""), body["prompt"], body.get("id"))
+    return {"status": "saved", "saved": saved, "prompts": list_prompts()}
+
+
+@router.delete("/api/presentation/prompts/{prompt_id}")
+async def delete_prompt_route(prompt_id: str, current_user: UserInfo = Depends(get_current_user)):
+    from services.prompt_config import delete_prompt, list_prompts
+    delete_prompt(prompt_id)
+    return {"status": "deleted", "prompts": list_prompts()}
+
+
+@router.post("/api/presentation/ai-deck-gsc")
+async def presentation_ai_deck_gsc(
+    property: str,
+    format: str = "pdf",
+    days: int = 28,
+    provider: str = "deepseek",
+    prompt_id: str = "default",
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AI-designed organic-search deck for a GSC property (from 'My Sites'),
+    built from the logged-in user's Search Console data. Query: ?property=<url>&format=pdf|pptx&days=N"""
+    from services.report_generator import generate_ai_gsc_deck
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "pptx"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Google Search Console not connected for this account.")
+    try:
+        from services.prompt_config import get_prompt_text
+        prompt = get_prompt_text(prompt_id)
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        result = await generate_ai_gsc_deck(service, property, days, fmt=fmt, provider=provider, prompt=prompt)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"AI deck generation failed: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_").replace("/", "_")
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([result["file_bytes"]]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Report_{domain}.{fmt}"'},
+    )
+
+
+@router.post("/api/presentation/ai-deck/{site_id}")
+async def presentation_ai_html_deck(
+    site_id: int,
+    days: int = 30,
+    format: str = "pdf",
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Free AI-designed deck from real data. The AI writes unique HTML (no fixed
+    template); Chromium renders it to a downloadable file.
+
+    Query: ?format=pdf|pptx. Optional JSON body: {"prompt","brand","structure"}
+    to customise the Abacus-style prompt.
+    """
+    from services.report_generator import generate_ai_html_deck
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "pptx"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free) to generate AI decks.")
+    try:
+        result = await generate_ai_html_deck(
+            site_id, days, fmt=fmt,
+            prompt=body.get("prompt"), brand=body.get("brand"), structure=body.get("structure"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"AI deck generation failed: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_")
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([result["file_bytes"]]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Report_{domain}.{fmt}"'},
+    )
 
 
 # ============= Analysis Routes =============
