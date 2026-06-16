@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Body
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Body, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from models.schemas import (
     URLAnalysisRequest, AnalysisResponse, TokenResponse,
@@ -64,6 +64,19 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
         access_token=access_token,
         user=user_info
     )
+
+
+@router.post("/auth/dev-login", response_model=TokenResponse)
+async def dev_login():
+    """Local development only: mint a JWT without Google OAuth so the app is usable
+    on localhost (where Google sign-in isn't configured). Disabled outside development."""
+    if settings.ENVIRONMENT != "development":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    user_info = UserInfo(email="dev@tbs-local", name="Local Dev", picture=None)
+    access_token = create_access_token(
+        data={"sub": user_info.email, "name": user_info.name}
+    )
+    return TokenResponse(access_token=access_token, user=user_info)
 
 
 @router.post("/auth/logout")
@@ -799,6 +812,266 @@ async def generate_report(
         return {"status": "success", "document_id": doc_id, **result}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate report: {str(e)}")
+
+
+# ============= Presentation (PPTX) Routes =============
+
+PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+
+@router.get("/api/presentation/sample")
+async def presentation_sample(current_user: UserInfo = Depends(get_current_user)):
+    """Download a branded sample Google Ads deck (placeholder data) — proves the
+    rendering pipeline end-to-end without needing any client data or API key."""
+    from services.presentation_generator import build_deck, sample_deck_data
+    pptx_bytes = build_deck(sample_deck_data())
+    return StreamingResponse(
+        iter([pptx_bytes]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": 'attachment; filename="GoogleAds_Report_SAMPLE.pptx"'},
+    )
+
+
+@router.post("/api/presentation/generate")
+async def presentation_generate(
+    data: dict = Body(...),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Render a branded deck from a normalized deck-data dict and return the .pptx.
+
+    The dict shape matches `presentation_generator.sample_deck_data()`. The content
+    layer (LLM digesting a Looker Studio PDF / SE Ranking data into this shape)
+    plugs in ahead of this route as those integrations come online.
+    """
+    from services.presentation_generator import build_deck
+    try:
+        pptx_bytes = build_deck(data)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Could not render deck — check the data shape: {str(e)}")
+    company = (data.get("company") or "report").replace(" ", "_")
+    return StreamingResponse(
+        iter([pptx_bytes]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="GoogleAds_Report_{company}.pptx"'},
+    )
+
+
+@router.post("/api/presentation/generate/{site_id}")
+async def presentation_generate_from_site(
+    site_id: int,
+    days: int = 30,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Generate a branded SEO deck for a SE Ranking project, built from real data.
+
+    Numbers come straight from SE Ranking; the prose is LLM-written (with a
+    templated fallback if no LLM key is configured).
+    """
+    from services.report_generator import generate_deck
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    try:
+        result = await generate_deck(site_id, days)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to generate deck: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_")
+    return StreamingResponse(
+        iter([result["pptx_bytes"]]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="SEO_Report_{domain}.pptx"'},
+    )
+
+
+@router.post("/api/presentation/ai-generate/{site_id}")
+async def presentation_ai_generate(
+    site_id: int,
+    days: int = 30,
+    length: int = 8,
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """AI-designed deck (SlideSpeak) built from real SE Ranking data — the AI
+    composes layouts/visuals, not a fixed template."""
+    from services.report_generator import generate_ai_deck
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    if not settings.SLIDESPEAK_API_KEY:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="SlideSpeak not configured — add SLIDESPEAK_API_KEY to generate AI decks.")
+    try:
+        result = await generate_ai_deck(site_id, days, length=length)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"AI deck generation failed: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_")
+    return StreamingResponse(
+        iter([result["pptx_bytes"]]),
+        media_type=PPTX_MEDIA_TYPE,
+        headers={"Content-Disposition": f'attachment; filename="AI_SEO_Report_{domain}.pptx"'},
+    )
+
+
+PDF_MEDIA_TYPE = "application/pdf"
+
+
+@router.post("/api/presentation/ai-deck-from-pdf")
+async def presentation_ai_deck_from_pdf(
+    file: UploadFile = File(...),
+    format: str = Form("pdf"),
+    provider: str = Form("deepseek"),
+    prompt_id: str = Form("default"),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Upload a report PDF → AI extracts its data and designs a deck → download as
+    PDF or PPTX, using the chosen prompt + provider.
+
+    Form fields: file (the PDF), format=pdf|pptx, provider, prompt_id.
+    """
+    from services.ai_deck_service import generate_deck_from_pdf
+    from services.prompt_config import get_prompt_text
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "pptx"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
+    pdf_bytes = await file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
+    try:
+        result = await generate_deck_from_pdf(pdf_bytes, fmt=fmt, provider=provider, prompt=get_prompt_text(prompt_id))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Deck generation failed: {str(e)}")
+    stem = (file.filename or "report").rsplit(".", 1)[0].replace(" ", "_")[:60]
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([result["file_bytes"]]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Deck_{stem}.{fmt}"'},
+    )
+
+
+@router.get("/api/presentation/ai-providers")
+async def presentation_ai_providers(current_user: UserInfo = Depends(get_current_user)):
+    """Which AI providers are configured (have a key) — for the UI picker."""
+    from services.ai_service import AIService
+    return {"providers": AIService.configured_providers()}
+
+
+@router.get("/api/presentation/prompts")
+async def list_prompts_route(current_user: UserInfo = Depends(get_current_user)):
+    """List selectable prompts (built-in default + saved) and the default's text."""
+    from services.prompt_config import list_prompts, default_prompt
+    return {"prompts": list_prompts(), "default_prompt": default_prompt()}
+
+
+@router.get("/api/presentation/prompts/{prompt_id}")
+async def get_prompt_route(prompt_id: str, current_user: UserInfo = Depends(get_current_user)):
+    """Get one prompt's full text (use 'default' for the built-in)."""
+    from services.prompt_config import get_prompt
+    return get_prompt(prompt_id)
+
+
+@router.post("/api/presentation/prompts")
+async def save_prompt_route(body: dict = Body(...), current_user: UserInfo = Depends(get_current_user)):
+    """Save a prompt. Body: {name, prompt, id?}. With id → update; without → create new.
+    The required HTML output contract is always applied automatically — no need to include it."""
+    from services.prompt_config import upsert_prompt, list_prompts
+    if not (body.get("prompt") or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt text is required.")
+    saved = upsert_prompt(body.get("name", ""), body["prompt"], body.get("id"))
+    return {"status": "saved", "saved": saved, "prompts": list_prompts()}
+
+
+@router.delete("/api/presentation/prompts/{prompt_id}")
+async def delete_prompt_route(prompt_id: str, current_user: UserInfo = Depends(get_current_user)):
+    from services.prompt_config import delete_prompt, list_prompts
+    delete_prompt(prompt_id)
+    return {"status": "deleted", "prompts": list_prompts()}
+
+
+@router.post("/api/presentation/ai-deck-gsc")
+async def presentation_ai_deck_gsc(
+    property: str,
+    format: str = "pdf",
+    days: int = 28,
+    provider: str = "deepseek",
+    prompt_id: str = "default",
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AI-designed organic-search deck for a GSC property (from 'My Sites'),
+    built from the logged-in user's Search Console data. Query: ?property=<url>&format=pdf|pptx&days=N"""
+    from services.report_generator import generate_ai_gsc_deck
+    from services.gsc_service import GSCService
+    from utils.user_manager import get_user_gsc_token
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "pptx"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
+    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not gsc_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Google Search Console not connected for this account.")
+    try:
+        from services.prompt_config import get_prompt_text
+        prompt = get_prompt_text(prompt_id)
+        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        result = await generate_ai_gsc_deck(service, property, days, fmt=fmt, provider=provider, prompt=prompt)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"AI deck generation failed: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_").replace("/", "_")
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([result["file_bytes"]]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Report_{domain}.{fmt}"'},
+    )
+
+
+@router.post("/api/presentation/ai-deck/{site_id}")
+async def presentation_ai_html_deck(
+    site_id: int,
+    days: int = 30,
+    format: str = "pdf",
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+):
+    """Free AI-designed deck from real data. The AI writes unique HTML (no fixed
+    template); Chromium renders it to a downloadable file.
+
+    Query: ?format=pdf|pptx. Optional JSON body: {"prompt","brand","structure"}
+    to customise the Abacus-style prompt.
+    """
+    from services.report_generator import generate_ai_html_deck
+    fmt = (format or "pdf").lower()
+    if fmt not in ("pdf", "pptx"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    if not settings.SERANKING_API_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SE Ranking not configured.")
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free) to generate AI decks.")
+    try:
+        result = await generate_ai_html_deck(
+            site_id, days, fmt=fmt,
+            prompt=body.get("prompt"), brand=body.get("brand"), structure=body.get("structure"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"AI deck generation failed: {str(e)}")
+    domain = (result["domain"] or "report").replace(" ", "_")
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([result["file_bytes"]]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Report_{domain}.{fmt}"'},
+    )
 
 
 # ============= Analysis Routes =============

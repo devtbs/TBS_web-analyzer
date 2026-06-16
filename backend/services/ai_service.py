@@ -5,6 +5,14 @@ import json
 import asyncio
 
 
+# OpenAI-compatible providers the user can choose from. Each deck-writing model
+# is reached through the same chat-completions API, just a different base_url/model.
+AI_PROVIDERS = {
+    "deepseek": {"key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com",
+                 "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8000},
+}
+
+
 class AIService:
     """AI service for intelligent content analysis"""
     
@@ -60,7 +68,45 @@ class AIService:
         return "".join(
             block.text for block in message.content if getattr(block, "type", None) == "text"
         )
-    
+
+    async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
+                                    provider: str = "deepseek") -> str:
+        """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
+        OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations."""
+        cfg = AI_PROVIDERS.get(provider)
+        if not cfg:
+            raise ValueError(f"Unknown AI provider: {provider}")
+        api_key = getattr(settings, cfg["key"], "")
+        if not api_key:
+            raise ValueError(f"{cfg['label']} API key not configured ({cfg['key']}).")
+
+        kwargs = {"api_key": api_key}
+        if cfg["base_url"]:
+            kwargs["base_url"] = cfg["base_url"]
+        client = AsyncOpenAI(**kwargs)
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+
+        response = await client.chat.completions.create(
+            model=cfg["model"],
+            messages=messages,
+            temperature=0.8,
+            max_tokens=cfg.get("max_tokens", 8000),
+        )
+        return response.choices[0].message.content
+
+    @staticmethod
+    def configured_providers() -> list:
+        """List providers that have an API key set, for the UI picker."""
+        out = []
+        for pid, cfg in AI_PROVIDERS.items():
+            if getattr(settings, cfg["key"], ""):
+                out.append({"id": pid, "label": cfg["label"]})
+        return out
+
     async def analyze_with_groq(self, prompt: str, system_prompt: str = None) -> str:
         """Analyze content using Groq (fast, free tier available)"""
         if not self.groq_client:
