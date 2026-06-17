@@ -13,7 +13,9 @@ The AI designs the slides (not a fixed template); we only render its HTML to a f
 from __future__ import annotations
 
 import logging
+import re
 from io import BytesIO
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from services.ai_service import ai_service
@@ -224,6 +226,37 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
 
 # ---- Rendering (headless Chromium via Playwright) --------------------------
+_PLOTLY_SRC = None
+
+
+def _plotly_source() -> str:
+    """Load the bundled Plotly library once (backend/assets/plotly.min.js)."""
+    global _PLOTLY_SRC
+    if _PLOTLY_SRC is None:
+        f = Path(__file__).resolve().parent.parent / "assets" / "plotly.min.js"
+        try:
+            _PLOTLY_SRC = f.read_text(encoding="utf-8")
+        except Exception:
+            _PLOTLY_SRC = ""
+    return _PLOTLY_SRC
+
+
+def _prepare_html_for_render(html: str) -> str:
+    """Inline the bundled Plotly so charts render with NO internet access — the VPS
+    may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
+    if "Plotly.newPlot" not in html and "plot.ly" not in html:
+        return html
+    src = _plotly_source()
+    if not src:
+        return html  # no local bundle available — leave the CDN tag as-is
+    html = re.sub(r'<script\b[^>]*\bsrc=["\']https?://cdn\.plot\.ly/[^"\']*["\'][^>]*>\s*</script>',
+                  '', html, flags=re.IGNORECASE)
+    inline = "<script>/* bundled-plotly */\n" + src + "\n</script>"
+    if "</head>" in html:
+        return html.replace("</head>", inline + "</head>", 1)
+    return inline + html
+
+
 async def _render(html: str) -> Dict:
     """Render HTML once; return {'pdf': bytes, 'slides': [png bytes, ...]}.
 
@@ -238,7 +271,7 @@ async def _render(html: str) -> Dict:
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8")
     try:
-        tmp.write(html)
+        tmp.write(_prepare_html_for_render(html))
         tmp.close()
         uses_plotly = "Plotly.newPlot" in html or "plot.ly" in html
         async with async_playwright() as p:
@@ -316,7 +349,7 @@ async def render_slide_images(html: str, *, quality: int = 72) -> List[bytes]:
 
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8")
     try:
-        tmp.write(html)
+        tmp.write(_prepare_html_for_render(html))
         tmp.close()
         uses_plotly = "Plotly.newPlot" in html or "plot.ly" in html
         async with async_playwright() as p:
