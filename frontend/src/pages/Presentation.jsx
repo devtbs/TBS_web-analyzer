@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon } from '@heroicons/react/24/outline';
+import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 
 const prettyName = (url) => {
@@ -29,8 +29,14 @@ const Presentation = () => {
     // shared
     const [providers, setProviders] = useState([]);
     const [provider, setProvider] = useState('deepseek');
-    const [format, setFormat] = useState('pdf');
     const [generating, setGenerating] = useState(false);
+    const [downloading, setDownloading] = useState('');
+
+    // generated deck (preview carousel + download)
+    const [deckSlides, setDeckSlides] = useState([]);
+    const [slideIdx, setSlideIdx] = useState(0);
+    const [deckDocId, setDeckDocId] = useState('');
+    const [deckLabel, setDeckLabel] = useState('');
 
     // prompt library
     const [prompts, setPrompts] = useState([{ id: 'default', name: 'Default (built-in)' }]);
@@ -77,7 +83,6 @@ const Presentation = () => {
         } catch {}
     };
 
-    // when the selected prompt changes, load its text into the editor
     const loadPromptIntoEditor = async (id) => {
         try {
             const res = await api.get(`/api/presentation/prompts/${id}`);
@@ -92,20 +97,16 @@ const Presentation = () => {
         setSavingPrompt(true);
         try {
             const res = await api.post('/api/presentation/prompts', { name: promptName, prompt: promptText });
-            setPrompts(res.data.prompts || []);
-            setPromptId(res.data.saved.id);
+            setPrompts(res.data.prompts || []); setPromptId(res.data.saved.id);
             toast.success('Prompt saved.');
-        } catch { toast.error('Could not save.'); }
-        finally { setSavingPrompt(false); }
+        } catch { toast.error('Could not save.'); } finally { setSavingPrompt(false); }
     };
     const updateSelected = async () => {
         setSavingPrompt(true);
         try {
             const res = await api.post('/api/presentation/prompts', { id: promptId, name: promptName, prompt: promptText });
-            setPrompts(res.data.prompts || []);
-            toast.success('Prompt updated.');
-        } catch { toast.error('Could not update.'); }
-        finally { setSavingPrompt(false); }
+            setPrompts(res.data.prompts || []); toast.success('Prompt updated.');
+        } catch { toast.error('Could not update.'); } finally { setSavingPrompt(false); }
     };
     const deleteSelected = async () => {
         setSavingPrompt(true);
@@ -114,8 +115,7 @@ const Presentation = () => {
             setPrompts(res.data.prompts || []);
             setPromptId('default'); setPromptText(defaultPromptText); setPromptName('');
             toast.success('Prompt deleted.');
-        } catch { toast.error('Could not delete.'); }
-        finally { setSavingPrompt(false); }
+        } catch { toast.error('Could not delete.'); } finally { setSavingPrompt(false); }
     };
 
     const filtered = useMemo(() => {
@@ -128,43 +128,57 @@ const Presentation = () => {
 
     const pick = (p) => { setPropUrl(p.url); setQuery(prettyName(p.url)); setOpen(false); };
 
-    const download = (blob, name) => {
-        const url = URL.createObjectURL(new Blob([blob]));
-        const a = document.createElement('a');
-        a.href = url; a.download = name;
-        document.body.appendChild(a); a.click(); a.remove();
-        URL.revokeObjectURL(url);
-    };
-
     const generate = async () => {
         if (mode === 'gsc' && !propUrl) { toast.error('Pick a site first.'); return; }
         if (mode === 'pdf' && !pdfFile) { toast.error('Choose a PDF first.'); return; }
         setGenerating(true);
+        setDeckSlides([]); setDeckDocId('');
         const t = toast.loading('AI is designing your presentation…');
         try {
-            let res, name;
+            let res;
             if (mode === 'gsc') {
                 res = await api.post(
-                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&format=${format}&days=${days}&provider=${provider}&prompt_id=${promptId}`,
-                    {}, { responseType: 'blob' });
-                name = `AI_Report_${prettyName(propUrl).replace(/[^a-z0-9.-]/gi, '_')}.${format}`;
+                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&prompt_id=${promptId}`,
+                    {});
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
-                fd.append('format', format);
                 fd.append('provider', provider);
                 fd.append('prompt_id', promptId);
-                res = await api.post('/api/presentation/ai-deck-from-pdf', fd, { responseType: 'blob' });
-                name = `AI_Deck_${(pdfFile.name || 'report').replace(/\.[^.]+$/, '')}.${format}`;
+                res = await api.post('/api/presentation/ai-deck-from-pdf', fd);
             }
-            download(res.data, name);
-            toast.success('Presentation downloaded!', { id: t });
+            setDeckSlides(res.data.slides || []);
+            setSlideIdx(0);
+            setDeckDocId(res.data.document_id || '');
+            setDeckLabel(res.data.label || '');
+            toast.success('Deck ready — preview below.', { id: t });
         } catch (e) {
             let msg = 'Generation failed.';
-            try { msg = JSON.parse(await e.response?.data?.text())?.detail || msg; } catch {}
+            try { msg = e.response?.data?.detail || msg; } catch {}
             toast.error(msg, { id: t });
         } finally { setGenerating(false); }
     };
+
+    const downloadDeck = async (fmt) => {
+        if (!deckDocId) return;
+        setDownloading(fmt);
+        try {
+            const res = await api.get(`/api/presentation/deck/${deckDocId}/download?format=${fmt}`, { responseType: 'blob' });
+            const name = `AI_Deck_${(deckLabel || 'report').replace(/[^a-z0-9.-]/gi, '_')}.${fmt}`;
+            const url = URL.createObjectURL(new Blob([res.data]));
+            const a = document.createElement('a');
+            a.href = url; a.download = name;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            let msg = 'Download failed.';
+            try { msg = JSON.parse(await e.response?.data?.text())?.detail || msg; } catch {}
+            toast.error(msg);
+        } finally { setDownloading(''); }
+    };
+
+    const prevSlide = () => setSlideIdx((i) => Math.max(0, i - 1));
+    const nextSlide = () => setSlideIdx((i) => Math.min(deckSlides.length - 1, i + 1));
 
     const fieldCls = 'w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#26397A]/40 bg-white';
     const selectedIsBuiltin = promptId === 'default';
@@ -184,7 +198,6 @@ const Presentation = () => {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
-                {/* Data source toggle */}
                 <div className="flex gap-3 mb-6">
                     {[['gsc', 'From a site'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
@@ -234,34 +247,62 @@ const Presentation = () => {
                     </>
                 )}
 
-                {/* Prompt selector */}
                 <label className="block text-sm font-bold text-slate-700 mb-2">Prompt</label>
                 <select value={promptId} onChange={(e) => onSelectPrompt(e.target.value)} disabled={generating} className={fieldCls + ' mb-6'}>
                     {prompts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
 
-                {/* AI model */}
                 <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
-                <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={generating} className={fieldCls + ' mb-6'}>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={generating} className={fieldCls + ' mb-8'}>
                     {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
                     {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
 
-                {/* Format */}
-                <label className="block text-sm font-bold text-slate-700 mb-2">Format</label>
-                <div className="flex gap-3 mb-8">
-                    {['pdf', 'pptx'].map((f) => (
-                        <button key={f} onClick={() => setFormat(f)} disabled={generating}
-                            className={`flex-1 py-3 rounded-xl font-bold uppercase text-sm border transition-colors ${format === f ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>{f}</button>
-                    ))}
-                </div>
-
                 <button onClick={generate} disabled={generating || (mode === 'gsc' ? !propUrl : !pdfFile)}
                     className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
                     {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Generating… (~40s)</>
-                        : <><ArrowDownTrayIcon className="w-5 h-5" /> Generate {format.toUpperCase()}</>}
+                        : <><SparklesIcon className="w-5 h-5" /> Generate presentation</>}
                 </button>
+                <p className="text-xs text-slate-400 mt-3 text-center">The AI uses only your real data — no fabricated numbers.</p>
             </motion.div>
+
+            {/* Preview carousel + download */}
+            {deckSlides.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+                    className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <h2 className="font-black text-slate-900">Preview <span className="text-slate-400 font-medium text-sm">· {deckLabel}</span></h2>
+                        <div className="flex gap-2">
+                            <button onClick={() => downloadDeck('pdf')} disabled={!!downloading}
+                                className="px-4 py-2 rounded-lg bg-[#26397A] text-white font-bold text-sm flex items-center gap-2 hover:bg-[#1b2a5e] disabled:opacity-60">
+                                <ArrowDownTrayIcon className="w-4 h-4" /> {downloading === 'pdf' ? 'Rendering…' : 'PDF'}
+                            </button>
+                            <button onClick={() => downloadDeck('pptx')} disabled={!!downloading}
+                                className="px-4 py-2 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-sm flex items-center gap-2 hover:bg-[#26397A]/5 disabled:opacity-60">
+                                <ArrowDownTrayIcon className="w-4 h-4" /> {downloading === 'pptx' ? 'Rendering…' : 'PPTX'}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 select-none">
+                        <img src={deckSlides[slideIdx]} alt={`Slide ${slideIdx + 1}`} className="w-full block" draggable={false} />
+                        <button onClick={prevSlide} disabled={slideIdx === 0}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 shadow flex items-center justify-center text-slate-700 hover:bg-white disabled:opacity-0 transition">
+                            <ChevronLeftIcon className="w-6 h-6" />
+                        </button>
+                        <button onClick={nextSlide} disabled={slideIdx === deckSlides.length - 1}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 shadow flex items-center justify-center text-slate-700 hover:bg-white disabled:opacity-0 transition">
+                            <ChevronRightIcon className="w-6 h-6" />
+                        </button>
+                    </div>
+                    <div className="flex items-center justify-center gap-2 mt-3">
+                        {deckSlides.map((_, i) => (
+                            <button key={i} onClick={() => setSlideIdx(i)}
+                                className={`h-2 rounded-full transition-all ${i === slideIdx ? 'w-6 bg-[#26397A]' : 'w-2 bg-slate-300 hover:bg-slate-400'}`} />
+                        ))}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2 text-center">Slide {slideIdx + 1} of {deckSlides.length} · saved to Documents — re-download anytime from there.</p>
+                </motion.div>
+            )}
 
             {/* Prompt editor */}
             <div className="mt-6 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">

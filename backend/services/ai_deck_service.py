@@ -306,6 +306,53 @@ async def render_deck(html: str, fmt: str = "pdf") -> bytes:
     raise ValueError(f"Unsupported format: {fmt!r} (use 'pdf' or 'pptx')")
 
 
+async def render_slide_images(html: str, *, quality: int = 72) -> List[bytes]:
+    """Render each slide to a JPEG for in-app preview — same load/Plotly-wait path as
+    _render, so the preview matches the downloaded file exactly (charts included)."""
+    import os
+    import tempfile
+    from pathlib import Path
+    from playwright.async_api import async_playwright
+
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8")
+    try:
+        tmp.write(html)
+        tmp.close()
+        uses_plotly = "Plotly.newPlot" in html or "plot.ly" in html
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(args=["--no-sandbox"])
+            page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX})
+            await page.goto(Path(tmp.name).as_uri(), wait_until="networkidle")
+            if uses_plotly:
+                try:
+                    await page.wait_for_function("() => !!window.Plotly", timeout=6000)
+                except Exception:
+                    try:
+                        await page.add_script_tag(url="https://cdn.plot.ly/plotly-2.35.2.min.js")
+                        await page.wait_for_function("() => !!window.Plotly", timeout=6000)
+                    except Exception:
+                        pass
+                try:
+                    await page.wait_for_function(
+                        "() => Array.from(document.querySelectorAll('.js-plotly-plot'))"
+                        ".every(n => n.querySelector('.main-svg'))",
+                        timeout=10000,
+                    )
+                except Exception:
+                    pass
+                await page.wait_for_timeout(1000)
+            imgs: List[bytes] = []
+            for el in await page.query_selector_all(".slide"):
+                imgs.append(await el.screenshot(type="jpeg", quality=quality))
+            await browser.close()
+        return imgs
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+
 async def generate_deck_from_pdf(
     pdf_bytes: bytes,
     *,
@@ -314,9 +361,10 @@ async def generate_deck_from_pdf(
     provider: str = "deepseek",
     brand: Optional[str] = None,
     structure: Optional[str] = None,
+    render: bool = True,
 ) -> Dict:
-    """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with
-    the chosen prompt + provider, and render to the chosen downloadable format."""
+    """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
+    chosen prompt + provider. Renders to the file unless render=False (deferred to download)."""
     from services.pdf_extract import extract_pdf_text
 
     data_text = extract_pdf_text(pdf_bytes)
@@ -329,5 +377,5 @@ async def generate_deck_from_pdf(
         structure=structure or GOOGLE_ADS_STRUCTURE,
         provider=provider,
     )
-    file_bytes = await render_deck(html, fmt=fmt)
+    file_bytes = await render_deck(html, fmt=fmt) if render else None
     return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes}

@@ -915,24 +915,102 @@ async def presentation_ai_generate(
 PDF_MEDIA_TYPE = "application/pdf"
 
 
-@router.post("/api/presentation/ai-deck-from-pdf")
-async def presentation_ai_deck_from_pdf(
-    file: UploadFile = File(...),
-    format: str = Form("pdf"),
-    provider: str = Form("deepseek"),
-    prompt_id: str = Form("default"),
-    current_user: UserInfo = Depends(get_current_user),
-):
-    """Upload a report PDF → AI extracts its data and designs a deck → download as
-    PDF or PPTX, using the chosen prompt + provider.
+def _save_deck_document(db, user_email: str, *, html: str, source: str, label: str,
+                        provider: str, prompt_id: str) -> str:
+    """Persist a generated AI deck as a Document so it shows in the Documents history
+    and can be re-downloaded. Stores the HTML only; the file is re-rendered on download."""
+    doc_id = str(uuid.uuid4())
+    date_label = datetime.now().strftime("%Y-%m-%d")
+    doc = Document(
+        id=doc_id,
+        user_email=user_email,
+        title=f"AI Deck — {label} ({date_label})",
+        content_type="AI Deck",
+        content={"html": html, "source": source, "label": label,
+                 "provider": provider, "prompt_id": prompt_id},
+    )
+    db.add(doc)
+    db.commit()
+    return doc_id
 
-    Form fields: file (the PDF), format=pdf|pptx, provider, prompt_id.
-    """
-    from services.ai_deck_service import generate_deck_from_pdf
-    from services.prompt_config import get_prompt_text
+
+def _slides_payload(imgs) -> list:
+    """JPEG bytes -> data URLs for the in-app preview carousel."""
+    import base64
+    return ["data:image/jpeg;base64," + base64.b64encode(b).decode() for b in imgs]
+
+
+@router.get("/api/presentation/deck/{document_id}/slides")
+async def presentation_deck_slides(
+    document_id: str,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Render a saved deck's slides to preview images (page-by-page carousel)."""
+    from services.ai_deck_service import render_slide_images
+    doc = db.query(Document).filter(
+        Document.id == document_id, Document.user_email == current_user.email
+    ).first()
+    if not doc or doc.content_type != "AI Deck":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found.")
+    html = (doc.content or {}).get("html")
+    if not html:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck has no stored HTML.")
+    try:
+        imgs = await render_slide_images(html)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Render failed: {str(e)}")
+    return {"slides": _slides_payload(imgs), "label": (doc.content or {}).get("label", "")}
+
+
+@router.get("/api/presentation/deck/{document_id}/download")
+async def presentation_deck_download(
+    document_id: str,
+    format: str = "pdf",
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-render a saved AI-deck Document's HTML to the requested file format."""
+    from services.ai_deck_service import render_deck
     fmt = (format or "pdf").lower()
     if fmt not in ("pdf", "pptx"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
+    doc = db.query(Document).filter(
+        Document.id == document_id, Document.user_email == current_user.email
+    ).first()
+    if not doc or doc.content_type != "AI Deck":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck not found.")
+    html = (doc.content or {}).get("html")
+    if not html:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck has no stored HTML.")
+    try:
+        file_bytes = await render_deck(html, fmt=fmt)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Render failed: {str(e)}")
+    label = ((doc.content or {}).get("label") or "report").replace(" ", "_").replace("/", "_")
+    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
+    return StreamingResponse(
+        iter([file_bytes]),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="AI_Deck_{label}.{fmt}"'},
+    )
+
+
+@router.post("/api/presentation/ai-deck-from-pdf")
+async def presentation_ai_deck_from_pdf(
+    file: UploadFile = File(...),
+    provider: str = Form("deepseek"),
+    prompt_id: str = Form("default"),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload a report PDF → AI extracts its data and designs a deck. Returns the
+    deck HTML for preview and saves it to Documents; download via the deck-download route.
+
+    Form fields: file (the PDF), provider, prompt_id.
+    """
+    from services.ai_deck_service import generate_deck_from_pdf, render_slide_images
+    from services.prompt_config import get_prompt_text
     if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
@@ -940,17 +1018,16 @@ async def presentation_ai_deck_from_pdf(
     if not pdf_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
     try:
-        result = await generate_deck_from_pdf(pdf_bytes, fmt=fmt, provider=provider, prompt=get_prompt_text(prompt_id))
+        result = await generate_deck_from_pdf(pdf_bytes, provider=provider,
+                                              prompt=get_prompt_text(prompt_id), render=False)
+        slides = await render_slide_images(result["html"])
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail=f"Deck generation failed: {str(e)}")
-    stem = (file.filename or "report").rsplit(".", 1)[0].replace(" ", "_")[:60]
-    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
-    return StreamingResponse(
-        iter([result["file_bytes"]]),
-        media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="AI_Deck_{stem}.{fmt}"'},
-    )
+    label = (file.filename or "report").rsplit(".", 1)[0][:60] or "report"
+    doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
+                                 label=label, provider=provider, prompt_id=prompt_id)
+    return {"document_id": doc_id, "slides": _slides_payload(slides), "label": label}
 
 
 @router.get("/api/presentation/ai-providers")
@@ -995,21 +1072,20 @@ async def delete_prompt_route(prompt_id: str, current_user: UserInfo = Depends(g
 @router.post("/api/presentation/ai-deck-gsc")
 async def presentation_ai_deck_gsc(
     property: str,
-    format: str = "pdf",
     days: int = 28,
     provider: str = "deepseek",
     prompt_id: str = "default",
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """AI-designed organic-search deck for a GSC property (from 'My Sites'),
-    built from the logged-in user's Search Console data. Query: ?property=<url>&format=pdf|pptx&days=N"""
+    """AI-designed organic-search deck for a GSC property (from 'My Sites'), built from
+    the logged-in user's Search Console data. Returns the deck HTML for preview and saves
+    it to Documents; download via the deck-download route. Query: ?property=<url>&days=N"""
     from services.report_generator import generate_ai_gsc_deck
+    from services.ai_deck_service import render_slide_images
     from services.gsc_service import GSCService
+    from services.prompt_config import get_prompt_text
     from utils.user_manager import get_user_gsc_token
-    fmt = (format or "pdf").lower()
-    if fmt not in ("pdf", "pptx"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="format must be 'pdf' or 'pptx'.")
     if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
@@ -1018,20 +1094,16 @@ async def presentation_ai_deck_gsc(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Google Search Console not connected for this account.")
     try:
-        from services.prompt_config import get_prompt_text
         prompt = get_prompt_text(prompt_id)
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        result = await generate_ai_gsc_deck(service, property, days, fmt=fmt, provider=provider, prompt=prompt)
+        result = await generate_ai_gsc_deck(service, property, days, provider=provider, prompt=prompt)
+        slides = await render_slide_images(result["html"])
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                             detail=f"AI deck generation failed: {str(e)}")
-    domain = (result["domain"] or "report").replace(" ", "_").replace("/", "_")
-    media = PDF_MEDIA_TYPE if fmt == "pdf" else PPTX_MEDIA_TYPE
-    return StreamingResponse(
-        iter([result["file_bytes"]]),
-        media_type=media,
-        headers={"Content-Disposition": f'attachment; filename="AI_Report_{domain}.{fmt}"'},
-    )
+    doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
+                                 label=result["domain"], provider=provider, prompt_id=prompt_id)
+    return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 
 
 @router.post("/api/presentation/ai-deck/{site_id}")

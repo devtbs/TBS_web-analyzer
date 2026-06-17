@@ -60,6 +60,11 @@ export default function DocumentDetail() {
     const [isSaving, setIsSaving] = useState(false);
     const [copied, setCopied] = useState(false);
 
+    // AI Deck preview state
+    const [deckSlides, setDeckSlides] = useState([]);
+    const [deckIdx, setDeckIdx] = useState(0);
+    const [deckLoading, setDeckLoading] = useState(false);
+
     // Writing settings state
     const [settingsOpen, setSettingsOpen] = useState(true);
     const [tone, setTone] = useState('professional');
@@ -71,6 +76,18 @@ export default function DocumentDetail() {
     useEffect(() => {
         fetchDocument();
     }, [documentId]);
+
+    // Render saved AI-deck slides to preview images when this is a deck document
+    useEffect(() => {
+        if (documentData?.content_type !== "AI Deck") return;
+        let active = true;
+        setDeckLoading(true);
+        api.get(`/api/presentation/deck/${documentId}/slides`)
+            .then((res) => { if (active) { setDeckSlides(res.data.slides || []); setDeckIdx(0); } })
+            .catch(() => toast.error('Could not render deck preview.'))
+            .finally(() => { if (active) setDeckLoading(false); });
+        return () => { active = false; };
+    }, [documentData, documentId]);
     
     const fetchDocument = async () => {
         try {
@@ -209,6 +226,62 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
 
     const briefData = documentData.content;
     const isFullArticle = documentData.content_type === "Full Article" || briefData.article_markdown;
+
+    if (documentData.content_type === "AI Deck") {
+        const dl = async (fmt) => {
+            try {
+                const res = await api.get(`/api/presentation/deck/${documentId}/download?format=${fmt}`, { responseType: 'blob' });
+                const name = `${(documentData.title || 'AI_Deck').replace(/[^a-z0-9.-]/gi, '_')}.${fmt}`;
+                const url = URL.createObjectURL(new Blob([res.data]));
+                const a = document.createElement('a'); a.href = url; a.download = name;
+                document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+            } catch { toast.error('Download failed.'); }
+        };
+        return (
+            <div className="p-6 md:p-8 max-w-4xl mx-auto min-h-screen pb-24">
+                <button onClick={() => navigate('/documents')}
+                    className="mb-6 flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+                    <ArrowLeftIcon className="w-4 h-4 mr-1" /> Back to Documents
+                </button>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h1 className="text-xl font-black text-slate-900">{documentData.title}</h1>
+                    <div className="flex gap-2">
+                        <button onClick={() => dl('pdf')} className="px-4 py-2 rounded-lg bg-[#26397A] text-white font-bold text-sm hover:bg-[#1b2a5e]">Download PDF</button>
+                        <button onClick={() => dl('pptx')} className="px-4 py-2 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-sm hover:bg-[#26397A]/5">Download PPTX</button>
+                    </div>
+                </div>
+                {deckLoading ? (
+                    <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+                        <div className="w-9 h-9 border-4 border-slate-200 border-t-[#26397A] rounded-full animate-spin" />
+                        <p className="mt-4 text-sm font-medium">Rendering preview…</p>
+                    </div>
+                ) : deckSlides.length === 0 ? (
+                    <p className="text-slate-400 text-sm py-12 text-center">No preview available — try downloading.</p>
+                ) : (
+                    <>
+                        <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 select-none">
+                            <img src={deckSlides[deckIdx]} alt={`Slide ${deckIdx + 1}`} className="w-full block" draggable={false} />
+                            <button onClick={() => setDeckIdx((i) => Math.max(0, i - 1))} disabled={deckIdx === 0}
+                                className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 shadow flex items-center justify-center text-slate-700 hover:bg-white disabled:opacity-0 transition">
+                                <ArrowLeftIcon className="w-5 h-5" />
+                            </button>
+                            <button onClick={() => setDeckIdx((i) => Math.min(deckSlides.length - 1, i + 1))} disabled={deckIdx === deckSlides.length - 1}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 shadow flex items-center justify-center text-slate-700 hover:bg-white disabled:opacity-0 transition rotate-180">
+                                <ArrowLeftIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-center gap-2 mt-3">
+                            {deckSlides.map((_, i) => (
+                                <button key={i} onClick={() => setDeckIdx(i)}
+                                    className={`h-2 rounded-full transition-all ${i === deckIdx ? 'w-6 bg-[#26397A]' : 'w-2 bg-slate-300 hover:bg-slate-400'}`} />
+                            ))}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2 text-center">Slide {deckIdx + 1} of {deckSlides.length}</p>
+                    </>
+                )}
+            </div>
+        );
+    }
 
     if (isFullArticle) {
         return (

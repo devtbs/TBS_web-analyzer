@@ -303,17 +303,35 @@ def _domain_from_property(property_url: str) -> str:
 
 
 async def assemble_gsc_context(service, property_url: str, days: int = 28) -> Dict:
-    """Gather GSC search performance + top queries/pages for one property."""
+    """Gather GSC search performance + top queries/pages + device/country/quick-win
+    breakdowns and the time-series trend for one property. Each optional block degrades
+    gracefully so one failed sub-fetch can't break the whole deck."""
     analytics = await service.get_search_analytics(property_url, days=days, group_by="daily")
     queries = await service.get_top_queries(property_url, days=days)
     pages = await service.get_top_pages(property_url, days=days)
+
+    async def _safe(coro):
+        try:
+            return await coro
+        except Exception as e:
+            logger.warning("GSC sub-fetch failed (non-fatal): %s", e)
+            return []
+
+    devices = await _safe(service.get_devices(property_url, days=days))
+    countries = await _safe(service.get_countries(property_url, days=days))
+    striking = await _safe(service.get_striking_distance(property_url, days=days))
+
     return {
         "property_url": property_url,
         "domain": _domain_from_property(property_url),
         "days": days,
         "analytics": analytics,
+        "trend": (analytics or {}).get("chart_data") or [],
         "top_queries": queries[:15],
         "top_pages": pages[:10],
+        "devices": devices,
+        "top_countries": countries[:8],
+        "striking_distance": striking[:12],
     }
 
 
@@ -335,6 +353,24 @@ def _gsc_data_brief(ctx: Dict) -> str:
         f"{p.get('impressions',0)} impressions, {p.get('ctr',0)}% CTR, pos {p.get('position','?')}"
         for p in ctx.get("top_pages", [])
     ) or "  (none)"
+    trend_lines = "\n".join(
+        f"  - {t.get('month','')}: {t.get('clicks',0)} clicks, {t.get('impressions',0)} impressions"
+        for t in ctx.get("trend", [])
+    ) or "  (none)"
+    dev_lines = "\n".join(
+        f"  - {d.get('name','')}: {d.get('clicks',0)} clicks, {d.get('impressions',0)} impressions, "
+        f"{d.get('ctr',0)}% CTR, pos {d.get('position','?')}"
+        for d in ctx.get("devices", [])
+    ) or "  (none)"
+    sd_lines = "\n".join(
+        f"  - \"{s.get('query','')}\" at pos {s.get('position','?')} ({s.get('impressions',0)} impressions, "
+        f"~{s.get('potential_clicks',0)} extra clicks if pushed to top 3) — {s.get('page','')}"
+        for s in ctx.get("striking_distance", [])
+    ) or "  (none)"
+    country_lines = "\n".join(
+        f"  - {c.get('name','')}: {c.get('clicks',0)} clicks, {c.get('impressions',0)} impressions"
+        for c in ctx.get("top_countries", [])
+    ) or "  (none)"
 
     return f"""Organic search (Google Search Console) report for {ctx['domain']}.
 Reporting window: last {ctx['days']} days, compared with the previous {ctx['days']} days.
@@ -345,31 +381,41 @@ OVERALL SEARCH PERFORMANCE (current value, change vs previous period):
 - CTR: {totals.get('ctr', 0)}% ({_d(deltas.get('ctr'), 'pp')})
 - Average position: {totals.get('position', 0)} ({_d(deltas.get('position'), 'pp')}; lower is better)
 
+PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
+{trend_lines}
+
 TOP QUERIES (by clicks):
 {q_lines}
 
+NEAR PAGE 1 — QUICK-WIN KEYWORDS (positions 4-20, ranked by impressions):
+{sd_lines}
+
 TOP PAGES (by clicks):
 {p_lines}
+
+BY DEVICE:
+{dev_lines}
+
+TOP COUNTRIES (by clicks):
+{country_lines}
 
 Use only these numbers. Positive but honest framing; declines = opportunities."""
 
 
 async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
-                               fmt: str = "pdf", provider: str = "deepseek",
+                               provider: str = "deepseek",
                                prompt: Optional[str] = None) -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
-    chosen prompt + provider."""
-    from services.ai_deck_service import generate_deck_html, render_deck, GSC_STRUCTURE, UNIQUE_STYLE_BRAND
+    chosen prompt + provider. Returns the HTML only — the file is rendered on download."""
+    from services.ai_deck_service import generate_deck_html, GSC_STRUCTURE, UNIQUE_STYLE_BRAND
     context = await assemble_gsc_context(service, property_url, days)
     brief = _gsc_data_brief(context)
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=GSC_STRUCTURE, provider=provider)
-    file_bytes = await render_deck(html, fmt=fmt)
     return {
         "property_url": property_url,
         "domain": context["domain"],
-        "format": fmt,
-        "file_bytes": file_bytes,
+        "html": html,
     }
 
 
