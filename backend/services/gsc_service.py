@@ -4,6 +4,7 @@ from google.auth.transport.requests import Request as GoogleRequest
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from typing import List, Dict, Optional
+import asyncio
 import logging
 import time
 
@@ -82,6 +83,17 @@ class GSCService:
 
         self.service = build('searchconsole', 'v1', credentials=self.credentials)
 
+    async def _aexecute(self, request):
+        """Run a built googleapiclient request off the event loop.
+
+        request.execute() is a blocking call (synchronous google-api-python-client);
+        running it in a thread keeps the asyncio loop free so one worker can service
+        many concurrent GSC requests. Calls within a single method stay sequential —
+        the underlying httplib2 transport is not safe to use from multiple threads at
+        once, and each request builds its own GSCService, so separate service objects.
+        """
+        return await asyncio.to_thread(request.execute)
+
     @classmethod
     def from_stored_token(cls, stored_token: str, is_refresh_token: bool = False, user_email: str = 'default'):
         """Factory: create a GSCService from the value stored in the database."""
@@ -102,7 +114,7 @@ class GSCService:
             return cached
 
         try:
-            sites_list = self.service.sites().list().execute()
+            sites_list = await self._aexecute(self.service.sites().list())
             properties = []
             site_entries = sites_list.get('siteEntry', [])
 
@@ -136,7 +148,7 @@ class GSCService:
     async def verify_property_access(self, property_url: str) -> bool:
         """Verify that the user has access to a specific property."""
         try:
-            self.service.sites().get(siteUrl=property_url).execute()
+            await self._aexecute(self.service.sites().get(siteUrl=property_url))
             return True
         except HttpError as e:
             if e.resp.status == 404:
@@ -231,10 +243,10 @@ class GSCService:
             }
             self._apply_filter(request, filters_json)
 
-            response = self.service.searchanalytics().query(
+            response = await self._aexecute(self.service.searchanalytics().query(
                 siteUrl=property_url,
                 body=request
-            ).execute()
+            ))
 
             pages_data = {}
             rows = response.get('rows', [])
@@ -305,7 +317,7 @@ class GSCService:
             from datetime import datetime, timedelta
             from collections import defaultdict
 
-            def _fetch_period(start: 'date', end: 'date') -> Dict:
+            async def _fetch_period(start: 'date', end: 'date') -> Dict:
                 """Helper: query GSC for a single date range and return aggregated totals."""
                 req_body = {
                     'startDate': start.strftime('%Y-%m-%d'),
@@ -316,10 +328,10 @@ class GSCService:
                 }
                 self._apply_filter(req_body, filters_json)
                 
-                response = self.service.searchanalytics().query(
+                response = await self._aexecute(self.service.searchanalytics().query(
                     siteUrl=property_url,
                     body=req_body
-                ).execute()
+                ))
                 rows = response.get('rows', [])
                 t_clicks, t_impressions, t_position = 0, 0, 0
                 grouped = defaultdict(lambda: {'clicks': 0, 'impressions': 0, 'total_position': 0})
@@ -357,12 +369,12 @@ class GSCService:
             # ── Current period ──────────────────────────────────────────
             end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
-            current = _fetch_period(start_date, end_date)
+            current = await _fetch_period(start_date, end_date)
 
             # ── Previous period (same length, immediately before) ───────
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
-            previous = _fetch_period(prev_start, prev_end)
+            previous = await _fetch_period(prev_start, prev_end)
 
             # ── Build chart data from current period ────────────────────
             grouped_by_date = current['grouped']
@@ -439,7 +451,7 @@ class GSCService:
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
 
-            def _fetch(start, end):
+            async def _fetch(start, end):
                 req_body = {
                     'startDate': start.strftime('%Y-%m-%d'),
                     'endDate': end.strftime('%Y-%m-%d'),
@@ -448,10 +460,10 @@ class GSCService:
                     'dataState': 'all'
                 }
                 self._apply_filter(req_body, filters_json)
-                resp = self.service.searchanalytics().query(
+                resp = await self._aexecute(self.service.searchanalytics().query(
                     siteUrl=property_url,
                     body=req_body
-                ).execute()
+                ))
                 result = {}
                 for row in resp.get('rows', []):
                     country = row['keys'][0]
@@ -463,8 +475,8 @@ class GSCService:
                     }
                 return result
 
-            current = _fetch(start_date, end_date)
-            previous = _fetch(prev_start, prev_end)
+            current = await _fetch(start_date, end_date)
+            previous = await _fetch(prev_start, prev_end)
 
             result = []
             for country, cur in current.items():
@@ -512,7 +524,7 @@ class GSCService:
             prev_end   = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
 
-            def _fetch(start, end):
+            async def _fetch(start, end):
                 req_body = {
                     'startDate': start.strftime('%Y-%m-%d'),
                     'endDate':   end.strftime('%Y-%m-%d'),
@@ -521,10 +533,10 @@ class GSCService:
                     'dataState':  'all',
                 }
                 self._apply_filter(req_body, filters_json)
-                resp = self.service.searchanalytics().query(
+                resp = await self._aexecute(self.service.searchanalytics().query(
                     siteUrl=property_url,
                     body=req_body
-                ).execute()
+                ))
                 result = {}
                 for row in resp.get('rows', []):
                     key = row['keys'][0].rstrip('/')
@@ -536,8 +548,8 @@ class GSCService:
                     }
                 return result
 
-            current  = _fetch(start_date, end_date)
-            previous = _fetch(prev_start, prev_end)
+            current  = await _fetch(start_date, end_date)
+            previous = await _fetch(prev_start, prev_end)
 
             result = []
             for url, cur in current.items():
@@ -584,7 +596,7 @@ class GSCService:
             prev_end   = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
 
-            def _fetch(start, end):
+            async def _fetch(start, end):
                 req_body = {
                     'startDate': start.strftime('%Y-%m-%d'),
                     'endDate':   end.strftime('%Y-%m-%d'),
@@ -593,10 +605,10 @@ class GSCService:
                     'dataState':  'all',
                 }
                 self._apply_filter(req_body, filters_json)
-                resp = self.service.searchanalytics().query(
+                resp = await self._aexecute(self.service.searchanalytics().query(
                     siteUrl=property_url,
                     body=req_body
-                ).execute()
+                ))
                 result = {}
                 for row in resp.get('rows', []):
                     # Use the raw query string as key — do NOT normalize to lowercase.
@@ -611,8 +623,8 @@ class GSCService:
                     }
                 return result
 
-            current  = _fetch(start_date, end_date)
-            previous = _fetch(prev_start, prev_end)
+            current  = await _fetch(start_date, end_date)
+            previous = await _fetch(prev_start, prev_end)
 
             result = []
             for query_text, cur in current.items():
@@ -660,7 +672,7 @@ class GSCService:
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
 
-            def _fetch(start, end):
+            async def _fetch(start, end):
                 req_body = {
                     'startDate': start.strftime('%Y-%m-%d'),
                     'endDate': end.strftime('%Y-%m-%d'),
@@ -669,10 +681,10 @@ class GSCService:
                     'dataState': 'all'
                 }
                 self._apply_filter(req_body, filters_json)
-                resp = self.service.searchanalytics().query(
+                resp = await self._aexecute(self.service.searchanalytics().query(
                     siteUrl=property_url,
                     body=req_body
-                ).execute()
+                ))
                 result = {}
                 for row in resp.get('rows', []):
                     device = row['keys'][0].upper()
@@ -684,8 +696,8 @@ class GSCService:
                     }
                 return result
 
-            current = _fetch(start_date, end_date)
-            previous = _fetch(prev_start, prev_end)
+            current = await _fetch(start_date, end_date)
+            previous = await _fetch(prev_start, prev_end)
 
             result = []
             for device, cur in current.items():
@@ -749,10 +761,10 @@ class GSCService:
                 'dataState': 'all',
             }
             self._apply_filter(query_req, filters_json)
-            query_resp = self.service.searchanalytics().query(
+            query_resp = await self._aexecute(self.service.searchanalytics().query(
                 siteUrl=property_url,
                 body=query_req
-            ).execute()
+            ))
 
             # --- Page-level rows (date × page) to count unique pages/day ---
             page_req = {
@@ -763,10 +775,10 @@ class GSCService:
                 'dataState': 'all',
             }
             self._apply_filter(page_req, filters_json)
-            page_resp = self.service.searchanalytics().query(
+            page_resp = await self._aexecute(self.service.searchanalytics().query(
                 siteUrl=property_url,
                 body=page_req
-            ).execute()
+            ))
 
             # Aggregate by date
             date_map: Dict[str, Dict] = {}
@@ -854,7 +866,7 @@ class GSCService:
             prev_end   = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
 
-            def _fetch(dimension: str, start, end) -> Dict[str, Dict]:
+            async def _fetch(dimension: str, start, end) -> Dict[str, Dict]:
                 req_body = {
                     'startDate': start.strftime('%Y-%m-%d'),
                     'endDate':   end.strftime('%Y-%m-%d'),
@@ -863,10 +875,10 @@ class GSCService:
                     'dataState':  'all',
                 }
                 self._apply_filter(req_body, filters_json)
-                resp = self.service.searchanalytics().query(
+                resp = await self._aexecute(self.service.searchanalytics().query(
                     siteUrl=property_url,
                     body=req_body
-                ).execute()
+                ))
                 result = {}
                 for row in resp.get('rows', []):
                     raw_key = row['keys'][0]
@@ -889,10 +901,10 @@ class GSCService:
                 return result
 
             # Fetch current & previous periods for both dimensions
-            cur_queries  = _fetch('query', start_date, end_date)
-            prev_queries = _fetch('query', prev_start,  prev_end)
-            cur_pages    = _fetch('page',  start_date, end_date)
-            prev_pages   = _fetch('page',  prev_start,  prev_end)
+            cur_queries  = await _fetch('query', start_date, end_date)
+            prev_queries = await _fetch('query', prev_start,  prev_end)
+            cur_pages    = await _fetch('page',  start_date, end_date)
+            prev_pages   = await _fetch('page',  prev_start,  prev_end)
 
             def _classify(current: Dict, previous: Dict):
                 new_items  = []
@@ -973,7 +985,7 @@ class GSCService:
             'dataState': 'all',
         }
         self._apply_filter(req, filters_json)
-        resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+        resp = await self._aexecute(self.service.searchanalytics().query(siteUrl=property_url, body=req))
         rows = []
         for row in resp.get('rows', []):
             rows.append({
@@ -1139,7 +1151,7 @@ class GSCService:
                     me = min(nm - timedelta(days=1), end_date)
                     windows.append((ms.strftime('%Y-%m'), ms, me))
 
-            def _fetch_all(start, end):
+            async def _fetch_all(start, end):
                 """All query rows for a window, paginating past the 25k/row cap."""
                 out, start_row = [], 0
                 while True:
@@ -1150,7 +1162,7 @@ class GSCService:
                         'startRow': start_row, 'dataState': 'all',
                     }
                     self._apply_filter(req, filters_json)
-                    resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+                    resp = await self._aexecute(self.service.searchanalytics().query(siteUrl=property_url, body=req))
                     batch = resp.get('rows', [])
                     out.extend(batch)
                     if len(batch) < 25000 or start_row >= 225000:
@@ -1164,14 +1176,14 @@ class GSCService:
             # 1) Query universe + true period totals. One long window clears far more
             #    queries from Google's per-request anonymization than month-by-month does.
             totals = {}
-            for row in _fetch_all(overall_start, end_date):
+            for row in await _fetch_all(overall_start, end_date):
                 q = row['keys'][0]
                 totals[q] = {'clicks': row.get('clicks', 0), 'impressions': row.get('impressions', 0)}
 
             # 2) Per-period cell values (sparser — rare queries hide in short windows)
             cells_map = defaultdict(dict)  # query -> period_key -> cell
             for key, ws, we in windows:
-                for row in _fetch_all(ws, we):
+                for row in await _fetch_all(ws, we):
                     q = row['keys'][0]
                     clk = row.get('clicks', 0)
                     imp = row.get('impressions', 0)
@@ -1379,14 +1391,14 @@ class GSCService:
             prev_end = start_date - timedelta(days=1)
             prev_start = prev_end - timedelta(days=days)
 
-            def _fetch_query(start, end):
+            async def _fetch_query(start, end):
                 req = {
                     'startDate': start.strftime('%Y-%m-%d'),
                     'endDate': end.strftime('%Y-%m-%d'),
                     'dimensions': ['query'], 'rowLimit': 25000, 'dataState': 'all',
                 }
                 self._apply_filter(req, filters_json)
-                resp = self.service.searchanalytics().query(siteUrl=property_url, body=req).execute()
+                resp = await self._aexecute(self.service.searchanalytics().query(siteUrl=property_url, body=req))
                 out = {}
                 for row in resp.get('rows', []):
                     out[row['keys'][0]] = {
@@ -1397,8 +1409,8 @@ class GSCService:
                     }
                 return out
 
-            current = _fetch_query(start_date, end_date)
-            previous = _fetch_query(prev_start, prev_end)
+            current = await _fetch_query(start_date, end_date)
+            previous = await _fetch_query(prev_start, prev_end)
 
             # ── Monthly series (date × query) over the history window ──
             first_of_month = end_date.replace(day=1)
@@ -1412,7 +1424,7 @@ class GSCService:
                 'dimensions': ['date', 'query'], 'rowLimit': 25000, 'dataState': 'all',
             }
             self._apply_filter(mreq, filters_json)
-            mresp = self.service.searchanalytics().query(siteUrl=property_url, body=mreq).execute()
+            mresp = await self._aexecute(self.service.searchanalytics().query(siteUrl=property_url, body=mreq))
 
             monthly = defaultdict(lambda: defaultdict(lambda: {'clicks': 0, 'impressions': 0, 'pw': 0.0}))
             months_set = set()

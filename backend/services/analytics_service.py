@@ -12,6 +12,7 @@ from google.auth.transport.requests import Request as GoogleRequest
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from typing import List, Dict, Optional
+import asyncio
 import logging
 import time
 
@@ -86,6 +87,10 @@ class AnalyticsService:
         self.admin = build('analyticsadmin', 'v1beta', credentials=self.credentials)
         self.data = build('analyticsdata', 'v1beta', credentials=self.credentials)
 
+    async def _aexecute(self, request):
+        """Run a built googleapiclient request off the event loop (blocking .execute())."""
+        return await asyncio.to_thread(request.execute)
+
     @classmethod
     def from_stored_token(cls, stored_token: str, is_refresh_token: bool = False, user_email: str = 'default'):
         if is_refresh_token:
@@ -102,7 +107,7 @@ class AnalyticsService:
 
         try:
             properties = []
-            summaries = self.admin.accountSummaries().list(pageSize=200).execute()
+            summaries = await self._aexecute(self.admin.accountSummaries().list(pageSize=200))
             for account in summaries.get('accountSummaries', []):
                 account_name = account.get('displayName', '')
                 for prop in account.get('propertySummaries', []):
@@ -126,20 +131,20 @@ class AnalyticsService:
             logger.error(f"Unexpected error fetching GA4 properties: {str(e)}")
             raise Exception(f"Failed to fetch Analytics properties: {str(e)}")
 
-    def _run_report(self, property_id: str, body: dict) -> dict:
+    async def _run_report(self, property_id: str, body: dict) -> dict:
         """Run a GA4 report, retrying without `conversions` if the metric is rejected."""
         try:
-            return self.data.properties().runReport(
+            return await self._aexecute(self.data.properties().runReport(
                 property=f"properties/{property_id}", body=body
-            ).execute()
+            ))
         except HttpError as e:
             # Some properties have no key events configured → `conversions` is invalid.
             metrics = body.get('metrics', [])
             if any(m.get('name') == 'conversions' for m in metrics):
                 body = {**body, 'metrics': [m for m in metrics if m.get('name') != 'conversions']}
-                return self.data.properties().runReport(
+                return await self._aexecute(self.data.properties().runReport(
                     property=f"properties/{property_id}", body=body
-                ).execute()
+                ))
             raise
 
     async def get_overview(self, property_id: str, days: int = 28) -> Dict:
@@ -164,13 +169,13 @@ class AnalyticsService:
 
             metrics = [{'name': m} for m in _CORE_METRICS] + [{'name': 'conversions'}]
 
-            def _totals(start, end) -> Dict[str, float]:
+            async def _totals(start, end) -> Dict[str, float]:
                 body = {
                     'dateRanges': [{'startDate': start.strftime('%Y-%m-%d'),
                                     'endDate': end.strftime('%Y-%m-%d')}],
                     'metrics': metrics,
                 }
-                resp = self._run_report(property_id, body)
+                resp = await self._run_report(property_id, body)
                 headers = [h['name'] for h in resp.get('metricHeaders', [])]
                 row = resp.get('rows', [{}])
                 values = row[0].get('metricValues', []) if row else []
@@ -182,8 +187,8 @@ class AnalyticsService:
                         out[name] = 0.0
                 return out
 
-            current = _totals(start_date, end_date)
-            previous = _totals(prev_start, prev_end)
+            current = await _totals(start_date, end_date)
+            previous = await _totals(prev_start, prev_end)
 
             # ── Daily time series for the chart ─────────────────────────
             series_body = {
@@ -193,7 +198,7 @@ class AnalyticsService:
                 'metrics': [{'name': 'sessions'}, {'name': 'totalUsers'}, {'name': 'conversions'}],
                 'orderBys': [{'dimension': {'dimensionName': 'date'}}],
             }
-            series_resp = self._run_report(property_id, series_body)
+            series_resp = await self._run_report(property_id, series_body)
             chart_data = []
             for row in series_resp.get('rows', []):
                 raw = row['keys'][0] if 'keys' in row else row['dimensionValues'][0]['value']
@@ -219,7 +224,7 @@ class AnalyticsService:
                 'orderBys': [{'metric': {'metricName': 'sessions'}, 'desc': True}],
                 'limit': 25,
             }
-            channel_resp = self._run_report(property_id, channel_body)
+            channel_resp = await self._run_report(property_id, channel_body)
             channels = []
             for row in channel_resp.get('rows', []):
                 name = (row['dimensionValues'][0]['value']
