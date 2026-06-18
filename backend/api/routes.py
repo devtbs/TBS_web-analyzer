@@ -940,6 +940,48 @@ def _slides_payload(imgs) -> list:
     return ["data:image/jpeg;base64," + base64.b64encode(b).decode() for b in imgs]
 
 
+def _sse(event: str, data: dict) -> str:
+    """Format one Server-Sent Event frame."""
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
+async def _stream_deck_generation(run):
+    """Run a deck-building coroutine while streaming its progress as SSE.
+
+    `run` is an async callable that takes an `on_progress(message)` callback and returns
+    the final result dict (document_id, slides, label). Emits `progress` events as the
+    pipeline reports phases, then a final `result` event — or an `error` event on failure.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    _DONE = object()
+
+    async def on_progress(message: str):
+        await queue.put(_sse("progress", {"message": message}))
+
+    async def worker():
+        try:
+            result = await run(on_progress)
+            await queue.put(_sse("result", result))
+        except Exception as e:
+            await queue.put(_sse("error", {"detail": str(e)}))
+        finally:
+            await queue.put(_DONE)
+
+    task = asyncio.create_task(worker())
+    try:
+        while True:
+            item = await queue.get()
+            if item is _DONE:
+                break
+            yield item
+    finally:
+        if not task.done():
+            task.cancel()
+
+
 @router.get("/api/presentation/deck/{document_id}/slides")
 async def presentation_deck_slides(
     document_id: str,
@@ -1019,19 +1061,20 @@ async def presentation_ai_deck_from_pdf(
     pdf_bytes = await file.read()
     if not pdf_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
-    try:
+    label = (file.filename or "report").rsplit(".", 1)[0][:60] or "report"
+
+    async def run(on_progress):
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider,
                                               prompt=get_prompt_text(prompt_id), render=False,
                                               images=images and bool(settings.OPENAI_API_KEY),
-                                              notes=notes)
-        slides = await render_slide_images(result["html"])
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"Deck generation failed: {str(e)}")
-    label = (file.filename or "report").rsplit(".", 1)[0][:60] or "report"
-    doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
-                                 label=label, provider=provider, prompt_id=prompt_id)
-    return {"document_id": doc_id, "slides": _slides_payload(slides), "label": label}
+                                              notes=notes, on_progress=on_progress)
+        slides = await render_slide_images(result["html"], on_progress=on_progress)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
+                                     label=label, provider=provider, prompt_id=prompt_id)
+        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": label}
+
+    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
+                             headers=_SSE_HEADERS)
 
 
 @router.get("/api/presentation/ai-providers")
@@ -1099,19 +1142,21 @@ async def presentation_ai_deck_gsc(
     if not gsc_token:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Google Search Console not connected for this account.")
-    try:
-        prompt = get_prompt_text(prompt_id)
-        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+    prompt = get_prompt_text(prompt_id)
+    service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+    notes = (body or {}).get("notes", "")
+
+    async def run(on_progress):
         result = await generate_ai_gsc_deck(service, property, days, provider=provider, prompt=prompt,
                                             images=images and bool(settings.OPENAI_API_KEY),
-                                            notes=(body or {}).get("notes", ""))
-        slides = await render_slide_images(result["html"])
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"AI deck generation failed: {str(e)}")
-    doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
-                                 label=result["domain"], provider=provider, prompt_id=prompt_id)
-    return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+                                            notes=notes, on_progress=on_progress)
+        slides = await render_slide_images(result["html"], on_progress=on_progress)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
+                                     label=result["domain"], provider=provider, prompt_id=prompt_id)
+        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+
+    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
+                             headers=_SSE_HEADERS)
 
 
 @router.post("/api/presentation/ai-deck/{site_id}")

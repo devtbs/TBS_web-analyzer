@@ -20,7 +20,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from services.ai_service import ai_service
+from services.ai_service import ai_service, ProgressCb
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,7 @@ def _build_repair_prompt(html: str, instructions: str) -> str:
 
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
-                             provider: str = "deepseek") -> str:
+                             provider: str = "deepseek", on_progress: ProgressCb = None) -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
 
     Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
@@ -245,10 +245,13 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
     # prompt is normally resolved by the route (from the chosen prompt id); fall back
     # to the built-in default if none was passed.
     full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure)
+    if on_progress:
+        await on_progress("Writing slides…")
     raw = await ai_service.analyze_with_provider(
         full_prompt,
         system_prompt=_DECK_SYSTEM_PROMPT,
         provider=provider,
+        on_progress=on_progress,
     )
     html = _clean_html(raw)
 
@@ -260,11 +263,14 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
         "deck validation found issues (structural=%d, plotly=%d, ungrounded_numbers=%d) — attempting repair",
         len(result.structural), len(result.plotly), len(result.ungrounded_numbers),
     )
+    if on_progress:
+        await on_progress("Checking & fixing the deck…")
     try:
         repair_raw = await ai_service.analyze_with_provider(
             _build_repair_prompt(html, result.repair_instructions()),
             system_prompt=_DECK_SYSTEM_PROMPT,
             provider=provider,
+            on_progress=on_progress,
         )
         repaired = _clean_html(repair_raw)
         after = validate_deck_html(repaired, data_brief)
@@ -335,7 +341,7 @@ def _prepare_html_for_render(html: str) -> str:
 _AI_IMG_RE = re.compile(r'<img\b[^>]*\bai-img\b[^>]*>', re.IGNORECASE)
 
 
-async def resolve_ai_images(html: str, *, max_images: int = 8) -> str:
+async def resolve_ai_images(html: str, *, max_images: int = 8, on_progress: ProgressCb = None) -> str:
     """Replace <img class="ai-img" data-prompt="..."> placeholders with real
     gpt-image-2 photos embedded as base64 (so the offline renderer can use them).
     Failed or over-cap placeholders are dropped so the deck still renders cleanly."""
@@ -351,6 +357,8 @@ async def resolve_ai_images(html: str, *, max_images: int = 8) -> str:
         return _AI_IMG_RE.sub("", html)
 
     gen_tags = tags[:max_images]
+    if on_progress:
+        await on_progress(f"Generating images… ({len(gen_tags)})")
     sem = asyncio.Semaphore(3)
 
     def _prompt(tag: str) -> str:
@@ -459,7 +467,7 @@ async def render_deck(html: str, fmt: str = "pdf") -> bytes:
     raise ValueError(f"Unsupported format: {fmt!r} (use 'pdf' or 'pptx')")
 
 
-async def render_slide_images(html: str, *, quality: int = 72) -> List[bytes]:
+async def render_slide_images(html: str, *, quality: int = 72, on_progress: ProgressCb = None) -> List[bytes]:
     """Render each slide to a JPEG for in-app preview — same load/Plotly-wait path as
     _render, so the preview matches the downloaded file exactly (charts included)."""
     import os
@@ -467,6 +475,8 @@ async def render_slide_images(html: str, *, quality: int = 72) -> List[bytes]:
     from pathlib import Path
     from playwright.async_api import async_playwright
 
+    if on_progress:
+        await on_progress("Rendering charts & slides…")
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False, encoding="utf-8")
     try:
         tmp.write(_prepare_html_for_render(html))
@@ -517,12 +527,15 @@ async def generate_deck_from_pdf(
     render: bool = True,
     images: bool = True,
     notes: str = "",
+    on_progress: ProgressCb = None,
 ) -> Dict:
     """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
     chosen prompt + provider. Renders to the file unless render=False (deferred to download)."""
     from services.pdf_extract import extract_pdf_text
     from services.highlights import to_brief_block
 
+    if on_progress:
+        await on_progress("Reading the PDF…")
     data_text = extract_pdf_text(pdf_bytes)
     if not data_text.strip():
         raise ValueError("No extractable text found in the PDF.")
@@ -533,7 +546,8 @@ async def generate_deck_from_pdf(
         brand=brand or GOOGLE_ADS_BRAND,
         structure=structure or GOOGLE_ADS_STRUCTURE,
         provider=provider,
+        on_progress=on_progress,
     )
-    html = await resolve_ai_images(html) if images else _AI_IMG_RE.sub("", html)
+    html = await resolve_ai_images(html, on_progress=on_progress) if images else _AI_IMG_RE.sub("", html)
     file_bytes = await render_deck(html, fmt=fmt) if render else None
     return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes}

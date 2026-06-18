@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 from openai import AsyncOpenAI
 from config import settings
 import json
@@ -6,6 +6,10 @@ import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Optional async progress reporter threaded through the deck pipeline so long runs can
+# stream phase-by-phase status to the UI. None = silent (the default everywhere).
+ProgressCb = Optional[Callable[[str], Awaitable[None]]]
 
 
 # OpenAI-compatible providers the user can choose from. Each deck-writing model
@@ -82,7 +86,7 @@ class AIService:
         )
 
     async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
-                                    provider: str = "deepseek") -> str:
+                                    provider: str = "deepseek", on_progress: ProgressCb = None) -> str:
         """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
         OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations."""
         cfg = AI_PROVIDERS.get(provider)
@@ -120,6 +124,8 @@ class AIService:
             if attempt == _MAX_CONTINUATIONS:
                 logger.warning("provider=%s hit continuation cap (%d) — output may still be truncated",
                                provider, _MAX_CONTINUATIONS)
+            if on_progress:
+                await on_progress(f"Writing slides… (part {attempt + 2})")
             # Hit the output-token ceiling — continue exactly where it stopped.
             messages.append({"role": "assistant", "content": choice.message.content or ""})
             messages.append({"role": "user", "content":

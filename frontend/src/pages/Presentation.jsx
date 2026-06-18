@@ -32,6 +32,7 @@ const Presentation = () => {
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
     const [generating, setGenerating] = useState(false);
+    const [progressMsg, setProgressMsg] = useState('');
     const [downloading, setDownloading] = useState('');
 
     // generated deck (preview carousel + download)
@@ -130,18 +131,47 @@ const Presentation = () => {
 
     const pick = (p) => { setPropUrl(p.url); setQuery(prettyName(p.url)); setOpen(false); };
 
+    // Read a Server-Sent Events stream, invoking handlers per (event, data) frame.
+    const readSSE = async (response, { onProgress, onResult, onError }) => {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let sep;
+            while ((sep = buf.indexOf('\n\n')) !== -1) {
+                const frame = buf.slice(0, sep); buf = buf.slice(sep + 2);
+                let event = 'message', data = '';
+                for (const line of frame.split('\n')) {
+                    if (line.startsWith('event:')) event = line.slice(6).trim();
+                    else if (line.startsWith('data:')) data += line.slice(5).trim();
+                }
+                let parsed = {};
+                try { parsed = data ? JSON.parse(data) : {}; } catch {}
+                if (event === 'progress') onProgress?.(parsed);
+                else if (event === 'result') onResult?.(parsed);
+                else if (event === 'error') onError?.(parsed);
+            }
+        }
+    };
+
     const generate = async () => {
         if (mode === 'gsc' && !propUrl) { toast.error('Pick a site first.'); return; }
         if (mode === 'pdf' && !pdfFile) { toast.error('Choose a PDF first.'); return; }
         setGenerating(true);
+        setProgressMsg('Starting…');
         setDeckSlides([]); setDeckDocId('');
         const t = toast.loading('AI is designing your presentation…');
+        const token = localStorage.getItem('access_token');
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
         try {
-            let res;
+            let response;
             if (mode === 'gsc') {
-                res = await api.post(
+                response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&prompt_id=${promptId}&images=${useImages}`,
-                    { notes });
+                    { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ notes }) });
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
@@ -149,18 +179,31 @@ const Presentation = () => {
                 fd.append('prompt_id', promptId);
                 fd.append('images', useImages);
                 fd.append('notes', notes);
-                res = await api.post('/api/presentation/ai-deck-from-pdf', fd);
+                response = await fetch('/api/presentation/ai-deck-from-pdf', { method: 'POST', headers, body: fd });
             }
-            setDeckSlides(res.data.slides || []);
-            setSlideIdx(0);
-            setDeckDocId(res.data.document_id || '');
-            setDeckLabel(res.data.label || '');
+            if (!response.ok || !response.body) {
+                let msg = 'Generation failed.';
+                try { msg = (await response.json())?.detail || msg; } catch {}
+                throw new Error(msg);
+            }
+            let streamErr = null, gotResult = false;
+            await readSSE(response, {
+                onProgress: (d) => { if (d.message) setProgressMsg(d.message); },
+                onResult: (d) => {
+                    gotResult = true;
+                    setDeckSlides(d.slides || []);
+                    setSlideIdx(0);
+                    setDeckDocId(d.document_id || '');
+                    setDeckLabel(d.label || '');
+                },
+                onError: (d) => { streamErr = d.detail || 'Generation failed.'; },
+            });
+            if (streamErr) throw new Error(streamErr);
+            if (!gotResult) throw new Error('Generation ended unexpectedly.');
             toast.success('Deck ready — preview below.', { id: t });
         } catch (e) {
-            let msg = 'Generation failed.';
-            try { msg = e.response?.data?.detail || msg; } catch {}
-            toast.error(msg, { id: t });
-        } finally { setGenerating(false); }
+            toast.error(e.message || 'Generation failed.', { id: t });
+        } finally { setGenerating(false); setProgressMsg(''); }
     };
 
     const downloadDeck = async (fmt) => {
@@ -280,7 +323,7 @@ const Presentation = () => {
 
                 <button onClick={generate} disabled={generating || (mode === 'gsc' ? !propUrl : !pdfFile)}
                     className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
-                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Generating…</>
+                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {progressMsg || 'Generating…'}</>
                         : <><SparklesIcon className="w-5 h-5" /> Generate presentation</>}
                 </button>
                 <p className="text-xs text-slate-400 mt-3 text-center">The AI uses only your real data — no fabricated numbers.</p>
