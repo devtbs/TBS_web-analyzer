@@ -13,6 +13,8 @@ The AI designs the slides (not a fixed template); we only render its HTML to a f
 from __future__ import annotations
 
 import logging
+import asyncio
+import base64
 import re
 from io import BytesIO
 from pathlib import Path
@@ -76,7 +78,7 @@ Your dynamic slide sequence must seamlessly guide the viewer through these core 
   * Plotly Requirement: This slide MUST include a comprehensive Plotly.js multi-chart grid configuration (e.g., a combined subplots breakdown or side-by-side comparison charts displaying performance distribution, macro summaries, and growth curves simultaneously).
   * Text: Brief structural anchor notes highlighting how to read the visual data matrix below it.
 
-- PHASE 3: EXECUTIVE SUMMARY & AGGREGATE CORE METRICS — Grouping the highest-level snapshot numbers into clean visual cards alongside a confident summary paragraph.
+- PHASE 3: EXECUTIVE SUMMARY & AGGREGATE CORE METRICS — This slide is CHART-LED, not card-led. Make one or two large Plotly.js charts the visual focus (filling the majority of the slide), and place the high-level snapshot numbers ONLY as a slim, compact KPI strip along the top or bottom (small values in a single row, NOT large cards with empty space below). Do NOT fill the slide with big number cards.
 
 - PHASE 4: DEEP-DIVE TRENDS & DISTRIBUTIONS — Dynamic slides visualizing data groups, keyword shifts, or metric clusters using Plotly.js graphs.
 
@@ -101,17 +103,19 @@ Output ONE complete, self-contained HTML document and NOTHING ELSE: no markdown,
 - Start with <!DOCTYPE html>.
 - All CSS inline in a single <style> tag. Fonts may load from fonts.googleapis.com.
 - Each slide is exactly: <section class="slide"> ... </section>. Every .slide is 1280px wide and 720px tall, overflow hidden.
+- FILL THE CANVAS — this is critical. Every slide MUST use the full 1280x720 height; NO slide may leave a large empty band (no more than ~12% blank vertical space). Make each .slide a vertical flex container (display:flex; flex-direction:column; justify-content:center; gap:28px; padding:60px 72px) so content is balanced over the whole height — never dump everything in the top third. To fill space meaningfully: pair every data TABLE or KPI-card row with a relevant Plotly chart beside or below it (two-column or stacked grid), enlarge cards, and use generous spacing. A data slide that is only a small table at the top is NOT acceptable — add a chart or distribute the layout to fill the slide.
 - Include this CSS so it paginates when printed:
     @page { size: 1280px 720px; margin: 0; }
     * { box-sizing: border-box; }
     html,body { margin:0; padding:0; }
     .slide { width:1280px; height:720px; position:relative; overflow:hidden; page-break-after:always; }
-- CHARTS via Plotly.js (when the data suits a chart): include EXACTLY ONCE in <head>:
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-  For each chart, put a sized container inside its slide: <div id="chartN" style="width:600px;height:380px"></div>
-  and at the very END of <body> add: <script>Plotly.newPlot('chartN', DATA, LAYOUT, {staticPlot:true, displayModeBar:false, responsive:false});</script>
-  Charts MUST fit fully within the 1280x720 slide (never overflow). Use transparent paper_bgcolor and plot_bgcolor, the accent colour for key series, the secondary colour for axis text/gridlines, margins tight, and hide unneeded gridlines.
-- Do NOT reference any other external resource or remote <img>. Self-contained except the Google Font and the single Plotly script."""
+- CHARTS via Plotly.js (use them generously where the data suits a chart). The Plotly library is provided for you — do NOT add any Plotly <script src>, and do NOT call Plotly.newPlot yourself. For each chart output exactly two elements:
+    (a) a sized container in its slide: <div id="chartN" style="width:600px;height:380px"></div>  (unique id per chart)
+    (b) immediately AFTER it, its spec: <script type="application/json" class="plotly-spec" data-target="chartN">{"data":[...],"layout":{...}}</script>
+  The system reads every plotly-spec and renders it. The JSON must be strictly valid (double-quoted keys/strings, no trailing commas, no JS expressions). Never print chart config as visible text. Charts MUST fit fully within the 1280x720 slide. Use transparent paper_bgcolor and plot_bgcolor, the accent colour for key series, the secondary colour for axis text/gridlines, tight margins, and hide unneeded gridlines.
+- PHOTOS: to add a photo, output <img class="ai-img" data-prompt="<a vivid, specific photographic description on-theme to this site's industry — e.g. 'close-up of embroidered military patches on dark fabric, studio lighting, premium'>" style="...">. Do NOT put a src — the system fills it in. Size/position it with CSS (object-fit:cover) so it fits inside its slide.
+  Use photos on MOST slides as full-bleed backgrounds or side panels to make the deck visually rich. When text or numbers sit on top of a photo, place a dark gradient overlay (e.g. linear-gradient(rgba(15,23,42,.65), rgba(15,23,42,.35))) over the image for legibility. Keep chart and table areas on a clean solid background, not over a photo. Use at most 8 photos total.
+- Do NOT reference any other external resource or remote <img> with a real URL. Self-contained except the Google Font, the single Plotly script, and ai-img placeholders the system fills."""
 
 
 DEFAULT_BRAND = (
@@ -136,8 +140,9 @@ UNIQUE_STYLE_BRAND = (
 )
 
 DEFAULT_STRUCTURE = (
-    "Cover (company, report title, reporting period, hero visual); Executive Summary (KPI overview + "
-    "strongest positives + short strategic summary); Keyword Rankings overview; Biggest Movers; "
+    "Cover (company, report title, reporting period, hero visual); Executive Summary (CHART-LED — "
+    "one or two large charts as the focus, KPIs only as a slim compact strip, not large number cards "
+    "with empty space; strongest positives + short strategic summary); Keyword Rankings overview; Biggest Movers; "
     "Wins of the Month; Opportunities; Strategic Recommendations; Closing (key takeaways + thank you)."
 )
 
@@ -154,7 +159,7 @@ GOOGLE_ADS_BRAND = (
 
 GOOGLE_ADS_STRUCTURE = (
     "1. Cover Slide — company name, 'Google Ads Performance Report', reporting period, professional hero visual.\n"
-    "2. Executive Summary — high-level KPI overview, strongest positive outcomes, short strategic summary.\n"
+    "2. Executive Summary — CHART-LED slide: one or two large Plotly charts as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positive outcomes, short strategic summary.\n"
     "3. Account Performance — Spend, Clicks, Impressions, CTR, CPC, Conversions, Cost per Conversion, ROAS/Conversion Value if available; highlight key wins visually.\n"
     "4. Keyword Conversion Performance — top converting keywords, best CTR keywords, highest-value search intent; tables or charts.\n"
     "5. Landing Page Performance — best-performing and conversion-driving pages, engagement insights if available; focus on strengths.\n"
@@ -169,7 +174,7 @@ GOOGLE_ADS_STRUCTURE = (
 # Structure for an organic-search (Google Search Console) monthly report.
 GSC_STRUCTURE = (
     "1. Cover Slide — site/domain, 'Organic Search Performance Report', reporting period, professional hero visual.\n"
-    "2. Executive Summary — high-level KPI overview (clicks, impressions, CTR, average position), strongest positives, short strategic summary.\n"
+    "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (clicks/impressions/CTR/position) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
     "3. Search Performance — clicks, impressions, CTR, average position with period-over-period change; highlight key wins visually.\n"
     "4. Top Queries — best queries by clicks (with impressions, CTR, position); present clearly with a table or chart.\n"
     "5. Query Opportunities — high-impression / low-CTR or near-page-1 queries to target next.\n"
@@ -210,19 +215,73 @@ def _clean_html(text: str) -> str:
     return t[i:].strip() if i != -1 else t.strip()
 
 
+_DECK_SYSTEM_PROMPT = "You are an award-winning presentation designer who outputs only clean, self-contained HTML."
+
+
+def _build_repair_prompt(html: str, instructions: str) -> str:
+    """A focused follow-up asking the model to fix ONLY the listed problems and
+    re-emit the whole document. Keeps the deck self-contained per HTML_CONTRACT."""
+    return (
+        "The HTML presentation below has specific problems that must be fixed. Fix ONLY "
+        "the problems listed; preserve all other content, wording, numbers, layout and "
+        "design exactly as they are.\n\n"
+        "PROBLEMS TO FIX:\n" + instructions + "\n\n"
+        "Return the COMPLETE corrected HTML document and NOTHING ELSE — no markdown, no "
+        "commentary. It must still satisfy this contract:\n\n" + HTML_CONTRACT + "\n\n"
+        "=== CURRENT HTML ===\n" + html
+    )
+
+
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
                              provider: str = "deepseek") -> str:
-    """Ask the chosen LLM provider to design the deck and return self-contained HTML."""
+    """Ask the chosen LLM provider to design the deck and return self-contained HTML.
+
+    Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
+    or ungrounded-number problems, makes a single targeted repair call. Always returns
+    renderable HTML best-effort — a failed/worse repair is discarded, never blocks."""
+    from services.deck_validation import validate_deck_html
+
     # prompt is normally resolved by the route (from the chosen prompt id); fall back
     # to the built-in default if none was passed.
     full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure)
     raw = await ai_service.analyze_with_provider(
         full_prompt,
-        system_prompt="You are an award-winning presentation designer who outputs only clean, self-contained HTML.",
+        system_prompt=_DECK_SYSTEM_PROMPT,
         provider=provider,
     )
-    return _clean_html(raw)
+    html = _clean_html(raw)
+
+    result = validate_deck_html(html, data_brief)
+    if result.ok:
+        return html
+
+    logger.info(
+        "deck validation found issues (structural=%d, plotly=%d, ungrounded_numbers=%d) — attempting repair",
+        len(result.structural), len(result.plotly), len(result.ungrounded_numbers),
+    )
+    try:
+        repair_raw = await ai_service.analyze_with_provider(
+            _build_repair_prompt(html, result.repair_instructions()),
+            system_prompt=_DECK_SYSTEM_PROMPT,
+            provider=provider,
+        )
+        repaired = _clean_html(repair_raw)
+        after = validate_deck_html(repaired, data_brief)
+        # Accept the repair only if it is still a valid full deck (no structural errors),
+        # so a bad repair can never leave us worse off than the original.
+        if not after.structural:
+            html = repaired
+            logger.info(
+                "post-repair validation (structural=%d, plotly=%d, ungrounded_numbers=%d)",
+                len(after.structural), len(after.plotly), len(after.ungrounded_numbers),
+            )
+        else:
+            logger.warning("repair produced a structurally invalid deck — keeping original HTML")
+    except Exception:
+        logger.exception("deck repair call failed — keeping original HTML")
+
+    return html
 
 
 # ---- Rendering (headless Chromium via Playwright) --------------------------
@@ -244,7 +303,7 @@ def _plotly_source() -> str:
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
-    if "Plotly.newPlot" not in html and "plot.ly" not in html:
+    if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
     src = _plotly_source()
     if not src:
@@ -253,8 +312,69 @@ def _prepare_html_for_render(html: str) -> str:
                   '', html, flags=re.IGNORECASE)
     inline = "<script>/* bundled-plotly */\n" + src + "\n</script>"
     if "</head>" in html:
-        return html.replace("</head>", inline + "</head>", 1)
-    return inline + html
+        html = html.replace("</head>", inline + "</head>", 1)
+    else:
+        html = inline + html
+    # Render every <script type="application/json" class="plotly-spec"> ourselves — the
+    # AI emits JSON specs reliably but inconsistently wires up executable <script> calls.
+    bootstrap = (
+        "<script>(function(){if(!window.Plotly)return;"
+        "document.querySelectorAll('script.plotly-spec').forEach(function(s){try{"
+        "var spec=JSON.parse(s.textContent);"
+        "var id=s.getAttribute('data-target');"
+        "var el=(id&&document.getElementById(id))||s.previousElementSibling;"
+        "if(el)Plotly.newPlot(el,spec.data||[],spec.layout||{},"
+        "{staticPlot:true,displayModeBar:false,responsive:false});"
+        "}catch(e){console.error('plotly-spec render failed',e);}});})();</script>"
+    )
+    if "</body>" in html:
+        return html.replace("</body>", bootstrap + "</body>", 1)
+    return html + bootstrap
+
+
+_AI_IMG_RE = re.compile(r'<img\b[^>]*\bai-img\b[^>]*>', re.IGNORECASE)
+
+
+async def resolve_ai_images(html: str, *, max_images: int = 8) -> str:
+    """Replace <img class="ai-img" data-prompt="..."> placeholders with real
+    gpt-image-2 photos embedded as base64 (so the offline renderer can use them).
+    Failed or over-cap placeholders are dropped so the deck still renders cleanly."""
+    if "ai-img" not in html:
+        return html
+    from services.image_service import generate_image, images_enabled
+
+    tags = list(_AI_IMG_RE.finditer(html))
+    if not tags:
+        return html
+    if not images_enabled():
+        # no OpenAI key — strip placeholders so no empty <img> shows
+        return _AI_IMG_RE.sub("", html)
+
+    gen_tags = tags[:max_images]
+    sem = asyncio.Semaphore(3)
+
+    def _prompt(tag: str) -> str:
+        m = re.search(r'data-prompt=["\'](.*?)["\']', tag, re.S)
+        return (m.group(1).strip() if m else "professional abstract background, premium")
+
+    async def _one(prompt: str):
+        async with sem:
+            return await generate_image(prompt)
+
+    images = await asyncio.gather(*[_one(_prompt(m.group(0))) for m in gen_tags])
+
+    out, last = [], 0
+    for idx, m in enumerate(tags):
+        out.append(html[last:m.start()])
+        img = images[idx] if idx < len(gen_tags) else None
+        if img:
+            mime = "jpeg" if img[:2] == b"\xff\xd8" else "png"
+            b64 = base64.b64encode(img).decode()
+            out.append(m.group(0).replace("<img", f'<img src="data:image/{mime};base64,{b64}"', 1))
+        # else: drop the placeholder (failed or beyond cap)
+        last = m.end()
+    out.append(html[last:])
+    return "".join(out)
 
 
 async def _render(html: str) -> Dict:
@@ -293,11 +413,11 @@ async def _render(html: str) -> Dict:
                     await page.wait_for_function(
                         "() => Array.from(document.querySelectorAll('.js-plotly-plot'))"
                         ".every(n => n.querySelector('.main-svg'))",
-                        timeout=10000,
+                        timeout=25000,
                     )
                 except Exception:
                     pass
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1500)
             pdf = await page.pdf(prefer_css_page_size=True, print_background=True)
             slide_pngs: List[bytes] = []
             for el in await page.query_selector_all(".slide"):
@@ -369,11 +489,11 @@ async def render_slide_images(html: str, *, quality: int = 72) -> List[bytes]:
                     await page.wait_for_function(
                         "() => Array.from(document.querySelectorAll('.js-plotly-plot'))"
                         ".every(n => n.querySelector('.main-svg'))",
-                        timeout=10000,
+                        timeout=25000,
                     )
                 except Exception:
                     pass
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(1500)
             imgs: List[bytes] = []
             for el in await page.query_selector_all(".slide"):
                 imgs.append(await el.screenshot(type="jpeg", quality=quality))
@@ -395,14 +515,18 @@ async def generate_deck_from_pdf(
     brand: Optional[str] = None,
     structure: Optional[str] = None,
     render: bool = True,
+    images: bool = True,
+    notes: str = "",
 ) -> Dict:
     """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
     chosen prompt + provider. Renders to the file unless render=False (deferred to download)."""
     from services.pdf_extract import extract_pdf_text
+    from services.highlights import to_brief_block
 
     data_text = extract_pdf_text(pdf_bytes)
     if not data_text.strip():
         raise ValueError("No extractable text found in the PDF.")
+    data_text = data_text + to_brief_block(notes)
     html = await generate_deck_html(
         data_text,
         prompt=prompt,
@@ -410,5 +534,6 @@ async def generate_deck_from_pdf(
         structure=structure or GOOGLE_ADS_STRUCTURE,
         provider=provider,
     )
+    html = await resolve_ai_images(html) if images else _AI_IMG_RE.sub("", html)
     file_bytes = await render_deck(html, fmt=fmt) if render else None
     return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes}

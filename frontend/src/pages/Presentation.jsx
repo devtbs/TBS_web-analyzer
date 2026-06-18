@@ -29,6 +29,8 @@ const Presentation = () => {
     // shared
     const [providers, setProviders] = useState([]);
     const [provider, setProvider] = useState('deepseek');
+    const [useImages, setUseImages] = useState(true);
+    const [notes, setNotes] = useState('');
     const [generating, setGenerating] = useState(false);
     const [downloading, setDownloading] = useState('');
 
@@ -138,13 +140,15 @@ const Presentation = () => {
             let res;
             if (mode === 'gsc') {
                 res = await api.post(
-                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&prompt_id=${promptId}`,
-                    {});
+                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&prompt_id=${promptId}&images=${useImages}`,
+                    { notes });
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
                 fd.append('provider', provider);
                 fd.append('prompt_id', promptId);
+                fd.append('images', useImages);
+                fd.append('notes', notes);
                 res = await api.post('/api/presentation/ai-deck-from-pdf', fd);
             }
             setDeckSlides(res.data.slides || []);
@@ -253,14 +257,30 @@ const Presentation = () => {
                 </select>
 
                 <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
-                <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={generating} className={fieldCls + ' mb-8'}>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={generating} className={fieldCls + ' mb-6'}>
                     {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
                     {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
 
+                <button type="button" onClick={() => setUseImages((v) => !v)} disabled={generating}
+                    className="w-full flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-8 text-left hover:border-[#26397A]/50 disabled:opacity-60">
+                    <span>
+                        <span className="block text-sm font-bold text-slate-700">Add AI photos</span>
+                        <span className="block text-xs text-slate-400">gpt-image-2 illustrations on most slides · slower &amp; uses OpenAI credits</span>
+                    </span>
+                    <span className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${useImages ? 'bg-[#26397A]' : 'bg-slate-300'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${useImages ? 'translate-x-5' : ''}`} />
+                    </span>
+                </button>
+
+                <label className="block text-sm font-bold text-slate-700 mb-2">Notes / highlights <span className="font-normal text-slate-400">(optional)</span></label>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={generating} rows={3}
+                    placeholder={"Lines starting with /on <date> are added verbatim to a Key Dates slide, e.g.\n/on 26 may product launch at 9 AM\n/on 30 may final client sign-off"}
+                    className={fieldCls + ' mb-8 text-sm font-mono'} />
+
                 <button onClick={generate} disabled={generating || (mode === 'gsc' ? !propUrl : !pdfFile)}
                     className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
-                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Generating… (~40s)</>
+                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Generating…</>
                         : <><SparklesIcon className="w-5 h-5" /> Generate presentation</>}
                 </button>
                 <p className="text-xs text-slate-400 mt-3 text-center">The AI uses only your real data — no fabricated numbers.</p>

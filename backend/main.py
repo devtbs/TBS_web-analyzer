@@ -1,8 +1,14 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
 from config import settings
 from database import init_db
+
+# Surface application (services.*) INFO logs — without this the root logger defaults
+# to WARNING and our diagnostics (deck continuation, validation/repair) never print.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
 
 # Create FastAPI app
 app = FastAPI(

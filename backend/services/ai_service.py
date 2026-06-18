@@ -3,14 +3,26 @@ from openai import AsyncOpenAI
 from config import settings
 import json
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # OpenAI-compatible providers the user can choose from. Each deck-writing model
 # is reached through the same chat-completions API, just a different base_url/model.
 AI_PROVIDERS = {
     "deepseek": {"key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com",
-                 "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8000},
+                 "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8192},
 }
+
+# A full HTML deck (8-10 slides + inline Plotly JSON) exceeds any single response's
+# output-token ceiling (DeepSeek caps at 8192), which truncates the deck mid-document
+# — too few slides, charts cut off. When a response stops because it hit that limit
+# (finish_reason == "length"), we ask the model to continue and stitch the parts.
+# This is the real lever on total deck length — each step adds up to max_tokens more
+# (8 * 8192 ≈ 65K tokens), far beyond any single-call ceiling. The loop stops early as
+# soon as the model finishes naturally, so most decks won't use them all.
+_MAX_CONTINUATIONS = 8
 
 
 class AIService:
@@ -90,13 +102,31 @@ class AIService:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = await client.chat.completions.create(
-            model=cfg["model"],
-            messages=messages,
-            temperature=0.8,
-            max_tokens=cfg.get("max_tokens", 8000),
-        )
-        return response.choices[0].message.content
+        max_tokens = cfg.get("max_tokens", 8000)
+        parts: List[str] = []
+        for attempt in range(_MAX_CONTINUATIONS + 1):
+            response = await client.chat.completions.create(
+                model=cfg["model"],
+                messages=messages,
+                temperature=0.8,
+                max_tokens=max_tokens,
+            )
+            choice = response.choices[0]
+            parts.append(choice.message.content or "")
+            logger.info("provider=%s call %d finish_reason=%s (chars so far=%d)",
+                        provider, attempt + 1, choice.finish_reason, sum(len(p) for p in parts))
+            if choice.finish_reason != "length":
+                break
+            if attempt == _MAX_CONTINUATIONS:
+                logger.warning("provider=%s hit continuation cap (%d) — output may still be truncated",
+                               provider, _MAX_CONTINUATIONS)
+            # Hit the output-token ceiling — continue exactly where it stopped.
+            messages.append({"role": "assistant", "content": choice.message.content or ""})
+            messages.append({"role": "user", "content":
+                "Continue the response from exactly where you stopped. Do not repeat any "
+                "content already written, do not restart, and do not add any preface — "
+                "output only the continuation so the two parts concatenate seamlessly."})
+        return "".join(parts)
 
     @staticmethod
     def configured_providers() -> list:

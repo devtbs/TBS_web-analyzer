@@ -1001,6 +1001,8 @@ async def presentation_ai_deck_from_pdf(
     file: UploadFile = File(...),
     provider: str = Form("deepseek"),
     prompt_id: str = Form("default"),
+    images: bool = Form(True),
+    notes: str = Form(""),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1019,7 +1021,9 @@ async def presentation_ai_deck_from_pdf(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
     try:
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider,
-                                              prompt=get_prompt_text(prompt_id), render=False)
+                                              prompt=get_prompt_text(prompt_id), render=False,
+                                              images=images and bool(settings.OPENAI_API_KEY),
+                                              notes=notes)
         slides = await render_slide_images(result["html"])
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1075,6 +1079,8 @@ async def presentation_ai_deck_gsc(
     days: int = 28,
     provider: str = "deepseek",
     prompt_id: str = "default",
+    images: bool = True,
+    body: dict = Body(default={}),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1096,7 +1102,9 @@ async def presentation_ai_deck_gsc(
     try:
         prompt = get_prompt_text(prompt_id)
         service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-        result = await generate_ai_gsc_deck(service, property, days, provider=provider, prompt=prompt)
+        result = await generate_ai_gsc_deck(service, property, days, provider=provider, prompt=prompt,
+                                            images=images and bool(settings.OPENAI_API_KEY),
+                                            notes=(body or {}).get("notes", ""))
         slides = await render_slide_images(result["html"])
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

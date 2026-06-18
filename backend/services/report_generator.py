@@ -403,15 +403,18 @@ Use only these numbers. Positive but honest framing; declines = opportunities.""
 
 
 async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
-                               provider: str = "deepseek",
-                               prompt: Optional[str] = None) -> Dict:
+                               provider: str = "deepseek", prompt: Optional[str] = None,
+                               images: bool = True, notes: str = "") -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
     chosen prompt + provider. Returns the HTML only — the file is rendered on download."""
-    from services.ai_deck_service import generate_deck_html, GSC_STRUCTURE, UNIQUE_STYLE_BRAND
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images,
+                                          _AI_IMG_RE, GSC_STRUCTURE, UNIQUE_STYLE_BRAND)
+    from services.highlights import to_brief_block
     context = await assemble_gsc_context(service, property_url, days)
-    brief = _gsc_data_brief(context)
+    brief = _gsc_data_brief(context) + to_brief_block(notes)
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=GSC_STRUCTURE, provider=provider)
+    html = await resolve_ai_images(html) if images else _AI_IMG_RE.sub("", html)
     return {
         "property_url": property_url,
         "domain": context["domain"],
