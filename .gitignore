@@ -29,6 +29,11 @@ yarn-error.log*
 dist/
 build/
 
+# Deploy artifacts & DB backups (not source)
+*.tgz
+deploy.tgz
+*.sql
+
 # Generated presentations & QA renders (scratch, not source)
 demo_deck/
 backend/*.pptx

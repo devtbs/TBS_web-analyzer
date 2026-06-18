@@ -2,7 +2,9 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import router
+from api.routers import (
+    auth, gsc, analytics, ranking, reports, decks, analysis, content,
+)
 from config import settings
 from database import init_db
 
@@ -36,8 +38,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routes
-app.include_router(router)
+# Include routes — one router per domain (paths unchanged, mounted with no prefix)
+for _router in (auth, gsc, analytics, ranking, reports, decks, analysis, content):
+    app.include_router(_router.router)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
