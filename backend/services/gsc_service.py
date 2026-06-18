@@ -1205,39 +1205,101 @@ class GSCService:
             raise Exception(f"Failed to fetch query decay: {str(e)}")
 
     async def get_cannibalization(self, property_url: str, days: int = 28,
-                                  min_impressions: int = 10, filters_json: str = None) -> List[Dict]:
-        """Queries where 2+ of your pages compete in search, splitting clicks.
-        Returns each such query with its competing pages."""
-        cache_key = (self.user_email, 'cannibal', property_url, days, min_impressions, filters_json)
+                                  min_impressions_pct: float = 20.0,
+                                  brand_keywords: List[str] = None,
+                                  topic: str = None,
+                                  filters_json: str = None) -> List[Dict]:
+        """URL cannibalization, modelled on how you'd analyse it in the GSC UI.
+
+        For every query, GSC lists each page that surfaced for it. A query is
+        "cannibalised" when 2+ of your pages compete for it. To cut noise we
+        only count a page as a genuine competitor when its impressions are at
+        least ``min_impressions_pct`` of the top page's impressions for that
+        query (same idea as the threshold control in the UI).
+
+        Results are grouped **by URL**: each competing URL lists the keywords it
+        fights over, with GSC-style metrics (impression-weighted CTR/position).
+        """
+        brand_keywords = [b.strip().lower() for b in (brand_keywords or []) if b and b.strip()]
+        topic = (topic or '').strip().lower() or None
+        cache_key = (self.user_email, 'cannibal_v2', property_url, days,
+                     round(min_impressions_pct, 2), tuple(brand_keywords), topic, filters_json)
         cached = _cache_get(cache_key)
         if cached is not None:
             return cached
+
+        # Topic anchoring mirrors get_topic_clusters so the cluster picker lines up.
+        STOP = {'the', 'a', 'an', 'and', 'or', 'of', 'for', 'to', 'in', 'on', 'is',
+                'how', 'what', 'best', 'with', 'my', 'your', 'near', 'me', 'vs'}
+
+        def _key_term(q: str) -> str:
+            tokens = [t for t in q.lower().split() if t and t not in STOP]
+            return max(tokens, key=len) if tokens else (q.strip().lower() or '(other)')
+
         try:
             rows = await self._fetch_query_page_rows(property_url, days, filters_json)
+
+            # 1) Bucket raw rows by query.
             by_query: Dict[str, List[Dict]] = {}
             for r in rows:
-                if r['impressions'] < min_impressions:
+                q = r['query']
+                ql = q.lower()
+                if brand_keywords and any(b in ql for b in brand_keywords):
                     continue
-                by_query.setdefault(r['query'], []).append({
+                if topic and _key_term(q) != topic:
+                    continue
+                by_query.setdefault(q, []).append({
                     'page': r['page'].rstrip('/'),
                     'clicks': r['clicks'],
                     'impressions': r['impressions'],
-                    'position': round(r['position'], 1),
-                    'ctr': round(r['ctr'] * 100, 2),
+                    'position': r['position'],
+                    'ctr': r['ctr'],
                 })
-            results = []
+
+            # 2) Keep only genuinely cannibalised queries; collect (url, keyword) edges.
+            frac = max(min_impressions_pct, 0) / 100.0
+            urls: Dict[str, Dict] = {}
             for query, pages in by_query.items():
+                pages = [p for p in pages if p['impressions'] > 0]
                 if len(pages) < 2:
                     continue
                 pages.sort(key=lambda x: x['impressions'], reverse=True)
+                top_impr = pages[0]['impressions']
+                competing = [p for p in pages if p['impressions'] >= top_impr * frac]
+                if len(competing) < 2:
+                    continue
+                top_page = competing[0]['page']
+                for p in competing:
+                    u = urls.setdefault(p['page'], {'url': p['page'], 'keywords': []})
+                    u['keywords'].append({
+                        'query': query,
+                        'clicks': p['clicks'],
+                        'impressions': p['impressions'],
+                        'position': round(p['position'], 1),
+                        'ctr': round(p['ctr'] * 100, 2),
+                        'competing_urls': len(competing),
+                        'is_top': p['page'] == top_page,
+                    })
+
+            # 3) Aggregate per-URL metrics the way GSC reports them.
+            results = []
+            for u in urls.values():
+                kws = u['keywords']
+                clicks = sum(k['clicks'] for k in kws)
+                impr = sum(k['impressions'] for k in kws)
+                pos_weight = sum(k['position'] * max(k['impressions'], 1) for k in kws)
+                weight = sum(max(k['impressions'], 1) for k in kws)
+                kws.sort(key=lambda x: x['impressions'], reverse=True)
                 results.append({
-                    'query': query,
-                    'page_count': len(pages),
-                    'total_clicks': sum(p['clicks'] for p in pages),
-                    'total_impressions': sum(p['impressions'] for p in pages),
-                    'pages': pages,
+                    'url': u['url'],
+                    'competing_count': len(kws),
+                    'clicks': clicks,
+                    'impressions': impr,
+                    'ctr': round((clicks / impr * 100) if impr else 0, 2),
+                    'position': round(pos_weight / weight, 1) if weight else 0,
+                    'keywords': kws,
                 })
-            results.sort(key=lambda x: x['total_impressions'], reverse=True)
+            results.sort(key=lambda x: x['impressions'], reverse=True)
             _cache_set(cache_key, results, _TTL_ANALYTICS)
             return results
         except Exception as e:

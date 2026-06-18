@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     
     # API Keys (Optional)
     OPENAI_API_KEY: str = ""
+    # Image model for AI-deck photos. Override per-environment if an account lacks
+    # the default; image_service falls back to gpt-image-1 on model-availability errors.
+    OPENAI_IMAGE_MODEL: str = "gpt-image-2"
     ANTHROPIC_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     DEEPSEEK_API_KEY: str = ""

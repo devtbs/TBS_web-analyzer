@@ -15,11 +15,22 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
-IMAGE_MODEL = "gpt-image-2"
+# Primary model is configurable per-environment (OPENAI_IMAGE_MODEL); if that model
+# isn't available on the account, we fall back to the widely-available gpt-image-1.
+IMAGE_MODEL = getattr(settings, "OPENAI_IMAGE_MODEL", "") or "gpt-image-2"
+FALLBACK_IMAGE_MODEL = "gpt-image-1"
 
 
 def images_enabled() -> bool:
     return bool(getattr(settings, "OPENAI_API_KEY", ""))
+
+
+def _is_model_unavailable(msg: str) -> bool:
+    """True when the error is the model being unknown/unauthorized for this account,
+    rather than a transient rate-limit — i.e. a different model should be tried."""
+    m = msg.lower()
+    return any(k in m for k in ("model_not_found", "does not exist", "not found",
+                                "404", "403", "do not have access", "unsupported"))
 
 
 def _compress(data: bytes) -> bytes:
@@ -45,12 +56,14 @@ async def generate_image(prompt: str, *, size: str = "1536x1024",
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    # Retry a few times to ride out rate limits (gpt-image-2 IPM caps are low on
-    # lower tiers); back off between attempts.
+    model = IMAGE_MODEL
+    # Retry a few times to ride out rate limits (image-model IPM caps are low on lower
+    # tiers); back off between attempts. If the configured model is unavailable on this
+    # account, switch to the fallback model and keep trying.
     for attempt in range(4):
         try:
             resp = await client.images.generate(
-                model=IMAGE_MODEL,
+                model=model,
                 prompt=prompt,
                 size=size,
                 quality=quality,
@@ -63,8 +76,15 @@ async def generate_image(prompt: str, *, size: str = "1536x1024",
         except Exception as e:
             msg = str(e)
             is_rate = "429" in msg or "rate" in msg.lower()
-            logger.warning("gpt-image-2 attempt %d failed (%s): %s",
-                           attempt + 1, "rate-limit" if is_rate else "error", msg[:160])
+            unavailable = _is_model_unavailable(msg)
+            logger.warning("image model %s attempt %d failed (%s): %s",
+                           model, attempt + 1,
+                           "rate-limit" if is_rate else ("model-unavailable" if unavailable else "error"),
+                           msg[:160])
+            if unavailable and model != FALLBACK_IMAGE_MODEL:
+                logger.warning("switching image model %s -> %s", model, FALLBACK_IMAGE_MODEL)
+                model = FALLBACK_IMAGE_MODEL
+                continue  # retry immediately with the fallback model
             if attempt == 3:
                 return None
             await asyncio.sleep(8 if is_rate else 2)

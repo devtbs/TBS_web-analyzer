@@ -595,16 +595,26 @@ async def gsc_query_decay(
 
 @router.get("/auth/gsc/cannibalization/{property_url:path}")
 async def gsc_cannibalization(
-    property_url: str, days: int = 28, filters_json: str = None,
+    property_url: str, days: int = 28, min_impressions_pct: float = 20.0,
+    brand: str = None, topic: str = None, filters_json: str = None,
     current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    """Queries where 2+ of your pages compete in search results."""
+    """URLs competing against each other for the same keywords in search.
+
+    - ``min_impressions_pct``: a page counts as competing only if its impressions
+      are at least this percent of the top page's for the query.
+    - ``brand``: comma-separated brand terms; queries containing any are excluded.
+    - ``topic``: restrict to queries anchored on this topic cluster term.
+    """
     from urllib.parse import unquote
     property_url = unquote(property_url)
+    brand_keywords = [b for b in (brand or '').split(',') if b.strip()]
     try:
         service = _gsc_service_for(db, current_user.email)
-        data = await service.get_cannibalization(property_url, days, filters_json=filters_json)
-        return {"queries": data, "total": len(data)}
+        data = await service.get_cannibalization(
+            property_url, days, min_impressions_pct=min_impressions_pct,
+            brand_keywords=brand_keywords, topic=topic, filters_json=filters_json)
+        return {"urls": data, "total": len(data)}
     except HTTPException:
         raise
     except Exception as e:
