@@ -88,8 +88,14 @@ class AnalyticsService:
         self.data = build('analyticsdata', 'v1beta', credentials=self.credentials)
 
     async def _aexecute(self, request):
-        """Run a built googleapiclient request off the event loop (blocking .execute())."""
-        return await asyncio.to_thread(request.execute)
+        """Run a built googleapiclient request off the event loop (blocking .execute()).
+
+        Gated by the shared process-wide semaphore so concurrent Google calls across GSC
+        and GA4 stay bounded (the HTTP/SSL transport crashes under heavy concurrency).
+        """
+        from services.gsc_service import GOOGLE_CALL_GATE
+        async with GOOGLE_CALL_GATE:
+            return await asyncio.to_thread(request.execute)
 
     @classmethod
     def from_stored_token(cls, stored_token: str, is_refresh_token: bool = False, user_email: str = 'default'):
@@ -97,8 +103,81 @@ class AnalyticsService:
             return cls(refresh_token=stored_token, user_email=user_email)
         return cls(access_token=stored_token, user_email=user_email)
 
-    async def get_properties(self) -> List[Dict[str, str]]:
-        """List all GA4 properties the user can access, grouped under their account."""
+    @staticmethod
+    def _norm_domain(v: str) -> str:
+        from urllib.parse import urlparse
+        s = (v or '').strip().lower()
+        s = s.replace('sc-domain:', '')
+        if '://' not in s:
+            s = 'http://' + s
+        host = urlparse(s).hostname or ''
+        return host.replace('www.', '')
+
+    async def _property_hosts(self, property_id: str) -> List[str]:
+        """Return the website hostnames on a property's web data streams (cached per id).
+
+        Used to match a GA4 property to a Search Console site (a domain). The defaultUri
+        on a web stream looks like "https://www.example.com". Cached individually so the
+        on-demand domain resolver stays cheap on repeat calls.
+        """
+        cache_key = (self.user_email, 'ga4_hosts', property_id)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        from urllib.parse import urlparse
+        try:
+            resp = await self._aexecute(
+                self.admin.properties().dataStreams().list(parent=f"properties/{property_id}")
+            )
+        except Exception:
+            return []
+        hosts = []
+        for stream in resp.get('dataStreams', []):
+            uri = (stream.get('webStreamData') or {}).get('defaultUri')
+            if not uri:
+                continue
+            try:
+                host = (urlparse(uri).hostname or '').lower().replace('www.', '')
+                if host:
+                    hosts.append(host)
+            except Exception:
+                pass
+        _cache_set(cache_key, hosts, _TTL_PROPERTIES)
+        return hosts
+
+    async def find_property_for_domain(self, domain: str) -> Optional[Dict]:
+        """Find the GA4 property whose data-stream host matches a site domain.
+
+        Kept cheap: lists properties (1 call), then resolves stream hosts lazily,
+        short-circuiting on the first match. Falls back to a display-name match.
+        """
+        target = self._norm_domain(domain)
+        if not target:
+            return None
+        properties = await self.get_properties()
+
+        # Cheap name-first ordering: check properties whose name mentions the domain first.
+        ordered = sorted(
+            properties,
+            key=lambda p: target not in (p.get('display', '') or '').lower()
+        )
+        for p in ordered:
+            hosts = await self._property_hosts(p['property_id'])
+            if any(self._norm_domain(h) == target for h in hosts):
+                return p
+        # Fallback: name contains the domain (less reliable, but better than nothing).
+        for p in properties:
+            if target in (p.get('display', '') or '').lower():
+                return p
+        return None
+
+    async def get_properties(self) -> List[Dict]:
+        """List all GA4 properties the user can access, grouped under their account.
+
+        Cheap: a single accountSummaries call. Domain→property matching is handled
+        separately by find_property_for_domain so this stays fast under load.
+        """
         cache_key = (self.user_email, 'ga4_properties')
         cached = _cache_get(cache_key)
         if cached is not None:

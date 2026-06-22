@@ -68,11 +68,12 @@ export const AuthProvider = ({ children }) => {
         return () => clearTimeout(safetyTimer);
     }, []);
 
-    const login = async (googleToken) => {
+    // Accepts { code } from the authorization-code flow (preferred — grants GSC/GA4
+    // data access for the login account) or { token } for legacy id-token login.
+    const login = async (payload) => {
         try {
-            const response = await api.post('/auth/google/login', {
-                token: googleToken
-            });
+            const body = typeof payload === 'string' ? { token: payload } : payload;
+            const response = await api.post('/auth/google/login', body);
 
             const { access_token, user: userData } = response.data;
             localStorage.setItem('access_token', access_token);

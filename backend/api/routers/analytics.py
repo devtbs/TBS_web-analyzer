@@ -34,12 +34,49 @@ async def get_ga4_properties(
         return {"properties": properties}
     except Exception as e:
         error_msg = str(e)
+        if "SERVICE_DISABLED" in error_msg or "has not been used in project" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="The Google Analytics Admin & Data APIs are not enabled in this project's Google Cloud console. Enable them, wait a few minutes, then retry."
+            )
         if "403" in error_msg or "sufficient permission" in error_msg or "insufficient" in error_msg.lower():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No Analytics access. Reconnect your Google account to grant Analytics permission."
             )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 properties: {error_msg}")
+
+
+@router.get("/auth/ga4/match")
+async def match_ga4_property(
+    domain: str,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Resolve which GA4 property matches a given site domain (from the sidebar picker)."""
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Google account not connected. Please connect your Google account first."
+        )
+    try:
+        service = AnalyticsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        prop = await service.find_property_for_domain(domain)
+        return {"property": prop}
+    except Exception as e:
+        error_msg = str(e)
+        if "SERVICE_DISABLED" in error_msg or "has not been used in project" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="The Google Analytics Admin & Data APIs are not enabled in this project's Google Cloud console. Enable them, wait a few minutes, then retry."
+            )
+        if "403" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No Analytics access.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to match GA4 property: {error_msg}")
 
 
 @router.get("/auth/ga4/overview/{property_id}")

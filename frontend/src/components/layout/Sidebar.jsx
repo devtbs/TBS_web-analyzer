@@ -26,6 +26,7 @@ import {
     CircleStackIcon,
     ArrowLeftIcon,
     ChartPieIcon,
+    MegaphoneIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -103,6 +104,8 @@ const NAV_GROUPS = [
             { label: 'New Analysis', path: '/new-analysis', icon: RocketLaunchIcon },
             { label: 'History',      path: '/history',      icon: ClockIcon },
             { label: 'Global Reports', path: '/global-reports', icon: ChartBarIcon },
+            { label: 'GA4 Analytics', path: '/ga4-analytics', icon: ChartPieIcon },
+            { label: 'Google Ads', path: '/google-ads', icon: MegaphoneIcon },
         ],
     },
     {

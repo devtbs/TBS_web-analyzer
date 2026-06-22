@@ -17,6 +17,8 @@ import History from './pages/History';
 import Results from './pages/Results';
 import PageSelector from './pages/PageSelector';
 import SEOAnalytics from './pages/SEOAnalytics';
+import GA4Analytics from './pages/GA4Analytics';
+import GoogleAdsAnalytics from './pages/GoogleAdsAnalytics';
 import CountriesPage from './pages/CountriesPage';
 import NewLostRankingsPage from './pages/NewLostRankingsPage';
 import PagesPage from './pages/PagesPage';
@@ -158,6 +160,8 @@ function AppContent() {
                     <Route path="/dashboard" element={<Navigate to="/my-sites" replace />} />
                     <Route path="/global-reports" element={<GlobalReports />} />
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />
+                    <Route path="/ga4-analytics" element={<GA4Analytics />} />
+                    <Route path="/google-ads" element={<GoogleAdsAnalytics />} />
                     <Route path="/seo-analytics/countries" element={<CountriesPage />} />
                     <Route path="/seo-analytics/new-lost-rankings" element={<NewLostRankingsPage />} />
                     <Route path="/seo-analytics/pages" element={<PagesPage />} />

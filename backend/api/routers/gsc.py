@@ -24,7 +24,7 @@ async def connect_gsc(
     The refresh token allows permanent access without re-authentication.
     """
     from services.gsc_service import GSCService
-    from utils.user_manager import update_gsc_token
+    from utils.user_manager import update_gsc_token, get_or_create_user
     import requests as http_requests
 
     gsc_code = request.get('gsc_code')
@@ -70,6 +70,11 @@ async def connect_gsc(
         # Verify the token works by trying to fetch properties
         service = GSCService(access_token=access_token, refresh_token=refresh_token)
         properties = await service.get_properties()
+
+        # Ensure the user row exists before storing the token. The JWT can outlive a
+        # user row (e.g. after a DB reset), so create it from the authenticated identity
+        # rather than failing with "User not found".
+        get_or_create_user(db, current_user.email, current_user.name, current_user.picture)
 
         # Store the token in database
         update_gsc_token(db, current_user.email, token_to_store, is_refresh_token=is_refresh)

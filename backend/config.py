@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     # Google OAuth
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
+
+    # Google Ads API (optional — requires a Google-approved developer token).
+    # When GOOGLE_ADS_DEVELOPER_TOKEN is empty the Ads integration reports
+    # "not configured" instead of erroring, so the app still boots and works.
+    GOOGLE_ADS_DEVELOPER_TOKEN: str = ""
+    GOOGLE_ADS_LOGIN_CUSTOMER_ID: str = ""  # optional MCC id, digits only, no dashes
     
     # JWT
     SECRET_KEY: str

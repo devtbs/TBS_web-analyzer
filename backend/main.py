@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import (
-    auth, gsc, analytics, ranking, reports, decks, analysis, content,
+    auth, gsc, analytics, ads, ranking, reports, decks, analysis, content,
 )
 from config import settings
 from database import init_db
@@ -26,6 +26,17 @@ app = FastAPI(
 async def startup_event():
     """Initialize database tables on startup"""
     init_db()
+
+    # Bound the executor that runs blocking Google API calls (asyncio.to_thread).
+    # The Google client's underlying HTTP layer is not thread-safe; an unbounded burst
+    # (e.g. dashboards fetching dozens of properties at once) can spawn enough
+    # concurrent threads to crash the process. Cap it to a safe, still-parallel size.
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    asyncio.get_running_loop().set_default_executor(
+        ThreadPoolExecutor(max_workers=8, thread_name_prefix="google-io")
+    )
+
     print("✅ Database initialized successfully")
     print(f"🌍 Allowed Origins: {settings.allowed_origins_list}")
 
@@ -39,7 +50,7 @@ app.add_middleware(
 )
 
 # Include routes — one router per domain (paths unchanged, mounted with no prefix)
-for _router in (auth, gsc, analytics, ranking, reports, decks, analysis, content):
+for _router in (auth, gsc, analytics, ads, ranking, reports, decks, analysis, content):
     app.include_router(_router.router)
 
 

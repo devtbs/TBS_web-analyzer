@@ -10,6 +10,12 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# Process-wide cap on concurrent blocking Google API calls. The google-api-python-client
+# HTTP/SSL transport is not safe under heavy thread concurrency — a dashboard fanning out
+# dozens of property requests at once can otherwise crash the process (segfault). Shared
+# by both GSC and GA4 services so the total in-flight count stays bounded.
+GOOGLE_CALL_GATE = asyncio.Semaphore(4)
+
 # ── Module-level in-memory TTL cache ──────────────────────────────────────
 # Key: (user_email, method, *args)  Value: (timestamp, data)
 _CACHE: Dict[tuple, tuple] = {}
@@ -92,7 +98,8 @@ class GSCService:
         the underlying httplib2 transport is not safe to use from multiple threads at
         once, and each request builds its own GSCService, so separate service objects.
         """
-        return await asyncio.to_thread(request.execute)
+        async with GOOGLE_CALL_GATE:
+            return await asyncio.to_thread(request.execute)
 
     @classmethod
     def from_stored_token(cls, stored_token: str, is_refresh_token: bool = False, user_email: str = 'default'):

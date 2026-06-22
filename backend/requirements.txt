@@ -18,6 +18,7 @@ openai==2.41.1
 anthropic==0.109.1
 sqlalchemy==2.0.50
 google-api-python-client==2.197.0
+google-ads==31.0.0  # Google Ads API (gRPC + GAQL); requires a developer token to return live data
 google-search-results>=2.4.2  # not installed in dev venv; left unpinned until used
 firecrawl-py==4.28.2
 pytz==2026.2
