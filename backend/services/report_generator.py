@@ -6,6 +6,7 @@ keyword data; GSC and GA4 sections plug into `assemble_context()` the same way a
 those integrations come online.
 """
 from typing import Dict, Optional
+from datetime import datetime, timedelta
 import json
 import logging
 
@@ -13,6 +14,26 @@ from services.ai_service import ai_service
 from services.seranking_service import SERankingService
 
 logger = logging.getLogger(__name__)
+
+
+def _gsc_period(days: int) -> Dict[str, str]:
+    """The actual calendar range a GSC `days` window covers, matching the lag the
+    GSC service applies (data lands ~3 days late). Returns ISO bounds + a human label
+    like '1 – 28 May 2026' for the report cover."""
+    from services.gsc_service import GSC_DATA_LAG_DAYS
+    end = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+    start = end - timedelta(days=days)
+
+    def _fmt(d):
+        return f"{d.day} {d.strftime('%b %Y')}"
+
+    if start.year == end.year and start.month == end.month:
+        label = f"{start.day}–{end.day} {end.strftime('%b %Y')}"
+    elif start.year == end.year:
+        label = f"{start.day} {start.strftime('%b')} – {end.day} {end.strftime('%b %Y')}"
+    else:
+        label = f"{_fmt(start)} – {_fmt(end)}"
+    return {"start": start.isoformat(), "end": end.isoformat(), "label": label}
 
 
 REPORT_SYSTEM_PROMPT = """You are a senior SEO account manager at TBS Marketing writing the monthly performance report a client will actually read.
@@ -91,202 +112,6 @@ frame declines as opportunities. Return STRICT JSON only, no markdown, with keys
  "takeaways": [str, str, str]}"""
 
 
-def _fmt_change(change) -> str:
-    """SE Ranking change: positive = moved up (improved). Render as an arrow chip."""
-    if change is None or change == 0:
-        return "—"
-    return f"▲{int(abs(change))}" if change > 0 else f"▼{int(abs(change))}"
-
-
-def _fmt_pos(position) -> str:
-    return str(position) if position is not None else "—"
-
-
-def _period_label(period: Optional[Dict]) -> str:
-    if not period:
-        return ""
-    start, end = period.get("start", ""), period.get("end", "")
-    return f"{start} – {end}" if start and end else (end or start)
-
-
-async def _deck_narrative(context: Dict) -> Dict:
-    """LLM-written prose for the deck; falls back to templated text on any failure."""
-    summary = context["seranking"]["summary"] or {}
-    try:
-        prompt = (
-            "Write the deck prose from this SE Ranking data (JSON):\n\n"
-            + json.dumps(context, indent=2, ensure_ascii=False)
-        )
-        # extract_json uses the configured Groq/DeepSeek client and parses robustly.
-        data = await ai_service.extract_json(prompt, system_prompt=DECK_NARRATIVE_SYSTEM)
-        if data.get("exec_summary") and data.get("recommendations"):
-            return data
-    except Exception as e:  # no key, parse failure, etc. — degrade gracefully
-        logger.warning("Deck narrative LLM failed, using templated fallback: %s", e)
-
-    on_page1 = (summary.get("buckets", {}).get("top3", 0)
-                + summary.get("buckets", {}).get("top10", 0))
-    total = summary.get("total_keywords", 0)
-    return {
-        "exec_headline": "Organic Visibility Update",
-        "exec_summary": (
-            f"This period {on_page1} of {total} tracked keywords rank on page one, "
-            f"with an average position of {summary.get('avg_position', 'n/a')}. "
-            f"{summary.get('improved', 0)} keywords improved while "
-            f"{summary.get('declined', 0)} need attention."
-        ),
-        "recommendations": [
-            {"title": "Push near-misses", "body": "Move page-2 keywords onto page one with targeted content and internal links."},
-            {"title": "Defend winners", "body": "Keep top-ranked pages fresh to hold and improve their positions."},
-            {"title": "Expand winning topics", "body": "Build supporting content around the keywords gaining ground."},
-            {"title": "Review the watch list", "body": "Address declining keywords before they slip further."},
-        ],
-        "takeaways": [
-            f"{on_page1} of {total} keywords rank on page one",
-            f"Average position: {summary.get('avg_position', 'n/a')}",
-            f"{summary.get('improved', 0)} keywords improved this period",
-        ],
-    }
-
-
-async def generate_deck_data_from_context(context: Dict) -> Dict:
-    """Map a real assemble_context() snapshot into normalized SEO deck data."""
-    sr = context["seranking"]
-    summary = sr.get("summary") or {}
-    buckets = summary.get("buckets") or {}
-    domain = context["site"]["domain"]
-    title = context["site"].get("title") or domain
-
-    top = sr.get("top_ranked_keywords") or []
-    climbers = sr.get("biggest_climbers") or []
-    drops = sr.get("biggest_drops") or []
-
-    def _kw(k):
-        return {"term": k.get("keyword", ""), "position": _fmt_pos(k.get("position")),
-                "change": _fmt_change(k.get("change")), "volume": k.get("volume", 0)}
-
-    narrative = await _deck_narrative(context)
-    on_page1 = buckets.get("top3", 0) + buckets.get("top10", 0)
-    hero = top[0] if top else {}
-
-    return {
-        "sample": False,
-        "company": title,
-        "site_label": domain,
-        "report_label": "SEO Performance",
-        "report_title": "SEO Performance\nReport",
-        "period": _period_label(context.get("period")),
-        "prepared_by": "TBS Marketing",
-        "hero_kicker": "ORGANIC SEARCH",
-        "hero_line": "Visibility\n& Growth",
-        "exec_headline": narrative["exec_headline"],
-        "exec_summary": narrative["exec_summary"],
-        "kpis": [
-            {"label": "Keywords Tracked", "value": str(summary.get("total_keywords", 0)), "delta": "Full set"},
-            {"label": "On Page 1", "value": str(on_page1), "delta": "pos 1–10"},
-            {"label": "Avg. Position", "value": str(summary.get("avg_position", "—")), "delta": "lower is better"},
-            {"label": "Improved", "value": str(summary.get("improved", 0)), "delta": "this period"},
-        ],
-        "top_keywords": [_kw(k) for k in top[:8]],
-        "hero_keyword": {
-            "term": hero.get("keyword", "—"),
-            "position": f"#{hero.get('position')}" if hero.get("position") is not None else "—",
-            "sub": f"{hero.get('volume', 0):,} searches / mo" if hero.get("volume") else "",
-            "note": "Your strongest high-volume term — a click away from the top spots.",
-        },
-        "climbers": [_kw(k) for k in climbers[:6]],
-        "drops": [_kw(k) for k in drops[:6]],
-        "recommendations": narrative["recommendations"][:4],
-        "takeaways": narrative["takeaways"][:3],
-        "closing_headline": "Building Momentum\nin Organic Search",
-    }
-
-
-async def generate_deck(site_id: int, days: int = 30) -> Dict:
-    """Assemble real data, map it to deck data, and render the .pptx bytes."""
-    from services.presentation_generator import build_seo_deck
-    context = await assemble_context(site_id, days)
-    deck_data = await generate_deck_data_from_context(context)
-    pptx_bytes = build_seo_deck(deck_data)
-    return {
-        "site_id": site_id,
-        "domain": context["site"]["domain"],
-        "deck_data": deck_data,
-        "pptx_bytes": pptx_bytes,
-    }
-
-
-SLIDESPEAK_BRAND_INSTRUCTIONS = (
-    "This is a client-facing monthly SEO report from TBS Marketing. "
-    "Primary brand colour is deep blue #26397A on white/light backgrounds — premium, "
-    "professional B2B aesthetic, strong spacing, clean modern typography. "
-    "Use ONLY the figures in the brief — never invent metrics, keywords, or numbers. "
-    "Preserve keyword text exactly as written (including Thai). "
-    "Be positive but honest: frame any declines as optimisation opportunities. "
-    "One topic per slide, no overcrowding. Executive, confident, data-driven tone."
-)
-
-
-def _data_brief(context: Dict) -> str:
-    """Turn the real data snapshot into a readable text brief for the AI designer."""
-    sr = context["seranking"]
-    summary = sr.get("summary") or {}
-    buckets = summary.get("buckets") or {}
-    domain = context["site"]["domain"]
-    on_page1 = buckets.get("top3", 0) + buckets.get("top10", 0)
-
-    def kw_lines(items):
-        out = []
-        for k in items:
-            out.append(
-                f"  - {k.get('keyword','')}: position {k.get('position')}, "
-                f"change {k.get('change')}, volume {k.get('volume', 0)}/mo"
-            )
-        return "\n".join(out) if out else "  (none)"
-
-    return f"""Monthly SEO performance report for {domain}.
-Reporting period: {_period_label(context.get('period'))}.
-
-OVERVIEW (use these exact numbers):
-- Keywords tracked: {summary.get('total_keywords', 0)}
-- Keywords on page 1 (positions 1-10): {on_page1}
-- Average position: {summary.get('avg_position', 'n/a')}
-- Keywords improved: {summary.get('improved', 0)}
-- Keywords declined: {summary.get('declined', 0)}
-
-TOP-RANKED KEYWORDS:
-{kw_lines(sr.get('top_ranked_keywords') or [])}
-
-BIGGEST CLIMBERS:
-{kw_lines(sr.get('biggest_climbers') or [])}
-
-KEYWORDS TO WATCH (declines):
-{kw_lines(sr.get('biggest_drops') or [])}
-
-Suggested structure: cover; executive summary; keyword rankings overview;
-biggest movers; wins of the month; opportunities; recommended next steps; closing."""
-
-
-async def generate_ai_deck(site_id: int, days: int = 30, *, length: int = 8) -> Dict:
-    """AI-designed deck via SlideSpeak, built from the client's real SE Ranking data."""
-    from services.slidespeak_service import SlideSpeakService
-    context = await assemble_context(site_id, days)
-    brief = _data_brief(context)
-    svc = SlideSpeakService()
-    pptx_bytes = await svc.generate_deck(
-        brief,
-        length=length,
-        fetch_images=True,
-        tone="professional",
-        custom_user_instructions=SLIDESPEAK_BRAND_INSTRUCTIONS,
-    )
-    return {
-        "site_id": site_id,
-        "domain": context["site"]["domain"],
-        "brief": brief,
-        "pptx_bytes": pptx_bytes,
-    }
-
 
 # ============================================================================
 # GSC (Google Search Console / "My Sites") → AI deck. Organic search data.
@@ -325,6 +150,7 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28) -> Di
         "property_url": property_url,
         "domain": _domain_from_property(property_url),
         "days": days,
+        "period": _gsc_period(days),
         "analytics": analytics,
         "trend": (analytics or {}).get("chart_data") or [],
         "top_queries": queries[:15],
@@ -372,8 +198,11 @@ def _gsc_data_brief(ctx: Dict) -> str:
         for c in ctx.get("top_countries", [])
     ) or "  (none)"
 
+    period = ctx.get("period") or {}
+    period_label = period.get("label", f"last {ctx['days']} days")
     return f"""Organic search (Google Search Console) report for {ctx['domain']}.
-Reporting window: last {ctx['days']} days, compared with the previous {ctx['days']} days.
+Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 OVERALL SEARCH PERFORMANCE (current value, change vs previous period):
 - Clicks: {totals.get('clicks', 0)} ({_d(deltas.get('clicks'))})
@@ -407,45 +236,26 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
                                images: bool = True, notes: str = "", on_progress=None) -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
     chosen prompt + provider. Returns the HTML only — the file is rendered on download."""
-    from services.ai_deck_service import (generate_deck_html, resolve_ai_images,
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
                                           _AI_IMG_RE, GSC_STRUCTURE, UNIQUE_STYLE_BRAND)
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Search Console data…")
     context = await assemble_gsc_context(service, property_url, days)
     brief = _gsc_data_brief(context) + to_brief_block(notes)
+    # Shared cache lets image generation start (during the streamed write) and finish
+    # concurrently with slide-writing instead of serially afterward.
+    image_cache = {} if images else None
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
-                                    structure=GSC_STRUCTURE, provider=provider, on_progress=on_progress)
-    html = await resolve_ai_images(html, on_progress=on_progress) if images else _AI_IMG_RE.sub("", html)
+                                    structure=GSC_STRUCTURE, provider=provider,
+                                    on_progress=on_progress, image_cache=image_cache)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
     return {
         "property_url": property_url,
         "domain": context["domain"],
         "html": html,
-    }
-
-
-async def generate_ai_html_deck(
-    site_id: int,
-    days: int = 30,
-    *,
-    fmt: str = "pdf",
-    prompt: Optional[str] = None,
-    brand: Optional[str] = None,
-    structure: Optional[str] = None,
-) -> Dict:
-    """Free AI-designed deck: LLM writes unique HTML from the real data + an
-    editable prompt, then Chromium renders it to the chosen format (pdf|pptx)."""
-    from services.ai_deck_service import generate_deck_html, render_deck
-    context = await assemble_context(site_id, days)
-    brief = _data_brief(context)
-    html = await generate_deck_html(brief, prompt=prompt, brand=brand, structure=structure)
-    file_bytes = await render_deck(html, fmt=fmt)
-    return {
-        "site_id": site_id,
-        "domain": context["site"]["domain"],
-        "format": fmt,
-        "html": html,           # kept for preview / debugging
-        "file_bytes": file_bytes,
     }
 
 

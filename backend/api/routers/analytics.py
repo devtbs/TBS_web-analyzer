@@ -44,6 +44,11 @@ async def get_ga4_properties(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No Analytics access. Reconnect your Google account to grant Analytics permission."
             )
+        if "invalid_scope" in error_msg or "invalid_grant" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your Google connection predates Analytics access. Reconnect your Google account to grant Analytics permission."
+            )
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 properties: {error_msg}")
 
 

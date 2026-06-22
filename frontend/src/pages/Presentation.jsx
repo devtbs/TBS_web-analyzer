@@ -11,6 +11,25 @@ const prettyName = (url) => {
     catch { return url; }
 };
 
+const siteFavicon = (url) =>
+    `https://www.google.com/s2/favicons?sz=32&domain_url=${encodeURIComponent(prettyName(url))}`;
+
+// Small pill descriptors describing a GSC property (scheme / www / domain-property).
+const siteTags = (url) => {
+    if (!url) return [];
+    if (url.startsWith('sc-domain:'))
+        return [{ label: 'Domain', cls: 'bg-indigo-50 text-indigo-600 border-indigo-100' }];
+    try {
+        const u = new URL(url);
+        // A www property is shown with just the www tag; otherwise show the scheme.
+        if (u.hostname.startsWith('www.'))
+            return [{ label: 'www', cls: 'bg-sky-50 text-sky-600 border-sky-100' }];
+        return u.protocol === 'http:'
+            ? [{ label: 'HTTP', cls: 'bg-amber-50 text-amber-600 border-amber-100' }]
+            : [{ label: 'HTTPS', cls: 'bg-emerald-50 text-emerald-600 border-emerald-100' }];
+    } catch { return []; }
+};
+
 const Presentation = () => {
     const [mode, setMode] = useState('gsc');           // 'gsc' | 'pdf'
 
@@ -268,8 +287,17 @@ const Presentation = () => {
                                     {filtered.length === 0 && <div className="px-4 py-3 text-sm text-slate-400">No matches</div>}
                                     {filtered.map((p) => (
                                         <button key={p.url} onClick={() => pick(p)}
-                                            className={`block w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${p.url === propUrl ? 'text-[#26397A] font-bold bg-slate-50' : 'text-slate-700'}`}>
-                                            {prettyName(p.url)}
+                                            className={`flex items-center gap-2.5 w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${p.url === propUrl ? 'text-[#26397A] font-bold bg-slate-50' : 'text-slate-700'}`}>
+                                            <img src={siteFavicon(p.url)} alt="" className="w-4 h-4 rounded-sm flex-shrink-0"
+                                                onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+                                            <span className="truncate">{prettyName(p.url)}</span>
+                                            <span className="ml-auto flex items-center gap-1 flex-shrink-0">
+                                                {siteTags(p.url).map((t) => (
+                                                    <span key={t.label} className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md border ${t.cls}`}>
+                                                        {t.label}
+                                                    </span>
+                                                ))}
+                                            </span>
                                         </button>
                                     ))}
                                 </div>
@@ -309,7 +337,7 @@ const Presentation = () => {
                     className="w-full flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-8 text-left hover:border-[#26397A]/50 disabled:opacity-60">
                     <span>
                         <span className="block text-sm font-bold text-slate-700">Add AI photos</span>
-                        <span className="block text-xs text-slate-400">gpt-image-2 illustrations on most slides · slower &amp; uses OpenAI credits</span>
+                        <span className="block text-xs text-slate-400">Supermachine photos on most slides · slower &amp; uses Supermachine credits</span>
                     </span>
                     <span className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${useImages ? 'bg-[#26397A]' : 'bg-slate-300'}`}>
                         <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${useImages ? 'translate-x-5' : ''}`} />

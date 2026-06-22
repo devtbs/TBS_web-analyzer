@@ -88,6 +88,7 @@ async def presentation_ai_deck_from_pdf(
     Form fields: file (the PDF), provider, prompt_id.
     """
     from services.ai_deck_service import generate_deck_from_pdf, render_slide_images
+    from services.image_service import images_enabled
     from services.prompt_config import get_prompt_text
     if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
@@ -100,7 +101,7 @@ async def presentation_ai_deck_from_pdf(
     async def run(on_progress):
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider,
                                               prompt=get_prompt_text(prompt_id), render=False,
-                                              images=images and bool(settings.OPENAI_API_KEY),
+                                              images=images and images_enabled(),
                                               notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
@@ -166,6 +167,7 @@ async def presentation_ai_deck_gsc(
     it to Documents; download via the deck-download route. Query: ?property=<url>&days=N"""
     from services.report_generator import generate_ai_gsc_deck
     from services.ai_deck_service import render_slide_images
+    from services.image_service import images_enabled
     from services.gsc_service import GSCService
     from services.prompt_config import get_prompt_text
     from utils.user_manager import get_user_gsc_token
@@ -182,7 +184,7 @@ async def presentation_ai_deck_gsc(
 
     async def run(on_progress):
         result = await generate_ai_gsc_deck(service, property, days, provider=provider, prompt=prompt,
-                                            images=images and bool(settings.OPENAI_API_KEY),
+                                            images=images and images_enabled(),
                                             notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",

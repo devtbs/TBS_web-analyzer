@@ -11,6 +11,11 @@ logger = logging.getLogger(__name__)
 # stream phase-by-phase status to the UI. None = silent (the default everywhere).
 ProgressCb = Optional[Callable[[str], Awaitable[None]]]
 
+# Optional async callback fed each text delta as the deck streams in, so callers can
+# react to partial output (e.g. kick off image generation the moment a placeholder
+# appears). None = no streaming; the call awaits the full response as before.
+DeltaCb = Optional[Callable[[str], Awaitable[None]]]
+
 
 # OpenAI-compatible providers the user can choose from. Each deck-writing model
 # is reached through the same chat-completions API, just a different base_url/model.
@@ -86,9 +91,16 @@ class AIService:
         )
 
     async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
-                                    provider: str = "deepseek", on_progress: ProgressCb = None) -> str:
+                                    provider: str = "deepseek", on_progress: ProgressCb = None,
+                                    on_delta: DeltaCb = None) -> str:
         """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
-        OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations."""
+        OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations.
+
+        If on_delta is given, the response is streamed and each text delta is passed to
+        it as it arrives (lets the deck pipeline start generating images for placeholders
+        the moment they appear, instead of waiting for the whole deck). The full text is
+        still returned either way.
+        """
         cfg = AI_PROVIDERS.get(provider)
         if not cfg:
             raise ValueError(f"Unknown AI provider: {provider}")
@@ -109,17 +121,12 @@ class AIService:
         max_tokens = cfg.get("max_tokens", 8000)
         parts: List[str] = []
         for attempt in range(_MAX_CONTINUATIONS + 1):
-            response = await client.chat.completions.create(
-                model=cfg["model"],
-                messages=messages,
-                temperature=0.8,
-                max_tokens=max_tokens,
-            )
-            choice = response.choices[0]
-            parts.append(choice.message.content or "")
+            content, finish_reason = await self._complete_once(
+                client, cfg["model"], messages, max_tokens, on_delta)
+            parts.append(content)
             logger.info("provider=%s call %d finish_reason=%s (chars so far=%d)",
-                        provider, attempt + 1, choice.finish_reason, sum(len(p) for p in parts))
-            if choice.finish_reason != "length":
+                        provider, attempt + 1, finish_reason, sum(len(p) for p in parts))
+            if finish_reason != "length":
                 break
             if attempt == _MAX_CONTINUATIONS:
                 logger.warning("provider=%s hit continuation cap (%d) — output may still be truncated",
@@ -127,12 +134,42 @@ class AIService:
             if on_progress:
                 await on_progress(f"Writing slides… (part {attempt + 2})")
             # Hit the output-token ceiling — continue exactly where it stopped.
-            messages.append({"role": "assistant", "content": choice.message.content or ""})
+            messages.append({"role": "assistant", "content": content})
             messages.append({"role": "user", "content":
                 "Continue the response from exactly where you stopped. Do not repeat any "
                 "content already written, do not restart, and do not add any preface — "
                 "output only the continuation so the two parts concatenate seamlessly."})
         return "".join(parts)
+
+    async def _complete_once(self, client, model, messages, max_tokens, on_delta: DeltaCb):
+        """One chat-completion. Streams (feeding on_delta) when a delta callback is given,
+        otherwise a single awaited call. Returns (content, finish_reason)."""
+        if on_delta is None:
+            response = await client.chat.completions.create(
+                model=model, messages=messages, temperature=0.8, max_tokens=max_tokens,
+            )
+            choice = response.choices[0]
+            return (choice.message.content or ""), choice.finish_reason
+
+        buf: List[str] = []
+        finish_reason = None
+        stream = await client.chat.completions.create(
+            model=model, messages=messages, temperature=0.8, max_tokens=max_tokens, stream=True,
+        )
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            ch = chunk.choices[0]
+            piece = (ch.delta.content or "") if ch.delta else ""
+            if piece:
+                buf.append(piece)
+                try:
+                    await on_delta("".join(buf))
+                except Exception:
+                    logger.exception("on_delta callback failed (continuing stream)")
+            if ch.finish_reason:
+                finish_reason = ch.finish_reason
+        return "".join(buf), finish_reason
 
     @staticmethod
     def configured_providers() -> list:

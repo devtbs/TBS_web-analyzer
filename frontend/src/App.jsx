@@ -9,29 +9,39 @@ import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
 
+// Home is the public landing page (first paint when logged out) — keep it eager.
 import Home from './pages/Home';
-import MySites from './pages/MySites';
-import Dashboard from './pages/Dashboard';
-import NewAnalysis from './pages/NewAnalysis';
-import History from './pages/History';
-import Results from './pages/Results';
-import PageSelector from './pages/PageSelector';
-import SEOAnalytics from './pages/SEOAnalytics';
-import GA4Analytics from './pages/GA4Analytics';
-import GoogleAdsAnalytics from './pages/GoogleAdsAnalytics';
-import CountriesPage from './pages/CountriesPage';
-import NewLostRankingsPage from './pages/NewLostRankingsPage';
-import PagesPage from './pages/PagesPage';
-import QueriesPage from './pages/QueriesPage';
-import StrikingDistancePage from './pages/StrikingDistancePage';
-import CtrOpportunitiesPage from './pages/CtrOpportunitiesPage';
-import QueryDecayPage from './pages/QueryDecayPage';
-import CannibalizationPage from './pages/CannibalizationPage';
-import TopicClustersPage from './pages/TopicClustersPage';
-import GlobalReports from './pages/GlobalReports';
-import Documents from './pages/Documents';
-import DocumentDetail from './pages/DocumentDetail';
-import Presentation from './pages/Presentation';
+
+// All protected pages are code-split: each page and its heavy libraries (xlsx, tiptap,
+// force-graph, recharts, jspdf, …) only download when that route is actually visited.
+const MySites = lazy(() => import('./pages/MySites'));
+const NewAnalysis = lazy(() => import('./pages/NewAnalysis'));
+const History = lazy(() => import('./pages/History'));
+const Results = lazy(() => import('./pages/Results'));
+const PageSelector = lazy(() => import('./pages/PageSelector'));
+const SEOAnalytics = lazy(() => import('./pages/SEOAnalytics'));
+const GA4Analytics = lazy(() => import('./pages/GA4Analytics'));
+const GoogleAdsAnalytics = lazy(() => import('./pages/GoogleAdsAnalytics'));
+const CountriesPage = lazy(() => import('./pages/CountriesPage'));
+const NewLostRankingsPage = lazy(() => import('./pages/NewLostRankingsPage'));
+const PagesPage = lazy(() => import('./pages/PagesPage'));
+const QueriesPage = lazy(() => import('./pages/QueriesPage'));
+const StrikingDistancePage = lazy(() => import('./pages/StrikingDistancePage'));
+const CtrOpportunitiesPage = lazy(() => import('./pages/CtrOpportunitiesPage'));
+const QueryDecayPage = lazy(() => import('./pages/QueryDecayPage'));
+const CannibalizationPage = lazy(() => import('./pages/CannibalizationPage'));
+const TopicClustersPage = lazy(() => import('./pages/TopicClustersPage'));
+const GlobalReports = lazy(() => import('./pages/GlobalReports'));
+const Documents = lazy(() => import('./pages/Documents'));
+const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
+const Presentation = lazy(() => import('./pages/Presentation'));
+
+/* Lightweight fallback shown while a lazily-loaded page chunk downloads. */
+const PageSpinner = () => (
+    <div className="flex items-center justify-center py-32">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+    </div>
+);
 
 /* ── Protected Route ─────────────────────────────────────── */
 /* ── Persistent Layout for Authenticated Pages ─────────── */
@@ -120,7 +130,9 @@ const ProtectedLayout = () => {
                         transition={{ duration: 0.3, ease: 'easeOut' }}
                         className="min-h-full"
                     >
-                        <Outlet />
+                        <Suspense fallback={<PageSpinner />}>
+                            <Outlet />
+                        </Suspense>
                     </motion.div>
                 </main>
             </div>

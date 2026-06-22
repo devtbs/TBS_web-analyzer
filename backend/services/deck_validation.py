@@ -21,6 +21,11 @@ from dataclasses import dataclass, field
 from typing import List, Set
 
 _SLIDE_RE = re.compile(r'<section\b[^>]*\bclass=["\'][^"\']*\bslide\b', re.IGNORECASE)
+_SLIDE_CHUNK_RE = re.compile(r'<section\b[^>]*\bclass=["\'][^"\']*\bslide\b.*?</section>',
+                             re.IGNORECASE | re.DOTALL)
+_LAYOUT_RE = re.compile(r'\blayout-[a-z-]+', re.IGNORECASE)
+# Words-per-slide above this reads as an overcrowded wall of text.
+_MAX_WORDS_PER_SLIDE = 150
 _PLOTLY_SPEC_RE = re.compile(
     r'<script\b[^>]*\bclass=["\'][^"\']*\bplotly-spec\b[^"\']*["\'][^>]*>(.*?)</script>',
     re.IGNORECASE | re.DOTALL,
@@ -39,6 +44,7 @@ class ValidationResult:
     structural: List[str] = field(default_factory=list)
     plotly: List[str] = field(default_factory=list)
     ungrounded_numbers: List[str] = field(default_factory=list)
+    design: List[str] = field(default_factory=list)
 
     def repair_instructions(self) -> str:
         """A focused instruction block listing only what to fix. Empty when ok."""
@@ -57,6 +63,11 @@ class ValidationResult:
                 "not in the provided data, so they look invented. Replace each with the "
                 "correct figure from the data, or remove it:\n"
                 + "\n".join(f"- {n}" for n in self.ungrounded_numbers))
+        if self.design:
+            parts.append(
+                "DESIGN QUALITY problems (apply the DESIGN SYSTEM — :root tokens, layout "
+                "archetype classes, icons and charts — to fix these):\n"
+                + "\n".join(f"- {m}" for m in self.design))
         return "\n\n".join(parts)
 
 
@@ -112,5 +123,48 @@ def validate_deck_html(html: str, data_brief: str) -> ValidationResult:
         seen.add(norm)
         res.ungrounded_numbers.append(tok)
 
-    res.ok = not (res.structural or res.plotly or res.ungrounded_numbers)
+    # 4. Design quality — conservative heuristics so good decks aren't flagged.
+    _check_design(html, res)
+
+    res.ok = not (res.structural or res.plotly or res.ungrounded_numbers or res.design)
     return res
+
+
+def _check_design(html: str, res: "ValidationResult") -> None:
+    """Cheap, conservative design-quality checks. Only flags clear template violations
+    (no design tokens, archetypes barely used, overcrowded slides, few visuals) so the
+    repair pass nudges the deck toward the design system without churning on good decks."""
+    slides = _SLIDE_CHUNK_RE.findall(html)
+    if not slides:
+        return  # structural check already handled the no-slides case
+
+    # a. design tokens defined once and reused
+    if ":root" not in html or "var(--" not in html:
+        res.design.append("No reusable :root design tokens — define --bg/--ink/--accent/"
+                          "--font-display etc. once and reference them with var(...) on every "
+                          "slide for one cohesive theme.")
+
+    # b. layout archetypes actually used
+    with_layout = sum(1 for s in slides if _LAYOUT_RE.search(s))
+    if with_layout < max(1, len(slides) // 2):
+        res.design.append(f"Only {with_layout}/{len(slides)} slides use a layout archetype "
+                          "class (layout-cover/-kpi-strip/-split/-list/…). Give EVERY slide an "
+                          "archetype and follow its structure so the deck looks templated.")
+
+    # c. overcrowded slides
+    crowded = [i for i, s in enumerate(slides, 1)
+               if len(_visible_text(s).split()) > _MAX_WORDS_PER_SLIDE]
+    if crowded:
+        res.design.append(f"Slides {crowded} are overcrowded with text (>{_MAX_WORDS_PER_SLIDE} "
+                          "words). Cut to the essentials: one idea per slide, short bullets, let "
+                          "charts/visuals carry the detail.")
+
+    # d. enough visual elements across the deck
+    def _has_visual(s: str) -> bool:
+        return ("plotly-spec" in s or "ai-img" in s or "ai-icon" in s
+                or "<svg" in s or "<img" in s)
+    visual = sum(1 for s in slides if _has_visual(s))
+    if visual < max(1, int(len(slides) * 0.4)):
+        res.design.append(f"Only {visual}/{len(slides)} slides have a chart, photo or icon — "
+                          "the deck is too text-heavy. Add a relevant chart or image and icons "
+                          "to KPIs/bullets on most slides.")
