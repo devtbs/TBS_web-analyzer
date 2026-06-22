@@ -125,15 +125,18 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         setIsConnecting(true);
         try {
             // Use Authorization Code flow to get a refresh token (not just an access token).
-            // 'prompt: select_account' forces Google to show the account picker every time,
-            // so users can connect a *different* Google account than the one they're logged in with.
+            // 'consent select_account' forces Google to show BOTH the account picker AND the
+            // permission screen every time — critical so a returning user re-granting access
+            // actually re-consents to the Analytics scope (with plain 'select_account', Google
+            // skips consent for an already-authorized account and never adds the new scope,
+            // leaving GA4 stuck on "Analytics not connected").
             const client = window.google.accounts.oauth2.initCodeClient({
                 client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
                 // Request BOTH Search Console and Analytics (GA4) read access in one
                 // consent, so a single connection powers both data sources.
                 scope: 'https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly',
                 ux_mode: 'popup',
-                prompt: 'select_account',   // ← CRITICAL: always show account chooser
+                prompt: 'consent select_account',   // ← re-show consent so the Analytics scope is granted
                 callback: async (response) => {
                     if (response.code) {
                         try {
