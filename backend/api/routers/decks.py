@@ -1,5 +1,5 @@
-"""AI deck generation routes (HTML-based): generate from PDF or GSC data, preview
-saved decks, download, and manage AI providers + prompt library."""
+"""AI deck generation routes (HTML-based): generate from GSC, GA4, Google Ads or an
+uploaded PDF, preview saved decks, download, and list AI providers."""
 from fastapi import APIRouter, Depends, HTTPException, status, Body, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -76,7 +76,6 @@ async def presentation_deck_download(
 async def presentation_ai_deck_from_pdf(
     file: UploadFile = File(...),
     provider: str = Form("deepseek"),
-    prompt_id: str = Form("default"),
     images: bool = Form(True),
     notes: str = Form(""),
     current_user: UserInfo = Depends(get_current_user),
@@ -85,11 +84,10 @@ async def presentation_ai_deck_from_pdf(
     """Upload a report PDF → AI extracts its data and designs a deck. Returns the
     deck HTML for preview and saves it to Documents; download via the deck-download route.
 
-    Form fields: file (the PDF), provider, prompt_id.
+    Form fields: file (the PDF), provider, images, notes.
     """
     from services.ai_deck_service import generate_deck_from_pdf, render_slide_images
     from services.image_service import images_enabled
-    from services.prompt_config import get_prompt_text
     if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
@@ -99,13 +97,12 @@ async def presentation_ai_deck_from_pdf(
     label = (file.filename or "report").rsplit(".", 1)[0][:60] or "report"
 
     async def run(on_progress):
-        result = await generate_deck_from_pdf(pdf_bytes, provider=provider,
-                                              prompt=get_prompt_text(prompt_id), render=False,
+        result = await generate_deck_from_pdf(pdf_bytes, provider=provider, render=False,
                                               images=images and images_enabled(),
                                               notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
-                                     label=label, provider=provider, prompt_id=prompt_id)
+                                     label=label, provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": label}
 
     return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
@@ -119,36 +116,20 @@ async def presentation_ai_providers(current_user: UserInfo = Depends(get_current
     return {"providers": AIService.configured_providers()}
 
 
-@router.get("/api/presentation/prompts")
-async def list_prompts_route(current_user: UserInfo = Depends(get_current_user)):
-    """List selectable prompts (built-in default + saved) and the default's text."""
-    from services.prompt_config import list_prompts, default_prompt
-    return {"prompts": list_prompts(), "default_prompt": default_prompt()}
+def _require_llm_key():
+    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
 
 
-@router.get("/api/presentation/prompts/{prompt_id}")
-async def get_prompt_route(prompt_id: str, current_user: UserInfo = Depends(get_current_user)):
-    """Get one prompt's full text (use 'default' for the built-in)."""
-    from services.prompt_config import get_prompt
-    return get_prompt(prompt_id)
-
-
-@router.post("/api/presentation/prompts")
-async def save_prompt_route(body: dict = Body(...), current_user: UserInfo = Depends(get_current_user)):
-    """Save a prompt. Body: {name, prompt, id?}. With id → update; without → create new.
-    The required HTML output contract is always applied automatically — no need to include it."""
-    from services.prompt_config import upsert_prompt, list_prompts
-    if not (body.get("prompt") or "").strip():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt text is required.")
-    saved = upsert_prompt(body.get("name", ""), body["prompt"], body.get("id"))
-    return {"status": "saved", "saved": saved, "prompts": list_prompts()}
-
-
-@router.delete("/api/presentation/prompts/{prompt_id}")
-async def delete_prompt_route(prompt_id: str, current_user: UserInfo = Depends(get_current_user)):
-    from services.prompt_config import delete_prompt, list_prompts
-    delete_prompt(prompt_id)
-    return {"status": "deleted", "prompts": list_prompts()}
+def _require_google_token(db, email):
+    """The stored Google token shared by GSC / GA4 / Ads, or a 400 if not connected."""
+    from utils.user_manager import get_user_gsc_token
+    token, is_refresh = get_user_gsc_token(db, email)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Google account not connected for this account.")
+    return token, is_refresh
 
 
 @router.post("/api/presentation/ai-deck-gsc")
@@ -156,7 +137,6 @@ async def presentation_ai_deck_gsc(
     property: str,
     days: int = 28,
     provider: str = "deepseek",
-    prompt_id: str = "default",
     images: bool = True,
     body: dict = Body(default={}),
     current_user: UserInfo = Depends(get_current_user),
@@ -169,26 +149,103 @@ async def presentation_ai_deck_gsc(
     from services.ai_deck_service import render_slide_images
     from services.image_service import images_enabled
     from services.gsc_service import GSCService
-    from services.prompt_config import get_prompt_text
-    from utils.user_manager import get_user_gsc_token
-    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
-    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
-    if not gsc_token:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Google Search Console not connected for this account.")
-    prompt = get_prompt_text(prompt_id)
+    _require_llm_key()
+    gsc_token, is_refresh = _require_google_token(db, current_user.email)
     service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+    # Same Google token also powers GA4 — used to put real sessions-by-country on the map
+    # (falls back to GSC clicks-by-country if there's no matching GA4 property).
+    ga4_service = None
+    try:
+        from services.analytics_service import AnalyticsService
+        ga4_service = AnalyticsService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+    except Exception:
+        ga4_service = None
     notes = (body or {}).get("notes", "")
 
     async def run(on_progress):
-        result = await generate_ai_gsc_deck(service, property, days, provider=provider, prompt=prompt,
+        result = await generate_ai_gsc_deck(service, property, days, provider=provider,
+                                            images=images and images_enabled(),
+                                            notes=notes, on_progress=on_progress,
+                                            ga4_service=ga4_service)
+        slides = await render_slide_images(result["html"], on_progress=on_progress)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
+                                     label=result["domain"], provider=provider)
+        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+
+    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
+                             headers=_SSE_HEADERS)
+
+
+@router.post("/api/presentation/ai-deck-ga4")
+async def presentation_ai_deck_ga4(
+    property_id: str,
+    days: int = 28,
+    provider: str = "deepseek",
+    images: bool = True,
+    label: str = "",
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AI-designed website-analytics deck for a GA4 property, built from the logged-in
+    user's Google Analytics data. Query: ?property_id=<id>&days=N&label=<display name>"""
+    from services.report_generator import generate_ai_ga4_deck
+    from services.ai_deck_service import render_slide_images
+    from services.image_service import images_enabled
+    from services.analytics_service import AnalyticsService
+    _require_llm_key()
+    token, is_refresh = _require_google_token(db, current_user.email)
+    service = AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
+    notes = (body or {}).get("notes", "")
+
+    async def run(on_progress):
+        result = await generate_ai_ga4_deck(service, property_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
                                             notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
-                                     label=result["domain"], provider=provider, prompt_id=prompt_id)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="ga4",
+                                     label=result["domain"], provider=provider)
+        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+
+    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
+                             headers=_SSE_HEADERS)
+
+
+@router.post("/api/presentation/ai-deck-ads")
+async def presentation_ai_deck_ads(
+    customer_id: str,
+    days: int = 28,
+    provider: str = "deepseek",
+    images: bool = True,
+    label: str = "",
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AI-designed paid-search deck for a Google Ads account, built from the logged-in
+    user's Google Ads data. Query: ?customer_id=<id>&days=N&label=<display name>"""
+    from services.report_generator import generate_ai_ads_deck
+    from services.ai_deck_service import render_slide_images
+    from services.image_service import images_enabled
+    from services.ads_service import ads_is_configured, AdsService
+    _require_llm_key()
+    if not ads_is_configured():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Google Ads is not configured — a developer token is required.")
+    token, is_refresh = _require_google_token(db, current_user.email)
+    if not is_refresh:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Google Ads requires a stored refresh token — reconnect your Google account.")
+    service = AdsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
+    notes = (body or {}).get("notes", "")
+
+    async def run(on_progress):
+        result = await generate_ai_ads_deck(service, customer_id, days, label=label, provider=provider,
+                                            images=images and images_enabled(),
+                                            notes=notes, on_progress=on_progress)
+        slides = await render_slide_images(result["html"], on_progress=on_progress)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="ads",
+                                     label=result["domain"], provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",

@@ -359,6 +359,41 @@ class AnalyticsService:
             logger.error(f"Unexpected error fetching GA4 overview: {str(e)}")
             raise Exception(f"Failed to fetch Analytics data: {str(e)}")
 
+    async def get_geo(self, property_id: str, days: int = 28, limit: int = 20) -> List[Dict]:
+        """Sessions/users broken down by country for a choropleth map. Uses the `country`
+        dimension (full English names, e.g. 'Thailand') so it maps via Plotly
+        locationmode 'country names'. Cached 15 min."""
+        cache_key = (self.user_email, 'ga4_geo', property_id, days, limit)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"GA4 cache HIT: geo {property_id}")
+            return cached
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now().date() - timedelta(days=GA4_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+        body = {
+            'dateRanges': [{'startDate': start_date.strftime('%Y-%m-%d'),
+                            'endDate': end_date.strftime('%Y-%m-%d')}],
+            'dimensions': [{'name': 'country'}],
+            'metrics': [{'name': 'sessions'}, {'name': 'totalUsers'}],
+            'orderBys': [{'metric': {'metricName': 'sessions'}, 'desc': True}],
+            'limit': limit,
+        }
+        resp = await self._run_report(property_id, body)
+        rows = []
+        for row in resp.get('rows', []):
+            name = (row['dimensionValues'][0]['value']
+                    if 'dimensionValues' in row else row['keys'][0])
+            vals = [v.get('value', 0) for v in row.get('metricValues', [])]
+            rows.append({
+                'country': name,
+                'sessions': int(float(vals[0])) if len(vals) > 0 else 0,
+                'users': int(float(vals[1])) if len(vals) > 1 else 0,
+            })
+        _cache_set(cache_key, rows, _TTL_REPORT)
+        return rows
+
 
 async def get_user_ga4_properties(stored_token: str, is_refresh_token: bool = False, user_email: str = 'default') -> List[Dict[str, str]]:
     """Helper: list a user's GA4 properties from stored Google credentials."""

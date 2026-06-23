@@ -71,21 +71,25 @@ Design this like a high-end editorial design studio "frame system" — think art
 
 =======================================================
 INTERACTIVE DATA VISUALIZATION (PLOTLY.JS INTEGRATION):
-Wherever the data can be grouped, tracked over time, or categorized into distributions, you MUST generate a functional Plotly.js configuration block.
-- For charts, generate a valid JSON block containing `data` and `layout` configurations that can be plugged straight into a `Plotly.newPlot()` function.
-- Ensure the Plotly charts strictly inherit the chosen custom color palette (using the 30% secondary color for gridlines/text and the 10% accent color for positive metrics or bar highlights).
-- Keep chart layouts clean: hide unnecessary grid lines, use clean tooltips, and ensure fonts are sharp and modern.
+Wherever the data can be grouped, tracked over time, or categorized into distributions, add a chart.
+- Charts are embedded ONLY through the hidden chart mechanism defined in the HTML OUTPUT CONTRACT
+  below (a sized <div> + an immediately-following <script type="application/json" class="plotly-spec">).
+  NEVER write the chart's JSON/config anywhere a reader can see it — no visible JSON, no <pre>/<code>
+  block, no "config" column, no spec printed next to the chart. The JSON lives only inside that script.
+- Charts strictly inherit the chosen palette (secondary tone for gridlines/text, the accent for the
+  key series). Keep them clean: few gridlines, clean tooltips, sharp modern fonts.
 
 =======================================================
 DYNAMIC DECK STRUCTURE:
-Do not limit the output to a rigid slide count. Instead, read the data payload and dynamically generate a beautifully balanced sequence of slides mapping to the structure below. For EVERY slide generated, you must output:
+Do not limit the output to a rigid slide count. Read the data payload and dynamically generate a
+beautifully balanced sequence of slides mapping to the structure below.
 
-1. SLIDE NUMBER & TITLE: E.g., "Slide X: Core Keyword Distribution"
-2. VISUAL LAYOUT COMPOSITION: A clear structural blueprint detailing exactly how the slide is arranged (e.g., "Layout: Split-screen. Left: 40% width containing 3 strategic bullet highlights. Right: 60% width displaying the interactive Plotly.js Distribution Bar Chart.").
-3. INTERACTIVE PLOTLY.JS CODE: (If applicable to the slide's data payload, output the valid Plotly configuration block).
-4. EXECUTIVE DATA TEXT: The exact text, KPI metrics, and bullet points to be placed on the slide, written in an executive-ready, strategic tone.
+CRITICAL OUTPUT RULE: emit each slide as FINAL RENDERED HTML only. Do NOT print any planning text,
+slide blueprints, "Slide X:" headings, "VISUAL LAYOUT COMPOSITION", or chart-config blocks as visible
+content — translate all of that directly into the HTML/CSS and the hidden chart script. The reader must
+see a finished slide, never the instructions or data behind it.
 
-Your dynamic slide sequence must seamlessly guide the viewer through these core thematic phases:
+Your slide sequence must seamlessly guide the viewer through these core thematic phases:
 
 - PHASE 1: PRESTIGE WELCOME — A minimalist, striking cover frame tailored to the brand's industry context.
 
@@ -116,6 +120,9 @@ DATA (use ONLY this — pulled automatically from the connected data source for 
 # the user-editable prompt and can't be removed by mistake.
 HTML_CONTRACT = """=== HTML OUTPUT CONTRACT (required — this OVERRIDES any conflicting instruction above) ===
 Output ONE complete, self-contained HTML document and NOTHING ELSE: no markdown, no commentary, and do NOT print slide specifications, "SLIDE NUMBER & TITLE", "VISUAL LAYOUT COMPOSITION", or standalone code blocks as text — translate ALL of that directly into the final rendered HTML.
+- NEVER show raw chart JSON or any {"data":...,"layout":...} config as visible text. A chart's JSON belongs ONLY inside its hidden <script type="application/json" class="plotly-spec"> — if a reader can see JSON on a slide, that is a bug.
+- KPI DISCIPLINE — do NOT repeat the same headline metric row on every slide. Show the clicks / impressions / CTR / avg-position (or sessions/cost) KPI strip on the EXECUTIVE SUMMARY slide ONLY; every other slide focuses on its own chart/insight with at most one or two metrics relevant to THAT slide. The cover and closing carry NO KPI chips.
+- EVERY slide must fill the entire 1280x720 page edge to edge (a real full-bleed page): no letterboxing, no large empty margins or blank bands — size the hero chart/visual to consume the slide's main area.
 - Start with <!DOCTYPE html>.
 - All CSS inline in a single <style> tag. Fonts may load from fonts.googleapis.com.
 - Each slide is exactly: <section class="slide"> ... </section>. Every .slide is 1280px wide and 720px tall, overflow hidden.
@@ -193,17 +200,35 @@ GOOGLE_ADS_STRUCTURE = (
 )
 
 
+# Structure for a GA4 (Google Analytics) on-site behaviour report.
+GA4_STRUCTURE = (
+    "1. Cover Slide — site/property name, 'Website Analytics Performance Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/sessions/users on the cover — keep it clean.\n"
+    "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (sessions/users/conversions over time) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
+    "3. Audience & Engagement — sessions, total users, new users, engagement rate, bounce rate, average session duration with period-over-period change; highlight key wins visually.\n"
+    "4. Traffic by Channel — sessions/users/conversions broken down by channel (organic, direct, paid, referral, social, etc.); present clearly with a table or bar/pie chart.\n"
+    "5. Conversions — conversions and conversion trend; where conversions come from (best channels); positive framing.\n"
+    "6. Trends — how sessions/users/conversions moved over the period; positive momentum framing with a trend chart.\n"
+    "7. Sessions by Country — a Plotly CHOROPLETH world map (\"type\":\"choropleth\", \"locationmode\":\"country names\", locations = the country names, z = sessions) shaded with the accent colourscale, paired with a top-countries bar/table. Keep the geo clean (transparent bg, no coastline/frame chartjunk).\n"
+    "8. Strategic Insights & Recommendations — actionable recommendations ONLY based on the analytics (double down on best channels, improve engagement on weak pages, grow new-user acquisition, lift conversion rate).\n"
+    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+)
+
+
 # Structure for an organic-search (Google Search Console) monthly report.
 GSC_STRUCTURE = (
     "1. Cover Slide — site/domain, 'Organic Search Performance Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/clicks/impressions on the cover — keep it clean.\n"
     "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (clicks/impressions/CTR/position) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
     "3. Search Performance — clicks, impressions, CTR, average position with period-over-period change; highlight key wins visually.\n"
-    "4. Top Queries — best queries by clicks (with impressions, CTR, position); present clearly with a table or chart.\n"
-    "5. Query Opportunities — high-impression / low-CTR or near-page-1 queries to target next.\n"
-    "6. Top Pages — best-performing landing pages by clicks; focus on strengths.\n"
-    "7. Trends — how clicks/impressions moved over the period; positive momentum framing.\n"
-    "8. Strategic Insights & Recommendations — actionable SEO recommendations ONLY (content, internal linking, CTR/title improvements, target near-page-1 queries).\n"
-    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "4. Performance Over Time — use MONTHLY PERFORMANCE: a Plotly COMBO chart with clicks & impressions as bars (accent / accent-2) and average POSITION as a line on a SECONDARY y-axis that is REVERSED (lower is better, so a rising line = improving rank). Optionally a second slide with the daily impressions and URL-clicks as filled AREA charts.\n"
+    "5. Top Queries — best queries by clicks (with impressions, CTR, position); present clearly with a table or chart.\n"
+    "6. Keyword Position vs Impressions — a Plotly BUBBLE/scatter chart from KEYWORD POSITION vs IMPRESSIONS: x = average position (REVERSED axis), y = impressions, marker size ∝ impressions; label the biggest few bubbles with their query.\n"
+    "7. Biggest Movers — two side-by-side panels: rising vs falling QUERIES (by clicks and by position, showing previous → current) and rising/falling LANDING PAGES; a diverging horizontal bar or clean two-column tables work well.\n"
+    "8. Query Opportunities — high-impression / low-CTR or near-page-1 queries to target next.\n"
+    "9. Query Footprint — from QUERY FOOTPRINT: a Plotly STACKED BAR per month of top-10 query counts (pos 1-3 stacked with pos 4-10) plus a line for total queries; shows ranking visibility growing over time.\n"
+    "10. Top Pages — best-performing landing pages by clicks; focus on strengths.\n"
+    "11. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
+    "12. Strategic Insights & Recommendations — actionable SEO recommendations ONLY (content, internal linking, CTR/title improvements, target near-page-1 queries, defend declining queries/pages).\n"
+    "13. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 
@@ -348,6 +373,67 @@ def _clean_html(text: str) -> str:
     return t[i:].strip() if i != -1 else t.strip()
 
 
+_SCRIPT_STYLE_RE = re.compile(r'<(script|style)\b[^>]*>.*?</\1>', re.IGNORECASE | re.DOTALL)
+
+
+def _match_brace(s: str, start: int) -> int:
+    """Index of the '}' that closes the '{' at `start`, respecting JSON strings. -1 if none."""
+    depth, in_str, esc = 0, False, False
+    for k in range(start, len(s)):
+        c = s[k]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return k
+    return -1
+
+
+def _strip_leaked_specs(html: str) -> str:
+    """Remove any chart-spec JSON the model printed as VISIBLE text (a bare object with
+    "data" and "layout"). Legit specs live inside <script class="plotly-spec"> and must be
+    preserved, so script/style bodies are masked out before scanning. Safety net: even if a
+    model ignores the contract, no raw chart JSON ever reaches a slide."""
+    if '{"data"' not in html and '{ "data"' not in html:
+        return html
+    blocks: list = []
+
+    def _hide(m):
+        blocks.append(m.group(0))
+        return f"\x00B{len(blocks) - 1}\x00"
+
+    masked = _SCRIPT_STYLE_RE.sub(_hide, html)
+
+    out, i, n = [], 0, len(masked)
+    while i < n:
+        j = masked.find('{"data"', i)
+        if j == -1:
+            out.append(masked[i:])
+            break
+        end = _match_brace(masked, j)
+        if end == -1:
+            out.append(masked[i:])
+            break
+        blob = masked[j:end + 1]
+        if '"layout"' in blob:          # a leaked chart spec → drop it
+            out.append(masked[i:j])
+        else:                            # some other inline JSON → keep it
+            out.append(masked[i:end + 1])
+        i = end + 1
+    cleaned = "".join(out)
+    return re.sub(r"\x00B(\d+)\x00", lambda m: blocks[int(m.group(1))], cleaned)
+
+
 _DECK_SYSTEM_PROMPT = "You are an award-winning presentation designer who outputs only clean, self-contained HTML."
 
 
@@ -436,7 +522,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
     result = validate_deck_html(html, data_brief)
     if result.ok:
-        return html
+        return _strip_leaked_specs(html)
 
     logger.info(
         "deck validation found issues (structural=%d, plotly=%d, ungrounded_numbers=%d) — attempting repair",
@@ -466,7 +552,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
     except Exception:
         logger.exception("deck repair call failed — keeping original HTML")
 
-    return html
+    return _strip_leaked_specs(html)
 
 
 # ---- Rendering (headless Chromium via Playwright) --------------------------

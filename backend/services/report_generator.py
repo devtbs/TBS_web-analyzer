@@ -127,13 +127,18 @@ def _domain_from_property(property_url: str) -> str:
         return property_url
 
 
-async def assemble_gsc_context(service, property_url: str, days: int = 28) -> Dict:
+async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
+                               ga4_service=None) -> Dict:
     """Gather GSC search performance + top queries/pages + device/country/quick-win
     breakdowns and the time-series trend for one property. Each optional block degrades
-    gracefully so one failed sub-fetch can't break the whole deck."""
+    gracefully so one failed sub-fetch can't break the whole deck.
+
+    If `ga4_service` is provided, the country map prefers real GA4 sessions (matched to the
+    site's GA4 property); otherwise it falls back to GSC organic clicks by country."""
     analytics = await service.get_search_analytics(property_url, days=days, group_by="daily")
     queries = await service.get_top_queries(property_url, days=days)
     pages = await service.get_top_pages(property_url, days=days)
+    domain = _domain_from_property(property_url)
 
     async def _safe(coro):
         try:
@@ -145,19 +150,38 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28) -> Di
     devices = await _safe(service.get_devices(property_url, days=days))
     countries = await _safe(service.get_countries(property_url, days=days))
     striking = await _safe(service.get_striking_distance(property_url, days=days))
+    # 12-month combo + per-query movers/footprint history. Both heavier — kept optional.
+    monthly = await _safe(service.get_search_analytics(property_url, days=365, group_by="monthly"))
+    insights = await _safe(service.get_query_insights(property_url, days=days, history_months=12))
+
+    # Country map: prefer real GA4 sessions (matched to this domain), else GSC clicks.
+    geo = {"mode": "clicks", "rows": (countries or [])[:20]}
+    if ga4_service is not None:
+        try:
+            prop = await ga4_service.find_property_for_domain(domain)
+            if prop and prop.get("property_id"):
+                rows = await ga4_service.get_geo(prop["property_id"], days)
+                if rows:
+                    geo = {"mode": "sessions", "rows": rows}
+        except Exception as e:
+            logger.warning("GA4 sessions-by-country match failed (non-fatal): %s", e)
 
     return {
         "property_url": property_url,
-        "domain": _domain_from_property(property_url),
+        "domain": domain,
         "days": days,
         "period": _gsc_period(days),
         "analytics": analytics,
         "trend": (analytics or {}).get("chart_data") or [],
+        "monthly_trend": (monthly or {}).get("chart_data") or [],
         "top_queries": queries[:15],
+        "bubble_queries": sorted(queries, key=lambda q: q.get("impressions", 0), reverse=True)[:30],
+        "query_insights": insights or {},
         "top_pages": pages[:10],
         "devices": devices,
         "top_countries": countries[:8],
         "striking_distance": striking[:12],
+        "geo": geo,
     }
 
 
@@ -198,6 +222,94 @@ def _gsc_data_brief(ctx: Dict) -> str:
         for c in ctx.get("top_countries", [])
     ) or "  (none)"
 
+    # ── 12-month combo (clicks/impressions bars + avg-position line) ──
+    monthly_lines = "\n".join(
+        f"  - {m.get('month','')}: {m.get('clicks',0)} clicks, {m.get('impressions',0)} impressions, "
+        f"avg pos {m.get('position','?')}"
+        for m in ctx.get("monthly_trend", [])
+    ) or "  (none)"
+
+    # ── Keyword position vs impressions (bubble) ──
+    bubble_lines = "\n".join(
+        f"  - \"{q.get('query','')}\": pos {q.get('position','?')}, {q.get('impressions',0)} impressions, "
+        f"{q.get('clicks',0)} clicks"
+        for q in ctx.get("bubble_queries", [])
+    ) or "  (none)"
+
+    # ── Biggest movers (queries) from query_insights: clicks + position deltas ──
+    qi = (ctx.get("query_insights") or {}).get("queries") or []
+
+    def _clk_delta(q):
+        return q.get("clicks", 0) - q.get("prev_clicks", 0)
+
+    def _pos_delta(q):  # + = improved (a lower position number is better)
+        pp = q.get("prev_position") or 0
+        return round(pp - q.get("position", 0), 1) if pp else 0
+
+    movers_clk = [q for q in qi if q.get("prev_clicks")]
+    risers_c = [q for q in sorted(movers_clk, key=_clk_delta, reverse=True) if _clk_delta(q) > 0][:8]
+    fallers_c = [q for q in sorted(movers_clk, key=_clk_delta) if _clk_delta(q) < 0][:8]
+    movers_pos = [q for q in qi if q.get("prev_position")]
+    risers_p = [q for q in sorted(movers_pos, key=_pos_delta, reverse=True) if _pos_delta(q) > 0][:8]
+    fallers_p = [q for q in sorted(movers_pos, key=_pos_delta) if _pos_delta(q) < 0][:8]
+
+    def _mv_clk(rows):
+        return "\n".join(
+            f"  - \"{q.get('query','')}\": {q.get('prev_clicks',0)} → {q.get('clicks',0)} clicks ({_clk_delta(q):+})"
+            for q in rows) or "  (none)"
+
+    def _mv_pos(rows):
+        return "\n".join(
+            f"  - \"{q.get('query','')}\": pos {q.get('prev_position','?')} → {q.get('position','?')} ({_pos_delta(q):+})"
+            for q in rows) or "  (none)"
+
+    # ── Biggest movers (pages) by clicks delta (a percentage) ──
+    pages_ctx = ctx.get("top_pages", [])
+    page_risers = [p for p in sorted(pages_ctx, key=lambda p: p.get("clicks_delta") or 0, reverse=True)
+                   if (p.get("clicks_delta") or 0) > 0][:6]
+    page_fallers = [p for p in sorted(pages_ctx, key=lambda p: p.get("clicks_delta") or 0)
+                    if (p.get("clicks_delta") or 0) < 0][:6]
+
+    def _mv_page(rows):
+        return "\n".join(
+            f"  - {p.get('url','')}: {p.get('clicks',0)} clicks ({(p.get('clicks_delta') or 0):+}% vs prev)"
+            for p in rows) or "  (none)"
+
+    # ── Query footprint per month (counts; approximate — bounded to current queries) ──
+    months = (ctx.get("query_insights") or {}).get("months") or []
+    foot = {m: {"total": 0, "p13": 0, "p410": 0} for m in months}
+    for q in qi:
+        for cell in q.get("monthly", []):
+            mo = cell.get("month")
+            if mo not in foot or (cell.get("impressions") or 0) <= 0:
+                continue
+            foot[mo]["total"] += 1
+            pos = cell.get("position")
+            if pos is not None and pos <= 3:
+                foot[mo]["p13"] += 1
+            elif pos is not None and pos <= 10:
+                foot[mo]["p410"] += 1
+    foot_lines = "\n".join(
+        f"  - {m}: {foot[m]['total']} queries total, {foot[m]['p13']} in pos 1-3, {foot[m]['p410']} in pos 4-10"
+        for m in months) or "  (none)"
+
+    # ── Geography (choropleth source): real GA4 sessions when matched, else GSC clicks ──
+    geo = ctx.get("geo") or {}
+    if geo.get("mode") == "sessions":
+        geo_metric = "SESSIONS"
+        geo_note = ("Country values are full English names — render a Plotly choropleth with "
+                    "\"locationmode\":\"country names\", shaded by sessions.")
+        geo_lines = "\n".join(
+            f"  - {r.get('country','')}: {r.get('sessions',0)} sessions, {r.get('users',0)} users"
+            for r in geo.get("rows", [])) or "  (none)"
+    else:
+        geo_metric = "ORGANIC CLICKS"
+        geo_note = ("Country codes are ISO-3 (e.g. 'tha','sgp','usa') — render a Plotly choropleth "
+                    "with \"locationmode\":\"ISO-3\" (uppercase the codes), shaded by clicks.")
+        geo_lines = "\n".join(
+            f"  - {r.get('name','')}: {r.get('clicks',0)} clicks, {r.get('impressions',0)} impressions"
+            for r in geo.get("rows", [])) or "  (none)"
+
     period = ctx.get("period") or {}
     period_label = period.get("label", f"last {ctx['days']} days")
     return f"""Organic search (Google Search Console) report for {ctx['domain']}.
@@ -210,14 +322,37 @@ OVERALL SEARCH PERFORMANCE (current value, change vs previous period):
 - CTR: {totals.get('ctr', 0)}% ({_d(deltas.get('ctr'), 'pp')})
 - Average position: {totals.get('position', 0)} ({_d(deltas.get('position'), 'pp')}; lower is better)
 
-PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
+PERFORMANCE OVER TIME (daily; use for the daily impressions & URL-clicks area charts):
 {trend_lines}
+
+MONTHLY PERFORMANCE (last 12 months; use for the clicks+impressions bar + avg-position line combo chart):
+{monthly_lines}
 
 TOP QUERIES (by clicks):
 {q_lines}
 
+KEYWORD POSITION vs IMPRESSIONS (top queries; use for a bubble/scatter chart — x = avg position, y = impressions, bubble size ∝ impressions):
+{bubble_lines}
+
 NEAR PAGE 1 — QUICK-WIN KEYWORDS (positions 4-20, ranked by impressions):
 {sd_lines}
+
+BIGGEST MOVERS — QUERIES, BY CLICKS (rising; previous → current):
+{_mv_clk(risers_c)}
+BIGGEST MOVERS — QUERIES, BY CLICKS (falling; previous → current):
+{_mv_clk(fallers_c)}
+BIGGEST MOVERS — QUERIES, BY POSITION (improved; Δ is positive when rank gets better):
+{_mv_pos(risers_p)}
+BIGGEST MOVERS — QUERIES, BY POSITION (declined):
+{_mv_pos(fallers_p)}
+
+BIGGEST MOVERS — LANDING PAGES (rising by clicks):
+{_mv_page(page_risers)}
+BIGGEST MOVERS — LANDING PAGES (falling by clicks):
+{_mv_page(page_fallers)}
+
+QUERY FOOTPRINT (per month; use for a stacked bar of top-10 query counts [pos 1-3 + pos 4-10] with a total-queries line):
+{foot_lines}
 
 TOP PAGES (by clicks):
 {p_lines}
@@ -228,20 +363,27 @@ BY DEVICE:
 TOP COUNTRIES (by clicks):
 {country_lines}
 
+GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-countries bar). {geo_note}
+{geo_lines}
+
 Use only these numbers. Positive but honest framing; declines = opportunities."""
 
 
 async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
                                provider: str = "deepseek", prompt: Optional[str] = None,
-                               images: bool = True, notes: str = "", on_progress=None) -> Dict:
+                               images: bool = True, notes: str = "", on_progress=None,
+                               ga4_service=None) -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
-    chosen prompt + provider. Returns the HTML only — the file is rendered on download."""
+    chosen prompt + provider. Returns the HTML only — the file is rendered on download.
+
+    If `ga4_service` is given, the country map uses real GA4 sessions matched to the site's
+    GA4 property (falling back to GSC clicks-by-country when there's no match)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
                                           _AI_IMG_RE, GSC_STRUCTURE, UNIQUE_STYLE_BRAND)
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Search Console data…")
-    context = await assemble_gsc_context(service, property_url, days)
+    context = await assemble_gsc_context(service, property_url, days, ga4_service=ga4_service)
     brief = _gsc_data_brief(context) + to_brief_block(notes)
     # Shared cache lets image generation start (during the streamed write) and finish
     # concurrently with slide-writing instead of serially afterward.
@@ -257,6 +399,212 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
         "domain": context["domain"],
         "html": html,
     }
+
+
+# ============================================================================
+# GA4 (Google Analytics) → AI deck. On-site behaviour / audience data.
+# ============================================================================
+
+def _human_period(start_iso: str, end_iso: str) -> str:
+    """Turn an ISO start/end pair (as returned by GA4/Ads get_overview) into a human
+    label like '1 – 28 May 2026' for the deck cover. Mirrors `_gsc_period`'s formatting."""
+    try:
+        start = datetime.strptime(start_iso, "%Y-%m-%d").date()
+        end = datetime.strptime(end_iso, "%Y-%m-%d").date()
+    except Exception:
+        return f"{start_iso} – {end_iso}"
+
+    def _fmt(d):
+        return f"{d.day} {d.strftime('%b %Y')}"
+
+    if start.year == end.year and start.month == end.month:
+        return f"{start.day}–{end.day} {end.strftime('%b %Y')}"
+    if start.year == end.year:
+        return f"{start.day} {start.strftime('%b')} – {end.day} {end.strftime('%b %Y')}"
+    return f"{_fmt(start)} – {_fmt(end)}"
+
+
+async def assemble_ga4_context(service, property_id: str, days: int = 28) -> Dict:
+    """Gather GA4 headline metrics + daily trend + traffic-by-channel + geo for one property."""
+    overview = await service.get_overview(property_id, days=days)
+    period = overview.get("period") or {}
+    try:
+        geo = await service.get_geo(property_id, days)
+    except Exception as e:
+        logger.warning("GA4 geo sub-fetch failed (non-fatal): %s", e)
+        geo = []
+    return {
+        "property_id": property_id,
+        "days": days,
+        "period_label": _human_period(period.get("start", ""), period.get("end", "")),
+        "totals": overview.get("totals") or {},
+        "deltas": overview.get("deltas") or {},
+        "trend": overview.get("chart_data") or [],
+        "channels": overview.get("channels") or [],
+        "geo": geo,
+    }
+
+
+def _ga4_data_brief(ctx: Dict, label: str) -> str:
+    t = ctx.get("totals") or {}
+    d = ctx.get("deltas") or {}
+
+    def _delta(v, suffix="%"):
+        return "n/a" if v is None else f"{v:+}{suffix}"
+
+    trend_lines = "\n".join(
+        f"  - {row.get('name','')}: {row.get('sessions',0)} sessions, "
+        f"{row.get('users',0)} users, {row.get('conversions',0)} conversions"
+        for row in ctx.get("trend", [])
+    ) or "  (none)"
+    channel_lines = "\n".join(
+        f"  - {c.get('channel','')}: {c.get('sessions',0)} sessions, "
+        f"{c.get('users',0)} users, {c.get('conversions',0)} conversions"
+        for c in ctx.get("channels", [])
+    ) or "  (none)"
+    geo_lines = "\n".join(
+        f"  - {r.get('country','')}: {r.get('sessions',0)} sessions, {r.get('users',0)} users"
+        for r in ctx.get("geo", [])
+    ) or "  (none)"
+
+    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    return f"""Website analytics (Google Analytics / GA4) report for {label}.
+Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+On the COVER slide, show this reporting period ({period_label}) as the subtitle.
+
+AUDIENCE & ENGAGEMENT (current value, change vs previous period):
+- Sessions: {t.get('sessions', 0)} ({_delta(d.get('sessions'))})
+- Total users: {t.get('users', 0)} ({_delta(d.get('users'))})
+- New users: {t.get('new_users', 0)} ({_delta(d.get('new_users'))})
+- Pageviews: {t.get('pageviews', 0)} ({_delta(d.get('pageviews'))})
+- Engagement rate: {t.get('engagement_rate', 0)}% ({_delta(d.get('engagement_rate'), 'pp')})
+- Bounce rate: {t.get('bounce_rate', 0)}% ({_delta(d.get('bounce_rate'), 'pp')}; lower is better)
+- Avg session duration: {t.get('avg_session_duration', 0)}s ({_delta(d.get('avg_session_duration'))})
+- Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))})
+
+PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
+{trend_lines}
+
+TRAFFIC BY CHANNEL (by sessions):
+{channel_lines}
+
+SESSIONS BY COUNTRY (use for a choropleth world map + a top-countries bar; country values are full
+English names — render the Plotly choropleth with "locationmode":"country names", shaded by sessions):
+{geo_lines}
+
+Use only these numbers. Positive but honest framing; declines = opportunities."""
+
+
+async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
+                               label: str = "", provider: str = "deepseek",
+                               prompt: Optional[str] = None, images: bool = True,
+                               notes: str = "", on_progress=None) -> Dict:
+    """AI-designed website-analytics deck for a GA4 property. Returns the HTML only —
+    the file is rendered on download. `label` is the property display name (for the cover)."""
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
+                                          _AI_IMG_RE, GA4_STRUCTURE, UNIQUE_STYLE_BRAND)
+    from services.highlights import to_brief_block
+    if on_progress:
+        await on_progress("Gathering Analytics data…")
+    context = await assemble_ga4_context(service, property_id, days)
+    name = label or f"Property {property_id}"
+    brief = _ga4_data_brief(context, name) + to_brief_block(notes)
+    image_cache = {} if images else None
+    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+                                    structure=GA4_STRUCTURE, provider=provider,
+                                    on_progress=on_progress, image_cache=image_cache)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
+    return {"property_id": property_id, "domain": name, "html": html}
+
+
+# ============================================================================
+# Google Ads → AI deck. Paid-campaign performance data.
+# ============================================================================
+
+async def assemble_ads_context(service, customer_id: str, days: int = 28) -> Dict:
+    """Gather Google Ads headline metrics + daily trend + top campaigns for one account."""
+    overview = await service.get_overview(customer_id, days=days)
+    period = overview.get("period") or {}
+    return {
+        "customer_id": customer_id,
+        "days": days,
+        "currency": overview.get("currency") or "",
+        "period_label": _human_period(period.get("start", ""), period.get("end", "")),
+        "totals": overview.get("totals") or {},
+        "deltas": overview.get("deltas") or {},
+        "trend": overview.get("chart_data") or [],
+        "campaigns": overview.get("campaigns") or [],
+    }
+
+
+def _ads_data_brief(ctx: Dict, label: str) -> str:
+    t = ctx.get("totals") or {}
+    d = ctx.get("deltas") or {}
+    cur = ctx.get("currency") or ""
+    cur_sfx = f" {cur}" if cur else ""
+
+    def _delta(v, suffix="%"):
+        return "n/a" if v is None else f"{v:+}{suffix}"
+
+    trend_lines = "\n".join(
+        f"  - {row.get('name','')}: {row.get('clicks',0)} clicks, "
+        f"{row.get('cost',0)}{cur_sfx} cost, {row.get('conversions',0)} conversions"
+        for row in ctx.get("trend", [])
+    ) or "  (none)"
+    campaign_lines = "\n".join(
+        f"  - {c.get('name','')} ({c.get('status','')}): {c.get('impressions',0)} impressions, "
+        f"{c.get('clicks',0)} clicks, {c.get('cost',0)}{cur_sfx} cost, {c.get('conversions',0)} conversions"
+        for c in ctx.get("campaigns", [])
+    ) or "  (none)"
+
+    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    return f"""Paid search (Google Ads) report for {label}. All costs are in {cur or 'the account currency'}.
+Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+On the COVER slide, show this reporting period ({period_label}) as the subtitle.
+
+ACCOUNT PERFORMANCE (current value, change vs previous period):
+- Impressions: {t.get('impressions', 0)} ({_delta(d.get('impressions'))})
+- Clicks: {t.get('clicks', 0)} ({_delta(d.get('clicks'))})
+- CTR: {t.get('ctr', 0)}% ({_delta(d.get('ctr'), 'pp')})
+- Avg CPC: {t.get('avg_cpc', 0)}{cur_sfx} ({_delta(d.get('avg_cpc'))})
+- Cost: {t.get('cost', 0)}{cur_sfx} ({_delta(d.get('cost'))})
+- Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))})
+- Conversion rate: {t.get('conversion_rate', 0)}% ({_delta(d.get('conversion_rate'), 'pp')})
+- Cost per conversion: {t.get('cost_per_conversion', 0)}{cur_sfx} ({_delta(d.get('cost_per_conversion'))}; lower is better)
+
+PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
+{trend_lines}
+
+TOP CAMPAIGNS (by cost):
+{campaign_lines}
+
+Use only these numbers. Positive but honest framing; declines = opportunities."""
+
+
+async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
+                               label: str = "", provider: str = "deepseek",
+                               prompt: Optional[str] = None, images: bool = True,
+                               notes: str = "", on_progress=None) -> Dict:
+    """AI-designed paid-search deck for a Google Ads account. Returns the HTML only —
+    the file is rendered on download. `label` is the account display name (for the cover)."""
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
+                                          _AI_IMG_RE, GOOGLE_ADS_STRUCTURE, UNIQUE_STYLE_BRAND)
+    from services.highlights import to_brief_block
+    if on_progress:
+        await on_progress("Gathering Google Ads data…")
+    context = await assemble_ads_context(service, customer_id, days)
+    name = label or f"Account {customer_id}"
+    brief = _ads_data_brief(context, name) + to_brief_block(notes)
+    image_cache = {} if images else None
+    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+                                    structure=GOOGLE_ADS_STRUCTURE, provider=provider,
+                                    on_progress=on_progress, image_cache=image_cache)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
+    return {"customer_id": customer_id, "domain": name, "html": html}
 
 
 async def generate_monthly_report(site_id: int, days: int = 30) -> Dict:

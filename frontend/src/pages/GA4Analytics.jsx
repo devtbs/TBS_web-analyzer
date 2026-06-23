@@ -95,6 +95,7 @@ const GA4Analytics = () => {
     const [overview, setOverview] = useState(null);
     const [loading, setLoading] = useState(false);
     const [permissionError, setPermissionError] = useState(false);
+    const [permissionDetail, setPermissionDetail] = useState('');
     const [isPickerOpen, setIsPickerOpen] = useState(false);
     const [isRangeOpen, setIsRangeOpen] = useState(false);
     const [propSearch, setPropSearch] = useState('');
@@ -120,6 +121,7 @@ const GA4Analytics = () => {
                 setIsConnected(false);
                 if (err.response?.status === 403) {
                     setPermissionError(true);
+                    setPermissionDetail(err.response?.data?.detail || '');
                 } else if (err.response?.status !== 404) {
                     toast.error(err.response?.data?.detail || 'Failed to fetch Analytics properties');
                 }
@@ -212,7 +214,7 @@ const GA4Analytics = () => {
                 <h1 className="text-2xl font-bold text-slate-800 mb-3 text-center">Google Analytics Not Connected</h1>
                 <p className="text-slate-500 mb-8 max-w-md text-center leading-relaxed">
                     {permissionError
-                        ? 'Your Google account is connected but has not granted Analytics access. Reconnect from New Analysis to grant Analytics permission.'
+                        ? (permissionDetail || 'Your Google account is connected but has not granted Analytics access. Reconnect from New Analysis to grant Analytics permission.')
                         : 'Connect your Google account (with Analytics access) to view GA4 sessions, users, engagement and conversions.'}
                 </p>
                 <button

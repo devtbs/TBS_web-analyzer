@@ -31,7 +31,7 @@ const siteTags = (url) => {
 };
 
 const Presentation = () => {
-    const [mode, setMode] = useState('gsc');           // 'gsc' | 'pdf'
+    const [mode, setMode] = useState('gsc');           // 'gsc' | 'ga4' | 'ads' | 'pdf'
 
     // GSC site picker
     const [properties, setProperties] = useState([]);
@@ -39,8 +39,22 @@ const Presentation = () => {
     const [propUrl, setPropUrl] = useState('');
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
-    const [days, setDays] = useState(28);
     const boxRef = useRef(null);
+
+    // GA4 property picker (loaded lazily when the GA4 tab is first opened)
+    const [ga4Props, setGa4Props] = useState([]);
+    const [ga4Loading, setGa4Loading] = useState(false);
+    const [ga4Loaded, setGa4Loaded] = useState(false);
+    const [ga4PropId, setGa4PropId] = useState('');
+
+    // Google Ads account picker (loaded lazily when the Ads tab is first opened)
+    const [adsCusts, setAdsCusts] = useState([]);
+    const [adsLoading, setAdsLoading] = useState(false);
+    const [adsLoaded, setAdsLoaded] = useState(false);
+    const [adsCustId, setAdsCustId] = useState('');
+
+    // shared period (gsc / ga4 / ads)
+    const [days, setDays] = useState(28);
 
     // PDF upload
     const [pdfFile, setPdfFile] = useState(null);
@@ -60,15 +74,6 @@ const Presentation = () => {
     const [deckDocId, setDeckDocId] = useState('');
     const [deckLabel, setDeckLabel] = useState('');
 
-    // prompt library
-    const [prompts, setPrompts] = useState([{ id: 'default', name: 'Default (built-in)' }]);
-    const [promptId, setPromptId] = useState('default');
-    const [defaultPromptText, setDefaultPromptText] = useState('');
-    const [promptOpen, setPromptOpen] = useState(false);
-    const [promptName, setPromptName] = useState('');
-    const [promptText, setPromptText] = useState('');
-    const [savingPrompt, setSavingPrompt] = useState(false);
-
     useEffect(() => {
         (async () => {
             try {
@@ -87,7 +92,6 @@ const Presentation = () => {
                 if (list.length) setProvider(list.some(p => p.id === 'deepseek') ? 'deepseek' : list[0].id);
             } catch {}
         })();
-        refreshPrompts(true);
     }, []);
 
     useEffect(() => {
@@ -96,49 +100,34 @@ const Presentation = () => {
         return () => document.removeEventListener('mousedown', onClick);
     }, []);
 
-    const refreshPrompts = async (initial = false) => {
-        try {
-            const res = await api.get('/api/presentation/prompts');
-            setPrompts(res.data.prompts || []);
-            setDefaultPromptText(res.data.default_prompt || '');
-            if (initial) { setPromptText(res.data.default_prompt || ''); setPromptName(''); }
-        } catch {}
-    };
-
-    const loadPromptIntoEditor = async (id) => {
-        try {
-            const res = await api.get(`/api/presentation/prompts/${id}`);
-            setPromptText(res.data.prompt || '');
-            setPromptName(res.data.builtin ? '' : (res.data.name || ''));
-        } catch {}
-    };
-    const onSelectPrompt = (id) => { setPromptId(id); loadPromptIntoEditor(id); };
-
-    const saveAsNew = async () => {
-        if (!promptName.trim()) { toast.error('Give the prompt a name.'); return; }
-        setSavingPrompt(true);
-        try {
-            const res = await api.post('/api/presentation/prompts', { name: promptName, prompt: promptText });
-            setPrompts(res.data.prompts || []); setPromptId(res.data.saved.id);
-            toast.success('Prompt saved.');
-        } catch { toast.error('Could not save.'); } finally { setSavingPrompt(false); }
-    };
-    const updateSelected = async () => {
-        setSavingPrompt(true);
-        try {
-            const res = await api.post('/api/presentation/prompts', { id: promptId, name: promptName, prompt: promptText });
-            setPrompts(res.data.prompts || []); toast.success('Prompt updated.');
-        } catch { toast.error('Could not update.'); } finally { setSavingPrompt(false); }
-    };
-    const deleteSelected = async () => {
-        setSavingPrompt(true);
-        try {
-            const res = await api.delete(`/api/presentation/prompts/${promptId}`);
-            setPrompts(res.data.prompts || []);
-            setPromptId('default'); setPromptText(defaultPromptText); setPromptName('');
-            toast.success('Prompt deleted.');
-        } catch { toast.error('Could not delete.'); } finally { setSavingPrompt(false); }
-    };
+    // Lazily load the GA4 / Ads source lists the first time their tab is opened.
+    useEffect(() => {
+        if (mode === 'ga4' && !ga4Loaded) {
+            setGa4Loaded(true); setGa4Loading(true);
+            (async () => {
+                try {
+                    const res = await api.get('/auth/ga4/properties');
+                    const list = res.data.properties || [];
+                    setGa4Props(list);
+                    if (list.length) setGa4PropId(list[0].property_id);
+                } catch { toast.error('Could not load GA4 properties — is Analytics connected?'); }
+                finally { setGa4Loading(false); }
+            })();
+        }
+        if (mode === 'ads' && !adsLoaded) {
+            setAdsLoaded(true); setAdsLoading(true);
+            (async () => {
+                try {
+                    const res = await api.get('/auth/ads/customers');
+                    const list = res.data.customers || [];
+                    setAdsCusts(list);
+                    if (list.length) setAdsCustId(list[0].customer_id);
+                    else if (res.data.configured === false) toast.error('Google Ads is not configured yet.');
+                } catch { toast.error('Could not load Google Ads accounts.'); }
+                finally { setAdsLoading(false); }
+            })();
+        }
+    }, [mode, ga4Loaded, adsLoaded]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -149,6 +138,13 @@ const Presentation = () => {
     }, [properties, query, propUrl]);
 
     const pick = (p) => { setPropUrl(p.url); setQuery(prettyName(p.url)); setOpen(false); };
+
+    const ga4Label = useMemo(
+        () => ga4Props.find((p) => p.property_id === ga4PropId)?.display || '',
+        [ga4Props, ga4PropId]);
+    const adsLabel = useMemo(
+        () => adsCusts.find((c) => c.customer_id === adsCustId)?.display || '',
+        [adsCusts, adsCustId]);
 
     // Read a Server-Sent Events stream, invoking handlers per (event, data) frame.
     const readSSE = async (response, { onProgress, onResult, onError }) => {
@@ -176,26 +172,44 @@ const Presentation = () => {
         }
     };
 
+    const canGenerate = mode === 'gsc' ? !!propUrl
+        : mode === 'ga4' ? !!ga4PropId
+        : mode === 'ads' ? !!adsCustId
+        : !!pdfFile;
+
     const generate = async () => {
-        if (mode === 'gsc' && !propUrl) { toast.error('Pick a site first.'); return; }
-        if (mode === 'pdf' && !pdfFile) { toast.error('Choose a PDF first.'); return; }
+        if (!canGenerate) {
+            toast.error(mode === 'pdf' ? 'Choose a PDF first.'
+                : mode === 'ga4' ? 'Pick a GA4 property first.'
+                : mode === 'ads' ? 'Pick a Google Ads account first.'
+                : 'Pick a site first.');
+            return;
+        }
         setGenerating(true);
         setProgressMsg('Starting…');
         setDeckSlides([]); setDeckDocId('');
         const t = toast.loading('AI is designing your presentation…');
         const token = localStorage.getItem('access_token');
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
         try {
             let response;
             if (mode === 'gsc') {
                 response = await fetch(
-                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&prompt_id=${promptId}&images=${useImages}`,
-                    { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ notes }) });
+                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&images=${useImages}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+            } else if (mode === 'ga4') {
+                response = await fetch(
+                    `/api/presentation/ai-deck-ga4?property_id=${encodeURIComponent(ga4PropId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(ga4Label)}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+            } else if (mode === 'ads') {
+                response = await fetch(
+                    `/api/presentation/ai-deck-ads?customer_id=${encodeURIComponent(adsCustId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(adsLabel)}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
                 fd.append('provider', provider);
-                fd.append('prompt_id', promptId);
                 fd.append('images', useImages);
                 fd.append('notes', notes);
                 response = await fetch('/api/presentation/ai-deck-from-pdf', { method: 'POST', headers, body: fd });
@@ -247,7 +261,6 @@ const Presentation = () => {
     const nextSlide = () => setSlideIdx((i) => Math.min(deckSlides.length - 1, i + 1));
 
     const fieldCls = 'w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#26397A]/40 bg-white';
-    const selectedIsBuiltin = promptId === 'default';
 
     return (
         <div className="p-6 md:p-10 max-w-3xl mx-auto">
@@ -257,24 +270,24 @@ const Presentation = () => {
                 </div>
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 tracking-tight">AI Presentation</h1>
-                    <p className="text-sm text-slate-500">A premium, uniquely-styled deck from your site data or an uploaded PDF.</p>
+                    <p className="text-sm text-slate-500">A premium, uniquely-styled deck from your Search Console, Analytics, Google Ads or an uploaded PDF.</p>
                 </div>
             </div>
 
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
-                <div className="flex gap-3 mb-6">
-                    {[['gsc', 'From a site'], ['pdf', 'From a PDF']].map(([m, label]) => (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                    {[['gsc', 'Search Console'], ['ga4', 'Analytics (GA4)'], ['ads', 'Google Ads'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
-                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-colors ${
+                            className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
                                 mode === m ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
                             {label}
                         </button>
                     ))}
                 </div>
 
-                {mode === 'gsc' ? (
+                {mode === 'gsc' && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Site</label>
                         <div className="relative mb-6" ref={boxRef}>
@@ -303,14 +316,40 @@ const Presentation = () => {
                                 </div>
                             )}
                         </div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Period</label>
-                        <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={generating} className={fieldCls + ' mb-6'}>
-                            <option value={28}>Last 28 days</option>
-                            <option value={90}>Last 90 days</option>
-                            <option value={180}>Last 6 months</option>
+                    </>
+                )}
+
+                {mode === 'ga4' && (
+                    <>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">GA4 property</label>
+                        <select value={ga4PropId} onChange={(e) => setGa4PropId(e.target.value)} disabled={ga4Loading || generating} className={fieldCls + ' mb-6'}>
+                            {ga4Loading && <option value="">Loading properties…</option>}
+                            {!ga4Loading && ga4Props.length === 0 && <option value="">No GA4 properties found</option>}
+                            {ga4Props.map((p) => (
+                                <option key={p.property_id} value={p.property_id}>
+                                    {p.display}{p.account ? ` — ${p.account}` : ''}
+                                </option>
+                            ))}
                         </select>
                     </>
-                ) : (
+                )}
+
+                {mode === 'ads' && (
+                    <>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Google Ads account</label>
+                        <select value={adsCustId} onChange={(e) => setAdsCustId(e.target.value)} disabled={adsLoading || generating} className={fieldCls + ' mb-6'}>
+                            {adsLoading && <option value="">Loading accounts…</option>}
+                            {!adsLoading && adsCusts.length === 0 && <option value="">No Google Ads accounts found</option>}
+                            {adsCusts.map((c) => (
+                                <option key={c.customer_id} value={c.customer_id}>
+                                    {c.display}{c.currency ? ` (${c.currency})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                    </>
+                )}
+
+                {mode === 'pdf' && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">PDF file (e.g. a Looker Studio export)</label>
                         <label className="flex items-center gap-3 border border-dashed border-slate-300 rounded-xl px-4 py-5 mb-6 cursor-pointer hover:border-[#26397A]/50">
@@ -322,10 +361,16 @@ const Presentation = () => {
                     </>
                 )}
 
-                <label className="block text-sm font-bold text-slate-700 mb-2">Prompt</label>
-                <select value={promptId} onChange={(e) => onSelectPrompt(e.target.value)} disabled={generating} className={fieldCls + ' mb-6'}>
-                    {prompts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
+                {mode !== 'pdf' && (
+                    <>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Period</label>
+                        <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={generating} className={fieldCls + ' mb-6'}>
+                            <option value={28}>Last 28 days</option>
+                            <option value={90}>Last 90 days</option>
+                            <option value={180}>Last 6 months</option>
+                        </select>
+                    </>
+                )}
 
                 <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
                 <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={generating} className={fieldCls + ' mb-6'}>
@@ -349,7 +394,7 @@ const Presentation = () => {
                     placeholder={"Lines starting with /on <date> are added verbatim to a Key Dates slide, e.g.\n/on 26 may product launch at 9 AM\n/on 30 may final client sign-off"}
                     className={fieldCls + ' mb-8 text-sm font-mono'} />
 
-                <button onClick={generate} disabled={generating || (mode === 'gsc' ? !propUrl : !pdfFile)}
+                <button onClick={generate} disabled={generating || !canGenerate}
                     className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
                     {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {progressMsg || 'Generating…'}</>
                         : <><SparklesIcon className="w-5 h-5" /> Generate presentation</>}
@@ -394,31 +439,6 @@ const Presentation = () => {
                     <p className="text-xs text-slate-400 mt-2 text-center">Slide {slideIdx + 1} of {deckSlides.length} · saved to Documents — re-download anytime from there.</p>
                 </motion.div>
             )}
-
-            {/* Prompt editor */}
-            <div className="mt-6 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <button onClick={() => setPromptOpen((o) => !o)} className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-slate-50">
-                    <span className="font-bold text-slate-700">Customize &amp; save prompts</span>
-                    <span className="text-sm font-semibold text-[#26397A]">{promptOpen ? 'Hide' : 'Edit'}</span>
-                </button>
-                {promptOpen && (
-                    <div className="px-6 pb-6">
-                        <p className="text-xs text-slate-400 mb-3">
-                            Editing <b>{prompts.find(p => p.id === promptId)?.name || 'prompt'}</b>. Put <code className="text-slate-600">{'{data}'}</code> where the data goes — it's filled automatically, and the HTML output rules are applied for you.
-                        </p>
-                        <input value={promptName} onChange={(e) => setPromptName(e.target.value)} placeholder="Prompt name (for saving)"
-                            disabled={savingPrompt} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-[#26397A]/40" />
-                        <textarea value={promptText} onChange={(e) => setPromptText(e.target.value)} rows={16} spellCheck={false}
-                            className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono leading-relaxed text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#26397A]/40" />
-                        <div className="flex flex-wrap gap-3 mt-3">
-                            <button onClick={saveAsNew} disabled={savingPrompt} className="px-5 py-2 rounded-lg bg-[#26397A] text-white font-bold text-sm hover:bg-[#1b2a5e] disabled:opacity-60">Save as new</button>
-                            <button onClick={updateSelected} disabled={savingPrompt || selectedIsBuiltin} className="px-5 py-2 rounded-lg border border-slate-300 text-slate-700 font-bold text-sm hover:border-[#26397A]/50 disabled:opacity-40" title={selectedIsBuiltin ? 'The built-in default cannot be overwritten' : ''}>Update selected</button>
-                            <button onClick={() => { setPromptText(defaultPromptText); }} disabled={savingPrompt} className="px-5 py-2 rounded-lg border border-slate-300 text-slate-600 font-semibold text-sm hover:border-[#26397A]/50">Load default text</button>
-                            <button onClick={deleteSelected} disabled={savingPrompt || selectedIsBuiltin} className="px-5 py-2 rounded-lg border border-red-200 text-red-500 font-semibold text-sm hover:bg-red-50 disabled:opacity-40 ml-auto">Delete</button>
-                        </div>
-                    </div>
-                )}
-            </div>
         </div>
     );
 };

@@ -31,7 +31,7 @@ def _gsc_service_for(db, email):
 
 
 def _save_deck_document(db, user_email: str, *, html: str, source: str, label: str,
-                        provider: str, prompt_id: str) -> str:
+                        provider: str) -> str:
     """Persist a generated AI deck as a Document so it shows in the Documents history
     and can be re-downloaded. Stores the HTML only; the file is re-rendered on download."""
     doc_id = str(uuid.uuid4())
@@ -42,7 +42,7 @@ def _save_deck_document(db, user_email: str, *, html: str, source: str, label: s
         title=f"AI Deck — {label} ({date_label})",
         content_type="AI Deck",
         content={"html": html, "source": source, "label": label,
-                 "provider": provider, "prompt_id": prompt_id},
+                 "provider": provider},
     )
     db.add(doc)
     db.commit()
