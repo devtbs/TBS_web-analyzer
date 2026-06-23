@@ -15,6 +15,11 @@ const SignInButton = () => {
     const handleLogin = useGoogleLogin({
         flow: 'auth-code',
         scope: GOOGLE_DATA_SCOPES,
+        // Force the consent screen every time so Google re-issues a refresh token
+        // carrying the *current* scopes. Without this, accounts that connected before
+        // the analytics.readonly scope existed never get an upgraded refresh token on
+        // reconnect (Google only returns one on first consent), so GA4 stays 403.
+        prompt: 'consent',
         onSuccess: async (codeResponse) => {
             try {
                 await login({ code: codeResponse.code });
