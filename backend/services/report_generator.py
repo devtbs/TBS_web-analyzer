@@ -128,20 +128,25 @@ def _domain_from_property(property_url: str) -> str:
 
 
 def _keyword_mix(queries: List[Dict]) -> Dict:
-    """Grounded 'Unique Keywords' summary from the queries GSC actually returned:
-    the distinct-query count plus a short-tail (1-2 words) vs long-tail (3+ words) split."""
+    """Grounded 'Unique Keywords' summary from the queries GSC actually returned: the
+    distinct-query count plus how those keywords' average rank is distributed across
+    positions 1-3 / 4-10 / 11+. Position-based (not word-count) so it's language-neutral —
+    a word-count 'long-tail' split is meaningless for spaceless scripts like Thai/CJK."""
     seen = set()
-    short = long = 0
+    top3 = mid = low = 0
     for q in queries:
         text = (q.get("query") or "").strip()
         if not text or text in seen:
             continue
         seen.add(text)
-        if len(text.split()) <= 2:
-            short += 1
+        pos = q.get("position") or 0
+        if pos and pos <= 3:
+            top3 += 1
+        elif pos and pos <= 10:
+            mid += 1
         else:
-            long += 1
-    return {"unique": len(seen), "short": short, "long": long}
+            low += 1
+    return {"unique": len(seen), "top3": top3, "mid": mid, "low": low}
 
 
 async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
@@ -375,10 +380,11 @@ TOP QUERIES (by clicks):
 KEYWORD POSITION vs IMPRESSIONS (top queries; use for a bubble/scatter chart — x = avg position, y = impressions, bubble size ∝ impressions):
 {bubble_lines}
 
-KEYWORD MIX (distinct queries tracked this period; use for a "Unique Keywords" metric + a short-tail vs long-tail donut):
+KEYWORD MIX (distinct queries tracked this period + how their average rank is distributed; use for a "Unique Keywords" metric + a ranking-distribution donut):
 - Unique keywords (distinct queries): {km.get('unique', 0)}
-- Short-tail (1-2 words): {km.get('short', 0)}
-- Long-tail (3+ words): {km.get('long', 0)}
+- In positions 1-3 (page-1 top): {km.get('top3', 0)}
+- In positions 4-10 (page-1 lower): {km.get('mid', 0)}
+- In positions 11+ (page 2+): {km.get('low', 0)}
 
 NEAR PAGE 1 — QUICK-WIN KEYWORDS (positions 4-20, ranked by impressions):
 {sd_lines}
