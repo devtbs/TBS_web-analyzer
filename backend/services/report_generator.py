@@ -167,6 +167,9 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
     devices = await _safe(service.get_devices(property_url, days=days))
     countries = await _safe(service.get_countries(property_url, days=days))
     striking = await _safe(service.get_striking_distance(property_url, days=days))
+    search_types = await _safe(service.get_search_types(property_url, days=days))
+    search_appearance = await _safe(service.get_search_appearance(property_url, days=days))
+    ctr_opps = await _safe(service.get_ctr_opportunities(property_url, days=days))
     # 12-month combo + per-query movers/footprint history. Both heavier — kept optional.
     monthly = await _safe(service.get_search_analytics(property_url, days=365, group_by="monthly"))
     insights = await _safe(service.get_query_insights(property_url, days=days, history_months=12))
@@ -197,6 +200,9 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "query_insights": insights or {},
         "top_pages": pages[:10],
         "devices": devices,
+        "search_types": search_types,
+        "search_appearance": (search_appearance or [])[:8],
+        "ctr_opportunities": (ctr_opps or [])[:12],
         "top_countries": countries[:8],
         "striking_distance": striking[:12],
         "geo": geo,
@@ -230,6 +236,22 @@ def _gsc_data_brief(ctx: Dict) -> str:
         f"  - {d.get('name','')}: {d.get('clicks',0)} clicks, {d.get('impressions',0)} impressions, "
         f"{d.get('ctr',0)}% CTR, pos {d.get('position','?')}"
         for d in ctx.get("devices", [])
+    ) or "  (none)"
+    stype_lines = "\n".join(
+        f"  - {s.get('name','')}: {s.get('clicks',0)} clicks, {s.get('impressions',0)} impressions, "
+        f"{s.get('ctr',0)}% CTR, pos {s.get('position','?')}"
+        for s in ctx.get("search_types", [])
+    ) or "  (none)"
+    appearance_lines = "\n".join(
+        f"  - {s.get('name','')}: {s.get('clicks',0)} clicks, {s.get('impressions',0)} impressions, "
+        f"{s.get('ctr',0)}% CTR, pos {s.get('position','?')}"
+        for s in ctx.get("search_appearance", [])
+    ) or "  (none)"
+    ctr_opp_lines = "\n".join(
+        f"  - \"{o.get('query','')}\" at pos {o.get('position','?')}: {o.get('impressions',0)} impressions, "
+        f"{o.get('actual_ctr','?')}% actual CTR vs {o.get('expected_ctr','?')}% expected "
+        f"(~{o.get('missed_clicks',0)} missed clicks)"
+        for o in ctx.get("ctr_opportunities", [])
     ) or "  (none)"
     sd_lines = "\n".join(
         f"  - \"{s.get('query','')}\" at pos {s.get('position','?')} ({s.get('impressions',0)} impressions, "
@@ -383,6 +405,15 @@ TOP PAGES (by clicks):
 
 BY DEVICE:
 {dev_lines}
+
+BY SEARCH TYPE (web/image/video/news; use for a search-surface breakdown chart — OMIT the slide if only 'web' is present or this is (none)):
+{stype_lines}
+
+SEARCH APPEARANCE (rich-result types — FAQ, product snippets, etc.; clicks/impressions/CTR/position. OMIT the slide entirely if this is (none)):
+{appearance_lines}
+
+CTR OPPORTUNITIES (high-impression queries whose CTR is below expected for their rank; use for a quick-CTR-wins slide — actual vs expected CTR, ranked by missed clicks. OMIT the slide if (none)):
+{ctr_opp_lines}
 
 TOP COUNTRIES (by clicks):
 {country_lines}

@@ -234,11 +234,14 @@ GSC_STRUCTURE = (
     "--muted colour, with \"ax\"/\"ay\" offsets so the three labels do not overlap each other or the bubbles. Leave all other bubbles unlabeled.\n"
     "7. Biggest Movers — two side-by-side panels: rising vs falling QUERIES (by clicks and by position, showing previous → current) and rising/falling LANDING PAGES; a diverging horizontal bar or clean two-column tables work well.\n"
     "8. Query Opportunities — high-impression / low-CTR or near-page-1 queries to target next.\n"
-    "9. Query Footprint — from QUERY FOOTPRINT: a Plotly STACKED BAR per month of top-10 query counts (pos 1-3 stacked with pos 4-10) plus a line for total queries; shows ranking visibility growing over time.\n"
-    "10. Top Pages — best-performing landing pages by clicks; focus on strengths.\n"
-    "11. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
-    "12. Strategic Insights & Recommendations — actionable SEO recommendations ONLY (content, internal linking, CTR/title improvements, target near-page-1 queries, defend declining queries/pages).\n"
-    "13. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "9. CTR Opportunities — from CTR OPPORTUNITIES: queries with strong impressions but a CTR below what their rank should earn. Show actual vs expected CTR (a grouped/diverging bar or a clean table) ranked by missed clicks, framed as quick title/meta wins. OMIT this slide entirely if CTR OPPORTUNITIES is (none).\n"
+    "10. Query Footprint — from QUERY FOOTPRINT: a Plotly STACKED BAR per month of top-10 query counts (pos 1-3 stacked with pos 4-10) plus a line for total queries; shows ranking visibility growing over time.\n"
+    "11. Top Pages — best-performing landing pages by clicks; focus on strengths.\n"
+    "12. Channels — Devices & Search Type — a .layout-split: on one side a device breakdown (from BY DEVICE — donut or bar of clicks/impressions by desktop/mobile/tablet); on the other a search-surface breakdown (from BY SEARCH TYPE — bar of web/image/video/news). If BY SEARCH TYPE is (none) or web-only, show devices alone full-width. OMIT the slide only if BY DEVICE is also (none).\n"
+    "13. Search Appearance — from SEARCH APPEARANCE: a bar or table of rich-result types (FAQ, product snippets, etc.) by clicks/impressions/CTR. OMIT this slide entirely if SEARCH APPEARANCE is (none).\n"
+    "14. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
+    "15. Strategic Insights & Recommendations — actionable SEO recommendations ONLY (content, internal linking, CTR/title improvements, target near-page-1 queries, defend declining queries/pages).\n"
+    "16. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 

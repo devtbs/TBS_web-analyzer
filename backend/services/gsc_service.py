@@ -738,6 +738,117 @@ class GSCService:
             logger.error(f"Unexpected error fetching devices: {str(e)}")
             raise Exception(f"Failed to fetch devices: {str(e)}")
 
+    async def get_search_types(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
+        """Totals broken down by search surface (web / image / video / news). The GSC API's
+        `type` is a top-level request field (not a dimension), so we issue one totals request
+        per type. Types with no impressions are skipped. Cached 15 min."""
+        cache_key = (self.user_email, 'search_types', property_url, days, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Cache HIT: search_types {property_url}")
+            return cached
+
+        try:
+            from datetime import datetime, timedelta
+
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+            start_date = end_date - timedelta(days=days)
+
+            async def _fetch(search_type):
+                req_body = {
+                    'startDate': start_date.strftime('%Y-%m-%d'),
+                    'endDate': end_date.strftime('%Y-%m-%d'),
+                    'type': search_type,
+                    'dataState': 'all',
+                }
+                self._apply_filter(req_body, filters_json)
+                resp = await self._aexecute(self.service.searchanalytics().query(
+                    siteUrl=property_url,
+                    body=req_body
+                ))
+                rows = resp.get('rows', [])
+                return rows[0] if rows else None
+
+            result = []
+            for search_type in ('web', 'image', 'video', 'news'):
+                row = await _fetch(search_type)
+                if not row or row.get('impressions', 0) <= 0:
+                    continue
+                result.append({
+                    'name': search_type,
+                    'clicks': row.get('clicks', 0),
+                    'impressions': row.get('impressions', 0),
+                    'ctr': round(row.get('ctr', 0) * 100, 2),
+                    'position': round(row.get('position', 0), 1),
+                })
+
+            result.sort(key=lambda x: x['impressions'], reverse=True)
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+
+        except HttpError as e:
+            logger.error(f"HTTP Error {e.resp.status} fetching search_types: {str(e)}")
+            raise Exception(f"Failed to fetch search types: HTTP {e.resp.status}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching search_types: {str(e)}")
+            raise Exception(f"Failed to fetch search types: {str(e)}")
+
+    async def get_search_appearance(
+        self, property_url: str, days: int = 28,
+        filters_json: str = None
+    ) -> List[Dict]:
+        """Clicks/impressions/ctr/position by rich-result type (FAQ, product snippets, AMP, …)
+        via the `searchAppearance` dimension. Many properties have none — returns [] then.
+        Cached 15 min."""
+        cache_key = (self.user_email, 'search_appearance', property_url, days, filters_json)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Cache HIT: search_appearance {property_url}")
+            return cached
+
+        try:
+            from datetime import datetime, timedelta
+
+            end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
+            start_date = end_date - timedelta(days=days)
+
+            req_body = {
+                'startDate': start_date.strftime('%Y-%m-%d'),
+                'endDate': end_date.strftime('%Y-%m-%d'),
+                'dimensions': ['searchAppearance'],
+                'rowLimit': 25,
+                'dataState': 'all',
+            }
+            self._apply_filter(req_body, filters_json)
+            resp = await self._aexecute(self.service.searchanalytics().query(
+                siteUrl=property_url,
+                body=req_body
+            ))
+
+            result = []
+            for row in resp.get('rows', []):
+                result.append({
+                    'name': row['keys'][0],
+                    'clicks': row.get('clicks', 0),
+                    'impressions': row.get('impressions', 0),
+                    'ctr': round(row.get('ctr', 0) * 100, 2),
+                    'position': round(row.get('position', 0), 1),
+                })
+
+            result.sort(key=lambda x: x['impressions'], reverse=True)
+            _cache_set(cache_key, result, _TTL_ANALYTICS)
+            return result
+
+        except HttpError as e:
+            logger.error(f"HTTP Error {e.resp.status} fetching search_appearance: {str(e)}")
+            raise Exception(f"Failed to fetch search appearance: HTTP {e.resp.status}")
+        except Exception as e:
+            logger.error(f"Unexpected error fetching search_appearance: {str(e)}")
+            raise Exception(f"Failed to fetch search appearance: {str(e)}")
+
     async def get_daily_stats(
         self, property_url: str, days: int = 28,
         filters_json: str = None
