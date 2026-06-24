@@ -440,21 +440,31 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
     If `ga4_service` is given, the country map uses real GA4 sessions matched to the site's
     GA4 property (falling back to GSC clicks-by-country when there's no match)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, GSC_STRUCTURE, UNIQUE_STYLE_BRAND)
+                                          _AI_IMG_RE, GSC_STRUCTURE, UNIQUE_STYLE_BRAND, _apply_theme)
+    from services.site_theme import detect_site_accent
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Search Console data…")
     context = await assemble_gsc_context(service, property_url, days, ga4_service=ga4_service)
     brief = _gsc_data_brief(context) + to_brief_block(notes)
+    # Theme the deck to the site's own brand colour (not always orange).
+    theme = await detect_site_accent(context["domain"])
+    brand = UNIQUE_STYLE_BRAND + (
+        f"\n\nREQUIRED BRAND ACCENT: build the palette around {theme['accent']} as --accent and "
+        f"{theme['accent2']} as --accent-2, on a warm cream/ivory ground with dark ink. Do NOT default to "
+        f"terracotta/orange unless that brand colour is itself orange."
+    )
     # Shared cache lets image generation start (during the streamed write) and finish
     # concurrently with slide-writing instead of serially afterward.
     image_cache = {} if images else None
-    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+    html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GSC_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
+    # Deterministically force the site theme regardless of what the model emitted.
+    html = _apply_theme(html, theme["accent"], theme["accent2"])
     return {
         "property_url": property_url,
         "domain": context["domain"],

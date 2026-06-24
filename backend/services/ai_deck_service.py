@@ -219,11 +219,11 @@ GSC_STRUCTURE = (
     "1. Cover Slide — site/domain, 'Organic Search Performance Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/clicks/impressions on the cover — keep it clean.\n"
     "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (clicks/impressions/CTR/position) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
     "3. Search Performance — clicks, impressions, CTR, average position with period-over-period change; highlight key wins visually.\n"
-    "4. Performance Over Time — use MONTHLY PERFORMANCE: a Plotly COMBO chart with clicks & impressions as bars (accent / accent-2) and average POSITION as a line on a SECONDARY y-axis that is REVERSED (lower is better, so a rising line = improving rank). Optionally a second slide with the daily impressions and URL-clicks as filled AREA charts.\n"
+    "4. Performance Over Time — use MONTHLY PERFORMANCE: a Plotly COMBO chart with clicks & impressions as bars (accent / accent-2) and average POSITION as a line on a SECONDARY y-axis that is REVERSED (lower is better, so a rising line = improving rank). This chart MUST be self-explanatory: include a VISIBLE LEGEND that names each series (e.g. \"Clicks\", \"Impressions\", \"Avg position\") with \"showlegend\":true positioned at the top (and enough top margin that it is NOT clipped), give the primary y-axis the title \"clicks / impressions\" and the secondary y-axis the title \"avg position (lower is better)\", so a reader instantly knows the bars are traffic and the line is ranking. Optionally a second slide with the daily impressions and URL-clicks as filled AREA charts.\n"
     "5. Top Queries (REQUIRED — always include this slide) — a clean, readable TABLE of the top ~10 queries by clicks "
     "with columns Query · Clicks · Impressions · CTR · Avg position. The boss must be able to read exactly which keywords drive "
     "traffic, so this is a real labelled table (NOT just the bubble chart). Optionally pair it with a small bar of clicks by query.\n"
-    "6. Keyword Landscape (mix summary — NO bubble chart on this slide) — a .layout-split full-height slide. "
+    "6. Keyword Landscape (REQUIRED — always include this slide) (mix summary — NO bubble chart on this slide) — a .layout-split full-height slide. "
     "ONE side: the eyebrow 'KEYWORD LANDSCAPE' + a title, the TOP 3 queries (by clicks) as compact cards "
     "(query · clicks · avg position), and a grounded 'Unique Keywords' .kpi from KEYWORD MIX showing the "
     "'Unique keywords (distinct queries)' number. OTHER side: a ranking-distribution DONUT (Plotly pie, \"hole\":0.6, "
@@ -231,7 +231,7 @@ GSC_STRUCTURE = (
     "labels = [\"Pos 1-3\",\"Pos 4-10\",\"Pos 11+\"], colours = [accent, accent-2, --muted], sized to fill its side with a slim "
     "legend below — it MUST actually render as a pie and must NOT overflow/clip. Do NOT replace the donut with plain number "
     "cards, and do NOT print any '% long-tail/short-tail' framing.\n"
-    "7. Keyword Opportunity · Position vs Impressions (FULL-PAGE bubble chart — this whole slide is the chart) — a slim eyebrow "
+    "7. Keyword Opportunity · Position vs Impressions (REQUIRED — always include this slide) (FULL-PAGE bubble chart — this whole slide is the chart) — a slim eyebrow "
     "'KEYWORD OPPORTUNITY' + a short title at the top, then ONE big bubble chart div that fills the REST of the slide (full content "
     "width ~1150px and ~540px tall) as the hero — no side panels, no cards, nothing else competing for space. The chart is ONE "
     "Plotly scatter trace with \"type\":\"scatter\", x = the average position of every query (x-axis REVERSED so better ranks sit on "
@@ -708,6 +708,63 @@ def _enforce_keyword_bubble(html: str) -> str:
         return m.group(1) + json.dumps(spec) + m.group(3)
 
     return _PLOTLY_SPEC_RE.sub(_fix, html)
+
+
+_ACCENT_VAR_RE = re.compile(r'(--accent\s*:\s*)([^;}\n]+)([;}])', re.IGNORECASE)
+_ACCENT2_VAR_RE = re.compile(r'(--accent-2\s*:\s*)([^;}\n]+)([;}])', re.IGNORECASE)
+
+
+def _apply_theme(html: str, accent: str, accent2: str, muted: str = "#9AA0A6") -> str:
+    """Force the deck onto the site's brand colour, deterministically — so themeing never
+    depends on the model obeying the prompt. Rewrites the --accent / --accent-2 CSS tokens
+    (covering every var(--accent) use in the slide design) and recolours every Plotly series
+    to accent / accent-2 (combo bars=accent, line=accent-2; pie = accent/accent-2/muted;
+    choropleth = a light→accent ramp). Only colour keys are touched; data is never changed."""
+    if not accent:
+        return html
+    html = _ACCENT_VAR_RE.sub(lambda m: m.group(1) + accent + m.group(3), html, count=1)
+    html = _ACCENT2_VAR_RE.sub(lambda m: m.group(1) + accent2 + m.group(3), html, count=1)
+    if "plotly-spec" not in html:
+        return html
+    import json
+
+    palette = [accent, accent2]
+
+    def _recolor(m):
+        try:
+            spec = json.loads(m.group(2))
+        except Exception:
+            return m.group(0)
+        data = spec.get("data")
+        if not isinstance(data, list):
+            return m.group(0)
+        ci = 0
+        for trace in data:
+            if not isinstance(trace, dict):
+                continue
+            ttype = str(trace.get("type", "")).lower()
+            if ttype == "pie":
+                mk = trace.get("marker") if isinstance(trace.get("marker"), dict) else {}
+                vals = trace.get("values") or []
+                base = [accent, accent2, muted]
+                mk["colors"] = [base[i % 3] for i in range(len(vals) or 3)]
+                trace["marker"] = mk
+            elif ttype == "choropleth":
+                trace["colorscale"] = [[0, "#F1EDE6"], [1, accent]]
+                trace.setdefault("reversescale", False)
+            else:
+                color = palette[ci % len(palette)]
+                ci += 1
+                mk = trace.get("marker") if isinstance(trace.get("marker"), dict) else {}
+                mk["color"] = color
+                trace["marker"] = mk
+                if isinstance(trace.get("line"), dict):
+                    trace["line"]["color"] = color
+                elif str(trace.get("mode", "")).find("lines") != -1:
+                    trace["line"] = {"color": color}
+        return m.group(1) + json.dumps(spec) + m.group(3)
+
+    return _PLOTLY_SPEC_RE.sub(_recolor, html)
 
 
 def _polish_plotly_specs(html: str) -> str:
