@@ -740,6 +740,10 @@ async def _render(html: str) -> Dict:
             browser = await p.chromium.launch(args=["--no-sandbox"])
             page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX})
             await page.goto(Path(tmp.name).as_uri(), wait_until="networkidle")
+            # Pin SCREEN media for the whole pipeline. The deck is designed for screen
+            # (dark/saturated colour fields, full-bleed photos, 720px flex columns); print
+            # emulation would drop those, which is what made the old page.pdf() output blank.
+            await page.emulate_media(media="screen")
             if uses_plotly:
                 # ensure Plotly actually loaded; if the CDN was slow/blocked, inject it,
                 # then wait for every chart to draw its SVG.
@@ -760,24 +764,32 @@ async def _render(html: str) -> Dict:
                 except Exception:
                     pass
                 await page.wait_for_timeout(1500)
-            # Force every page to the exact 16:9 slide size so the PDF is landscape
-            # regardless of whether the model emitted an @page rule (Chromium otherwise
-            # falls back to portrait Letter, leaving each slide atop a blank band).
-            pdf = await page.pdf(
-                width=f"{SLIDE_W_PX}px", height=f"{SLIDE_H_PX}px",
-                print_background=True,
-                margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},
-            )
+            # Build the PDF from the SAME per-slide screenshots the preview uses, rather than
+            # page.pdf() (which forces print-media emulation and produced blank/black pages).
+            # This guarantees PDF == preview == PPTX.
             slide_pngs: List[bytes] = []
             for el in await page.query_selector_all(".slide"):
                 slide_pngs.append(await el.screenshot(type="png"))
             await browser.close()
-        return {"pdf": pdf, "slides": slide_pngs}
+        return {"pdf": _slides_to_pdf(slide_pngs), "slides": slide_pngs}
     finally:
         try:
             os.unlink(tmp.name)
         except Exception:
             pass
+
+
+def _slides_to_pdf(slide_pngs: List[bytes]) -> bytes:
+    """Assemble the full-slide PNG screenshots into a multi-page PDF (one slide per page).
+    Uses the same screenshots as the preview/PPTX so all three outputs match exactly."""
+    from PIL import Image
+
+    if not slide_pngs:
+        raise ValueError("No slides were rendered — cannot build a PDF (the deck has no .slide elements).")
+    pages = [Image.open(BytesIO(p)).convert("RGB") for p in slide_pngs]
+    buf = BytesIO()
+    pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:], resolution=96.0)
+    return buf.getvalue()
 
 
 def _slides_to_pptx(slide_pngs: List[bytes]) -> bytes:
@@ -827,6 +839,7 @@ async def render_slide_images(html: str, *, quality: int = 72, on_progress: Prog
             browser = await p.chromium.launch(args=["--no-sandbox"])
             page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX})
             await page.goto(Path(tmp.name).as_uri(), wait_until="networkidle")
+            await page.emulate_media(media="screen")
             if uses_plotly:
                 try:
                     await page.wait_for_function("() => !!window.Plotly", timeout=6000)
