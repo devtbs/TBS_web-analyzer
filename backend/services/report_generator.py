@@ -5,7 +5,7 @@ polished, client-facing monthly report from it. Today it draws on SE Ranking
 keyword data; GSC and GA4 sections plug into `assemble_context()` the same way as
 those integrations come online.
 """
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import json
 import logging
@@ -127,6 +127,23 @@ def _domain_from_property(property_url: str) -> str:
         return property_url
 
 
+def _keyword_mix(queries: List[Dict]) -> Dict:
+    """Grounded 'Unique Keywords' summary from the queries GSC actually returned:
+    the distinct-query count plus a short-tail (1-2 words) vs long-tail (3+ words) split."""
+    seen = set()
+    short = long = 0
+    for q in queries:
+        text = (q.get("query") or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        if len(text.split()) <= 2:
+            short += 1
+        else:
+            long += 1
+    return {"unique": len(seen), "short": short, "long": long}
+
+
 async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
                                ga4_service=None) -> Dict:
     """Gather GSC search performance + top queries/pages + device/country/quick-win
@@ -176,6 +193,7 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "monthly_trend": (monthly or {}).get("chart_data") or [],
         "top_queries": queries[:15],
         "bubble_queries": sorted(queries, key=lambda q: q.get("impressions", 0), reverse=True)[:30],
+        "keyword_mix": _keyword_mix(queries),
         "query_insights": insights or {},
         "top_pages": pages[:10],
         "devices": devices,
@@ -189,6 +207,7 @@ def _gsc_data_brief(ctx: Dict) -> str:
     a = ctx.get("analytics") or {}
     totals = a.get("totals") or {}
     deltas = a.get("deltas") or {}
+    km = ctx.get("keyword_mix") or {}
 
     def _d(v, suffix="%"):
         return "n/a" if v is None else f"{v:+}{suffix}"
@@ -333,6 +352,11 @@ TOP QUERIES (by clicks):
 
 KEYWORD POSITION vs IMPRESSIONS (top queries; use for a bubble/scatter chart — x = avg position, y = impressions, bubble size ∝ impressions):
 {bubble_lines}
+
+KEYWORD MIX (distinct queries tracked this period; use for a "Unique Keywords" metric + a short-tail vs long-tail donut):
+- Unique keywords (distinct queries): {km.get('unique', 0)}
+- Short-tail (1-2 words): {km.get('short', 0)}
+- Long-tail (3+ words): {km.get('long', 0)}
 
 NEAR PAGE 1 — QUICK-WIN KEYWORDS (positions 4-20, ranked by impressions):
 {sd_lines}
