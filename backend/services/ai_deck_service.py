@@ -231,16 +231,12 @@ GSC_STRUCTURE = (
     "labels = [\"Pos 1-3\",\"Pos 4-10\",\"Pos 11+\"], colours = [accent, accent-2, --muted], sized ~190x190 to fit its box with a "
     "slim legend below — it MUST actually render as a pie and must NOT overflow/clip. Do NOT replace the donut with plain number "
     "cards, and do NOT print any '% long-tail/short-tail' framing. "
-    "RIGHT column (~62%, the HERO): a Plotly BUBBLE chart from KEYWORD POSITION vs IMPRESSIONS — ONE scatter trace, "
-    "\"mode\":\"markers+text\", x = average position (x-axis REVERSED so better ranks sit on the RIGHT), y = impressions. "
-    "BIG bubbles scaled by impressions (the size MUST visibly vary — do NOT use one flat marker size): set "
-    "\"marker\":{\"size\":[the impressions value of every point], \"sizemode\":\"area\", \"sizeref\": 2*MAXIMP/(95*95), "
-    "\"sizemin\":6, \"color\":\"<--accent>\", \"opacity\":0.7, \"line\":{\"width\":1,\"color\":\"<--surface>\"}} where MAXIMP is the "
-    "LARGEST impressions value in the data, so the biggest bubble renders ~95px and the rest scale by area. "
-    "LABEL the queries BESIDE the bubbles: \"text\" = the query string for the ~8 HIGHEST-impression points and \"\" (empty) for all "
-    "the rest, so the big bubbles are labelled while the small long-tail stays clean; \"textposition\":\"middle right\", "
-    "\"textfont\":{\"size\":11,\"color\":\"<--ink>\"}. Give the labels room: \"layout\":{\"margin\":{\"r\":140,...}} and pad the x-axis "
-    "range slightly on the right so no label is clipped; the whole chart must still fit inside the slide. \"showlegend\":false.\n"
+    "RIGHT column (~62%, the HERO): a Plotly BUBBLE chart from KEYWORD POSITION vs IMPRESSIONS — ONE scatter trace with "
+    "\"type\":\"scatter\", x = the average position of every query (x-axis REVERSED so better ranks sit on the RIGHT), "
+    "y = the impressions of every query. The trace MUST carry, ALIGNED to x/y, a \"customdata\" array = the QUERY STRING of each point, "
+    "and MUST include \"meta\":{\"chart\":\"keyword-bubble\"} so the renderer can finish it. Marker colour = --accent. "
+    "(The system deterministically scales the bubbles by impressions and labels the biggest ~8 queries beside their bubble, so just "
+    "supply accurate x, y and customdata — do not worry about marker.size yourself.) \"showlegend\":false.\n"
     "7. Biggest Movers (REQUIRED: show BOTH risers AND fallers — not climbers only) — two side-by-side panels: rising vs falling "
     "QUERIES (previous → current) and, below or beside them, rising vs falling LANDING PAGES. Frame the fallers honestly as "
     "at-risk/decline-to-defend (not alarmist), but they MUST be shown so the report is balanced. Diverging horizontal bars or clean "
@@ -597,11 +593,191 @@ def _plotly_source() -> str:
     return _PLOTLY_SRC
 
 
+_PLOTLY_SPEC_RE = re.compile(
+    r'(<script\b[^>]*\bclass=["\']plotly-spec["\'][^>]*>)(.*?)(</script>)',
+    re.IGNORECASE | re.DOTALL,
+)
+# How big the largest bubble should render (px diameter) and how many to label.
+_BUBBLE_MAX_PX = 95
+_BUBBLE_LABELS = 8
+
+
+def _is_keyword_bubble(trace: dict, layout: dict) -> bool:
+    """Identify the keyword position-vs-impressions scatter so we can enforce its
+    sizing/labels. Prefer an explicit meta flag the prompt asks for; else fall back to
+    the axis titles the model reliably emits (x≈'position', y≈'impressions')."""
+    if (trace.get("meta") or {}).get("chart") == "keyword-bubble":
+        return True
+    if (layout.get("meta") or {}).get("chart") == "keyword-bubble":
+        return True
+    if str(trace.get("type", "scatter")).lower() not in ("scatter", "scattergl", ""):
+        return False
+
+    def _title(ax):
+        t = (layout.get(ax) or {}).get("title")
+        return (t.get("text") if isinstance(t, dict) else t) or ""
+
+    xt, yt = _title("xaxis").lower(), _title("yaxis").lower()
+    return "position" in xt and "impress" in yt
+
+
+def _enforce_keyword_bubble(html: str) -> str:
+    """Deterministically fix the keyword bubble chart regardless of what the LLM emitted:
+    scale every bubble's area by impressions and label the top-N by impressions beside their
+    point. The model only needs to supply the data (x positions, y impressions, and a query
+    per point via customdata/text/hovertext); the math + labelling happen here so the chart
+    is reliably big and labelled even when the model ignores those instructions."""
+    if "plotly-spec" not in html:
+        return html
+    import json
+
+    def _floats(seq):
+        out = []
+        for v in seq:
+            try:
+                out.append(float(v))
+            except (TypeError, ValueError):
+                out.append(0.0)
+        return out
+
+    def _fix(m):
+        try:
+            spec = json.loads(m.group(2))
+        except Exception:
+            return m.group(0)
+        data = spec.get("data")
+        layout = spec.get("layout") or {}
+        if not isinstance(data, list):
+            return m.group(0)
+
+        changed = False
+        for trace in data:
+            if not isinstance(trace, dict) or "y" not in trace or not isinstance(trace.get("y"), list):
+                continue
+            if not _is_keyword_bubble(trace, layout):
+                continue
+            ys = _floats(trace["y"])
+            if not ys or max(ys) <= 0:
+                continue
+            maxy = max(ys)
+            marker = trace.get("marker") if isinstance(trace.get("marker"), dict) else {}
+            marker["size"] = ys
+            marker["sizemode"] = "area"
+            marker["sizeref"] = (2.0 * maxy) / (_BUBBLE_MAX_PX ** 2)
+            marker["sizemin"] = 6
+            marker.setdefault("opacity", 0.7)
+            trace["marker"] = marker
+
+            # Per-point query labels — pull from whatever the model provided.
+            labels_src = None
+            for key in ("customdata", "text", "hovertext"):
+                val = trace.get(key)
+                if isinstance(val, list) and len(val) == len(ys):
+                    labels_src = [("" if v is None else str(v)) for v in val]
+                    break
+            if labels_src:
+                keep = set(sorted(range(len(ys)), key=lambda i: ys[i], reverse=True)[:_BUBBLE_LABELS])
+                trace["text"] = [labels_src[i] if i in keep else "" for i in range(len(ys))]
+                trace["mode"] = "markers+text"
+                # Place each label on the INWARD side so it can't run off the slide edge:
+                # the x-axis is reversed (best ranks on the right), so points with a small x
+                # sit on the right and get a left-side label; the rest get a right-side label.
+                xs = _floats(trace.get("x") or list(range(len(ys))))
+                xmid = (min(xs) + max(xs)) / 2 if xs else 0
+                trace["textposition"] = [
+                    ("middle left" if xs[i] <= xmid else "middle right") for i in range(len(ys))
+                ]
+                tf = trace.get("textfont") if isinstance(trace.get("textfont"), dict) else {}
+                tf.setdefault("size", 11)
+                trace["textfont"] = tf
+            else:
+                trace["mode"] = "markers"
+
+            # Headroom on BOTH sides so inward labels (left or right) never clip.
+            margin = layout.get("margin") if isinstance(layout.get("margin"), dict) else {}
+            margin["r"] = max(int(margin.get("r", 0) or 0), 130)
+            margin["l"] = max(int(margin.get("l", 0) or 0), 120)
+            layout["margin"] = margin
+            spec["layout"] = layout
+            changed = True
+
+        if not changed:
+            return m.group(0)
+        return m.group(1) + json.dumps(spec) + m.group(3)
+
+    return _PLOTLY_SPEC_RE.sub(_fix, html)
+
+
+def _polish_plotly_specs(html: str) -> str:
+    """Apply one cohesive 'house style' to EVERY chart so the deck looks like a designed
+    template, not N improvised charts — done deterministically (setdefault only, so explicit
+    model choices win) instead of trusting the LLM to style each chart. Fixes the recurring
+    rough edges: transparent backgrounds, faint gridlines, tidy margins, rounded bars,
+    automargin so axis labels stop overlapping, and compact choropleth colorbars."""
+    if "plotly-spec" not in html:
+        return html
+    import json
+
+    def _polish(m):
+        try:
+            spec = json.loads(m.group(2))
+        except Exception:
+            return m.group(0)
+        data = spec.get("data")
+        layout = spec.get("layout") if isinstance(spec.get("layout"), dict) else {}
+        if not isinstance(data, list):
+            return m.group(0)
+
+        layout.setdefault("paper_bgcolor", "rgba(0,0,0,0)")
+        layout.setdefault("plot_bgcolor", "rgba(0,0,0,0)")
+        layout.setdefault("hovermode", False)
+        margin = layout.get("margin") if isinstance(layout.get("margin"), dict) else {}
+        for k, v in (("t", 16), ("r", 16), ("b", 44), ("l", 52)):
+            margin.setdefault(k, v)
+        layout["margin"] = margin
+        font = layout.get("font") if isinstance(layout.get("font"), dict) else {}
+        font.setdefault("size", 13)
+        layout["font"] = font
+        # Every axis (xaxis, yaxis, xaxis2, …) gets automargin + clean grid/zeroline.
+        for key, ax in list(layout.items()):
+            if (key.startswith("xaxis") or key.startswith("yaxis")) and isinstance(ax, dict):
+                ax.setdefault("automargin", True)
+                ax.setdefault("zeroline", False)
+                ax.setdefault("gridcolor", "rgba(0,0,0,0.06)")
+                ax.setdefault("linecolor", "rgba(0,0,0,0.15)")
+                ax.setdefault("ticks", "")
+
+        for tr in data:
+            if not isinstance(tr, dict):
+                continue
+            ttype = str(tr.get("type", "")).lower()
+            if ttype == "bar":
+                mk = tr.get("marker") if isinstance(tr.get("marker"), dict) else {}
+                mk.setdefault("cornerradius", 5)
+                tr["marker"] = mk
+            elif ttype in ("scatter", "scattergl", "") and isinstance(tr.get("line"), dict):
+                tr["line"].setdefault("width", 2.5)
+            elif ttype == "choropleth":
+                cb = tr.get("colorbar") if isinstance(tr.get("colorbar"), dict) else {}
+                cb.setdefault("thickness", 12)
+                cb.setdefault("len", 0.6)
+                cb.setdefault("outlinewidth", 0)
+                cb.setdefault("x", 1.02)
+                tr["colorbar"] = cb
+
+        spec["layout"] = layout
+        return m.group(1) + json.dumps(spec) + m.group(3)
+
+    return _PLOTLY_SPEC_RE.sub(_polish, html)
+
+
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
+    html = _polish_plotly_specs(html)
+    html = _enforce_keyword_bubble(html)
     src = _plotly_source()
     if not src:
         return html  # no local bundle available — leave the CDN tag as-is
