@@ -31,7 +31,7 @@ const siteTags = (url) => {
 };
 
 const Presentation = () => {
-    const [mode, setMode] = useState('gsc');           // 'gsc' | 'ga4' | 'ads' | 'pdf'
+    const [mode, setMode] = useState('gsc');           // 'gsc' | 'ads' | 'pdf'  (gsc deck auto-includes GA4)
 
     // GSC site picker
     const [properties, setProperties] = useState([]);
@@ -41,19 +41,13 @@ const Presentation = () => {
     const [open, setOpen] = useState(false);
     const boxRef = useRef(null);
 
-    // GA4 property picker (loaded lazily when the GA4 tab is first opened)
-    const [ga4Props, setGa4Props] = useState([]);
-    const [ga4Loading, setGa4Loading] = useState(false);
-    const [ga4Loaded, setGa4Loaded] = useState(false);
-    const [ga4PropId, setGa4PropId] = useState('');
-
     // Google Ads account picker (loaded lazily when the Ads tab is first opened)
     const [adsCusts, setAdsCusts] = useState([]);
     const [adsLoading, setAdsLoading] = useState(false);
     const [adsLoaded, setAdsLoaded] = useState(false);
     const [adsCustId, setAdsCustId] = useState('');
 
-    // shared period (gsc / ga4 / ads)
+    // shared period (gsc / ads)
     const [days, setDays] = useState(28);
 
     // PDF upload
@@ -100,20 +94,8 @@ const Presentation = () => {
         return () => document.removeEventListener('mousedown', onClick);
     }, []);
 
-    // Lazily load the GA4 / Ads source lists the first time their tab is opened.
+    // Lazily load the Ads source list the first time its tab is opened.
     useEffect(() => {
-        if (mode === 'ga4' && !ga4Loaded) {
-            setGa4Loaded(true); setGa4Loading(true);
-            (async () => {
-                try {
-                    const res = await api.get('/auth/ga4/properties');
-                    const list = res.data.properties || [];
-                    setGa4Props(list);
-                    if (list.length) setGa4PropId(list[0].property_id);
-                } catch { toast.error('Could not load GA4 properties — is Analytics connected?'); }
-                finally { setGa4Loading(false); }
-            })();
-        }
         if (mode === 'ads' && !adsLoaded) {
             setAdsLoaded(true); setAdsLoading(true);
             (async () => {
@@ -127,7 +109,7 @@ const Presentation = () => {
                 finally { setAdsLoading(false); }
             })();
         }
-    }, [mode, ga4Loaded, adsLoaded]);
+    }, [mode, adsLoaded]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -139,9 +121,6 @@ const Presentation = () => {
 
     const pick = (p) => { setPropUrl(p.url); setQuery(prettyName(p.url)); setOpen(false); };
 
-    const ga4Label = useMemo(
-        () => ga4Props.find((p) => p.property_id === ga4PropId)?.display || '',
-        [ga4Props, ga4PropId]);
     const adsLabel = useMemo(
         () => adsCusts.find((c) => c.customer_id === adsCustId)?.display || '',
         [adsCusts, adsCustId]);
@@ -173,14 +152,12 @@ const Presentation = () => {
     };
 
     const canGenerate = mode === 'gsc' ? !!propUrl
-        : mode === 'ga4' ? !!ga4PropId
         : mode === 'ads' ? !!adsCustId
         : !!pdfFile;
 
     const generate = async () => {
         if (!canGenerate) {
             toast.error(mode === 'pdf' ? 'Choose a PDF first.'
-                : mode === 'ga4' ? 'Pick a GA4 property first.'
                 : mode === 'ads' ? 'Pick a Google Ads account first.'
                 : 'Pick a site first.');
             return;
@@ -197,10 +174,6 @@ const Presentation = () => {
             if (mode === 'gsc') {
                 response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&images=${useImages}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
-            } else if (mode === 'ga4') {
-                response = await fetch(
-                    `/api/presentation/ai-deck-ga4?property_id=${encodeURIComponent(ga4PropId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(ga4Label)}`,
                     { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
             } else if (mode === 'ads') {
                 response = await fetch(
@@ -277,8 +250,8 @@ const Presentation = () => {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                    {[['gsc', 'Search Console'], ['ga4', 'Analytics (GA4)'], ['ads', 'Google Ads'], ['pdf', 'From a PDF']].map(([m, label]) => (
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                    {[['gsc', 'Monthly Reports'], ['ads', 'Google Ads'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
                             className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
                                 mode === m ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
@@ -316,21 +289,9 @@ const Presentation = () => {
                                 </div>
                             )}
                         </div>
-                    </>
-                )}
-
-                {mode === 'ga4' && (
-                    <>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">GA4 property</label>
-                        <select value={ga4PropId} onChange={(e) => setGa4PropId(e.target.value)} disabled={ga4Loading || generating} className={fieldCls + ' mb-6'}>
-                            {ga4Loading && <option value="">Loading properties…</option>}
-                            {!ga4Loading && ga4Props.length === 0 && <option value="">No GA4 properties found</option>}
-                            {ga4Props.map((p) => (
-                                <option key={p.property_id} value={p.property_id}>
-                                    {p.display}{p.account ? ` — ${p.account}` : ''}
-                                </option>
-                            ))}
-                        </select>
+                        <p className="-mt-4 mb-6 text-xs text-slate-400">
+                            Includes Google Analytics data automatically when a matching GA4 property is connected.
+                        </p>
                     </>
                 )}
 

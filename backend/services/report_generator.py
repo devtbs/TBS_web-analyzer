@@ -179,17 +179,35 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
     monthly = await _safe(service.get_search_analytics(property_url, days=365, group_by="monthly"))
     insights = await _safe(service.get_query_insights(property_url, days=days, history_months=12))
 
-    # Country map: prefer real GA4 sessions (matched to this domain), else GSC clicks.
+    # GA4 enrichment: match this domain to its GA4 property ONCE, then pull both the
+    # sessions-by-country map and the full analytics overview (audience/engagement, daily
+    # trend, traffic-by-channel). Everything here is non-fatal — a site with no matching
+    # GA4 property just yields a Search-Console-only deck (geo falls back to GSC clicks).
     geo = {"mode": "clicks", "rows": (countries or [])[:20]}
+    ga4 = None
     if ga4_service is not None:
         try:
             prop = await ga4_service.find_property_for_domain(domain)
             if prop and prop.get("property_id"):
-                rows = await ga4_service.get_geo(prop["property_id"], days)
+                pid = prop["property_id"]
+                rows = await _safe(ga4_service.get_geo(pid, days))
                 if rows:
                     geo = {"mode": "sessions", "rows": rows}
+                try:
+                    overview = await ga4_service.get_overview(pid, days=days)
+                    period = overview.get("period") or {}
+                    ga4 = {
+                        "name": prop.get("display") or domain,
+                        "period_label": _human_period(period.get("start", ""), period.get("end", "")),
+                        "totals": overview.get("totals") or {},
+                        "deltas": overview.get("deltas") or {},
+                        "trend": overview.get("chart_data") or [],
+                        "channels": overview.get("channels") or [],
+                    }
+                except Exception as e:
+                    logger.warning("GA4 overview fetch failed (non-fatal): %s", e)
         except Exception as e:
-            logger.warning("GA4 sessions-by-country match failed (non-fatal): %s", e)
+            logger.warning("GA4 property match failed (non-fatal): %s", e)
 
     return {
         "property_url": property_url,
@@ -211,7 +229,47 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "top_countries": countries[:8],
         "striking_distance": striking[:12],
         "geo": geo,
+        "ga4": ga4,
     }
+
+
+def _ga4_brief_sections(ga4: Dict) -> str:
+    """GA4 analytics sections for the combined Monthly Report brief (audience/engagement,
+    sessions trend, traffic by channel). Geography is already covered by the GSC GEOGRAPHY
+    block, which prefers GA4 sessions when the property is matched."""
+    t = ga4.get("totals") or {}
+    d = ga4.get("deltas") or {}
+
+    def _delta(v, suffix="%"):
+        return "n/a" if v is None else f"{v:+}{suffix}"
+
+    trend_lines = "\n".join(
+        f"  - {row.get('name','')}: {row.get('sessions',0)} sessions, "
+        f"{row.get('users',0)} users, {row.get('conversions',0)} conversions"
+        for row in ga4.get("trend", [])
+    ) or "  (none)"
+    channel_lines = "\n".join(
+        f"  - {c.get('channel','')}: {c.get('sessions',0)} sessions, "
+        f"{c.get('users',0)} users, {c.get('conversions',0)} conversions"
+        for c in ga4.get("channels", [])
+    ) or "  (none)"
+    return f"""WEBSITE ANALYTICS (Google Analytics / GA4) — on-site behaviour for the same site and period.
+
+AUDIENCE & ENGAGEMENT (current value, change vs previous period):
+- Sessions: {t.get('sessions', 0)} ({_delta(d.get('sessions'))})
+- Total users: {t.get('users', 0)} ({_delta(d.get('users'))})
+- New users: {t.get('new_users', 0)} ({_delta(d.get('new_users'))})
+- Pageviews: {t.get('pageviews', 0)} ({_delta(d.get('pageviews'))})
+- Engagement rate: {t.get('engagement_rate', 0)}% ({_delta(d.get('engagement_rate'), 'pp')})
+- Bounce rate: {t.get('bounce_rate', 0)}% ({_delta(d.get('bounce_rate'), 'pp')}; lower is better)
+- Avg session duration: {t.get('avg_session_duration', 0)}s ({_delta(d.get('avg_session_duration'))})
+- Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))})
+
+SESSIONS OVER TIME (daily; use for a sessions/users/conversions trend chart):
+{trend_lines}
+
+TRAFFIC BY CHANNEL (by sessions — organic, direct, paid, referral, social, etc.):
+{channel_lines}"""
 
 
 def _gsc_data_brief(ctx: Dict) -> str:
@@ -358,7 +416,15 @@ def _gsc_data_brief(ctx: Dict) -> str:
 
     period = ctx.get("period") or {}
     period_label = period.get("label", f"last {ctx['days']} days")
-    return f"""Organic search (Google Search Console) report for {ctx['domain']}.
+    ga4 = ctx.get("ga4") or None
+    ga4_block = ("\n\n" + _ga4_brief_sections(ga4)) if ga4 else ""
+    intro = (
+        f"Monthly performance report (Google Search Console + Google Analytics) for {ctx['domain']}. "
+        "It combines organic SEARCH data with website ANALYTICS (sessions, engagement, channels)."
+        if ga4 else
+        f"Organic search (Google Search Console) report for {ctx['domain']}."
+    )
+    return f"""{intro}
 Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
@@ -425,7 +491,7 @@ TOP COUNTRIES (by clicks):
 {country_lines}
 
 GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-countries bar). {geo_note}
-{geo_lines}
+{geo_lines}{ga4_block}
 
 Use only these numbers. Positive but honest framing; declines = opportunities."""
 
@@ -474,7 +540,7 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
 
 
 # ============================================================================
-# GA4 (Google Analytics) → AI deck. On-site behaviour / audience data.
+# Shared helpers for GA4/Ads period formatting.
 # ============================================================================
 
 def _human_period(start_iso: str, end_iso: str) -> str:
@@ -494,102 +560,6 @@ def _human_period(start_iso: str, end_iso: str) -> str:
     if start.year == end.year:
         return f"{start.day} {start.strftime('%b')} – {end.day} {end.strftime('%b %Y')}"
     return f"{_fmt(start)} – {_fmt(end)}"
-
-
-async def assemble_ga4_context(service, property_id: str, days: int = 28) -> Dict:
-    """Gather GA4 headline metrics + daily trend + traffic-by-channel + geo for one property."""
-    overview = await service.get_overview(property_id, days=days)
-    period = overview.get("period") or {}
-    try:
-        geo = await service.get_geo(property_id, days)
-    except Exception as e:
-        logger.warning("GA4 geo sub-fetch failed (non-fatal): %s", e)
-        geo = []
-    return {
-        "property_id": property_id,
-        "days": days,
-        "period_label": _human_period(period.get("start", ""), period.get("end", "")),
-        "totals": overview.get("totals") or {},
-        "deltas": overview.get("deltas") or {},
-        "trend": overview.get("chart_data") or [],
-        "channels": overview.get("channels") or [],
-        "geo": geo,
-    }
-
-
-def _ga4_data_brief(ctx: Dict, label: str) -> str:
-    t = ctx.get("totals") or {}
-    d = ctx.get("deltas") or {}
-
-    def _delta(v, suffix="%"):
-        return "n/a" if v is None else f"{v:+}{suffix}"
-
-    trend_lines = "\n".join(
-        f"  - {row.get('name','')}: {row.get('sessions',0)} sessions, "
-        f"{row.get('users',0)} users, {row.get('conversions',0)} conversions"
-        for row in ctx.get("trend", [])
-    ) or "  (none)"
-    channel_lines = "\n".join(
-        f"  - {c.get('channel','')}: {c.get('sessions',0)} sessions, "
-        f"{c.get('users',0)} users, {c.get('conversions',0)} conversions"
-        for c in ctx.get("channels", [])
-    ) or "  (none)"
-    geo_lines = "\n".join(
-        f"  - {r.get('country','')}: {r.get('sessions',0)} sessions, {r.get('users',0)} users"
-        for r in ctx.get("geo", [])
-    ) or "  (none)"
-
-    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
-    return f"""Website analytics (Google Analytics / GA4) report for {label}.
-Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
-On the COVER slide, show this reporting period ({period_label}) as the subtitle.
-
-AUDIENCE & ENGAGEMENT (current value, change vs previous period):
-- Sessions: {t.get('sessions', 0)} ({_delta(d.get('sessions'))})
-- Total users: {t.get('users', 0)} ({_delta(d.get('users'))})
-- New users: {t.get('new_users', 0)} ({_delta(d.get('new_users'))})
-- Pageviews: {t.get('pageviews', 0)} ({_delta(d.get('pageviews'))})
-- Engagement rate: {t.get('engagement_rate', 0)}% ({_delta(d.get('engagement_rate'), 'pp')})
-- Bounce rate: {t.get('bounce_rate', 0)}% ({_delta(d.get('bounce_rate'), 'pp')}; lower is better)
-- Avg session duration: {t.get('avg_session_duration', 0)}s ({_delta(d.get('avg_session_duration'))})
-- Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))})
-
-PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
-{trend_lines}
-
-TRAFFIC BY CHANNEL (by sessions):
-{channel_lines}
-
-SESSIONS BY COUNTRY (use for a choropleth world map + a top-countries bar; country values are full
-English names — render the Plotly choropleth with "locationmode":"country names", shaded by sessions):
-{geo_lines}
-
-Use only these numbers. Positive but honest framing; declines = opportunities."""
-
-
-async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
-                               label: str = "", provider: str = "deepseek",
-                               prompt: Optional[str] = None, images: bool = True,
-                               notes: str = "", on_progress=None) -> Dict:
-    """AI-designed website-analytics deck for a GA4 property. Returns the HTML only —
-    the file is rendered on download. `label` is the property display name (for the cover)."""
-    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, GA4_STRUCTURE, UNIQUE_STYLE_BRAND)
-    from services.highlights import to_brief_block
-    if on_progress:
-        await on_progress("Gathering Analytics data…")
-    context = await assemble_ga4_context(service, property_id, days)
-    name = label or f"Property {property_id}"
-    brief = _ga4_data_brief(context, name) + to_brief_block(notes)
-    image_cache = {} if images else None
-    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
-                                    structure=GA4_STRUCTURE, provider=provider,
-                                    on_progress=on_progress, image_cache=image_cache,
-                                    seed=name)
-    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
-            if images else _AI_IMG_RE.sub("", html))
-    html = resolve_ai_icons(html)
-    return {"property_id": property_id, "domain": name, "html": html}
 
 
 # ============================================================================

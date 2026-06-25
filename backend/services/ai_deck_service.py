@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 # Slide geometry — 16:9 at 1280x720 CSS px == 13.333x7.5in for PPTX.
 SLIDE_W_PX, SLIDE_H_PX = 1280, 720
+# Render at this device-pixel-ratio so the screenshots are high-res (sharp in the
+# PDF/PPTX). The deck is still AUTHORED in 1280x720 CSS px — only the raster doubles
+# (2x -> 2560x1440). PDF DPI scales with it so the physical page size stays 13.33x7.5in.
+_RENDER_SCALE = 2
 
 # AI photos per deck. Bounds both the early (streamed) prewarm and the final resolve,
 # and the concurrency cap keeps us under Supermachine's 10 req/min rate limit.
@@ -200,23 +204,11 @@ GOOGLE_ADS_STRUCTURE = (
 )
 
 
-# Structure for a GA4 (Google Analytics) on-site behaviour report.
-GA4_STRUCTURE = (
-    "1. Cover Slide — site/property name, 'Website Analytics Performance Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/sessions/users on the cover — keep it clean.\n"
-    "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (sessions/users/conversions over time) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
-    "3. Audience & Engagement — sessions, total users, new users, engagement rate, bounce rate, average session duration with period-over-period change; highlight key wins visually.\n"
-    "4. Traffic by Channel — sessions/users/conversions broken down by channel (organic, direct, paid, referral, social, etc.); present clearly with a table or bar/pie chart.\n"
-    "5. Conversions — conversions and conversion trend; where conversions come from (best channels); positive framing.\n"
-    "6. Trends — how sessions/users/conversions moved over the period; positive momentum framing with a trend chart.\n"
-    "7. Sessions by Country — a Plotly CHOROPLETH world map (\"type\":\"choropleth\", \"locationmode\":\"country names\", locations = the country names, z = sessions) shaded with the accent colourscale, paired with a top-countries bar/table. Keep the geo clean (transparent bg, no coastline/frame chartjunk).\n"
-    "8. Strategic Insights & Recommendations — actionable recommendations ONLY based on the analytics (double down on best channels, improve engagement on weak pages, grow new-user acquisition, lift conversion rate).\n"
-    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
-)
-
-
-# Structure for an organic-search (Google Search Console) monthly report.
+# Structure for the combined monthly report (Google Search Console + Google Analytics).
+# When a site has no matching GA4 property the brief carries no analytics data, so the
+# GA4-only slides are explicitly OMITTABLE and the deck gracefully degrades to SEO-only.
 GSC_STRUCTURE = (
-    "1. Cover Slide — site/domain, 'Organic Search Performance Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/clicks/impressions on the cover — keep it clean.\n"
+    "1. Cover Slide — site/domain, 'Monthly Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/clicks/impressions on the cover — keep it clean.\n"
     "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (clicks/impressions/CTR/position) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
     "3. Search Performance — clicks, impressions, CTR, average position with period-over-period change; highlight key wins visually.\n"
     "4. Performance Over Time — use MONTHLY PERFORMANCE: a Plotly COMBO chart with clicks & impressions as bars (accent / accent-2) and average POSITION as a line on a SECONDARY y-axis that is REVERSED (lower is better, so a rising line = improving rank). This chart MUST be self-explanatory: include a VISIBLE LEGEND that names each series (e.g. \"Clicks\", \"Impressions\", \"Avg position\") with \"showlegend\":true positioned at the top (and enough top margin that it is NOT clipped), give the primary y-axis the title \"clicks / impressions\" and the secondary y-axis the title \"avg position (lower is better)\", so a reader instantly knows the bars are traffic and the line is ranking. Optionally a second slide with the daily impressions and URL-clicks as filled AREA charts.\n"
@@ -250,9 +242,11 @@ GSC_STRUCTURE = (
     "(Page · Clicks · Impressions · CTR · Avg position); shorten long URLs to their path. Focus on strengths.\n"
     "13. Channels — Devices & Search Type — a .layout-split: on one side a device breakdown (from BY DEVICE — donut or bar of clicks/impressions by desktop/mobile/tablet); on the other a search-surface breakdown (from BY SEARCH TYPE — bar of web/image/video/news). If BY SEARCH TYPE is (none) or web-only, show devices alone full-width. OMIT the slide only if BY DEVICE is also (none).\n"
     "14. Search Appearance — from SEARCH APPEARANCE: a bar or table of rich-result types (FAQ, product snippets, etc.) by clicks/impressions/CTR. OMIT this slide entirely if SEARCH APPEARANCE is (none).\n"
-    "15. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
-    "16. Strategic Insights & Recommendations — actionable SEO recommendations ONLY (content, internal linking, CTR/title improvements, target near-page-1 queries, defend declining queries/pages).\n"
-    "17. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "15. Website Audience & Engagement (OMIT this entire slide if there is no WEBSITE ANALYTICS / GA4 section in the data) — from AUDIENCE & ENGAGEMENT: a CHART-LED analytics slide using Google Analytics on-site behaviour. Show sessions, total users, new users, engagement rate, bounce rate, avg session duration and conversions with their period-over-period change as a slim KPI strip, and make the SESSIONS OVER TIME daily series the hero chart (an area/line of sessions & users, with conversions if present). This is the GA4 counterpart to the search-performance slide — clearly label it as website analytics so it's not confused with Search Console clicks.\n"
+    "16. Traffic by Channel (OMIT this entire slide if there is no WEBSITE ANALYTICS / GA4 section) — from TRAFFIC BY CHANNEL: how sessions/users/conversions split across channels (organic, direct, paid, referral, social, etc.). Use a horizontal bar or donut of sessions by channel paired with a small table; highlight the strongest acquisition channels and frame conversions positively.\n"
+    "17. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
+    "18. Strategic Insights & Recommendations — actionable recommendations ONLY, spanning BOTH search and (when present) website analytics: SEO content/internal-linking/CTR/title improvements, target near-page-1 queries, defend declining queries/pages, plus double-down on best-converting channels and lift engagement/conversion where the analytics support it.\n"
+    "19. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 
@@ -1085,7 +1079,8 @@ async def _render(html: str) -> Dict:
         uses_plotly = "Plotly.newPlot" in html or "plot.ly" in html
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--no-sandbox"])
-            page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX})
+            page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX},
+                                          device_scale_factor=_RENDER_SCALE)
             await page.goto(Path(tmp.name).as_uri(), wait_until="networkidle")
             # Pin SCREEN media for the whole pipeline. The deck is designed for screen
             # (dark/saturated colour fields, full-bleed photos, 720px flex columns); print
@@ -1142,7 +1137,9 @@ def _slides_to_pdf(slide_pngs: List[bytes]) -> bytes:
         raise ValueError("No slides were rendered — cannot build a PDF (the deck has no .slide elements).")
     pages = [Image.open(BytesIO(p)).convert("RGB") for p in slide_pngs]
     buf = BytesIO()
-    pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:], resolution=96.0)
+    # DPI scales with the render scale so 2560x1440 screenshots still map to a 13.33x7.5in page.
+    pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:],
+                  resolution=96.0 * _RENDER_SCALE)
     return buf.getvalue()
 
 
@@ -1174,7 +1171,7 @@ async def render_deck(html: str, fmt: str = "pdf") -> bytes:
     raise ValueError(f"Unsupported format: {fmt!r} (use 'pdf' or 'pptx')")
 
 
-async def render_slide_images(html: str, *, quality: int = 72, on_progress: ProgressCb = None) -> List[bytes]:
+async def render_slide_images(html: str, *, quality: int = 85, on_progress: ProgressCb = None) -> List[bytes]:
     """Render each slide to a JPEG for in-app preview — same load/Plotly-wait path as
     _render, so the preview matches the downloaded file exactly (charts included)."""
     import os
@@ -1191,7 +1188,8 @@ async def render_slide_images(html: str, *, quality: int = 72, on_progress: Prog
         uses_plotly = "Plotly.newPlot" in html or "plot.ly" in html
         async with async_playwright() as p:
             browser = await p.chromium.launch(args=["--no-sandbox"])
-            page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX})
+            page = await browser.new_page(viewport={"width": SLIDE_W_PX, "height": SLIDE_H_PX},
+                                          device_scale_factor=_RENDER_SCALE)
             await page.goto(Path(tmp.name).as_uri(), wait_until="networkidle")
             await page.emulate_media(media="screen")
             if uses_plotly:
