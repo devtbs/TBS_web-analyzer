@@ -114,7 +114,7 @@ DATA (use ONLY this — pulled automatically from the connected data source for 
 # the user-editable prompt and can't be removed by mistake.
 HTML_CONTRACT = """=== HTML OUTPUT CONTRACT (required — this OVERRIDES any conflicting instruction above) ===
 Output ONE complete, self-contained HTML document and NOTHING ELSE: no markdown, no commentary, and do NOT print slide specifications, "SLIDE NUMBER & TITLE", "VISUAL LAYOUT COMPOSITION", or standalone code blocks as text — translate ALL of that directly into the final rendered HTML.
-- NEVER show raw chart JSON or any {"data":...,"layout":...} config as visible text. A chart's JSON belongs ONLY inside its hidden <script type="application/json" class="plotly-spec"> — if a reader can see JSON on a slide, that is a bug.
+- NEVER show raw chart JSON or any {"data":...,"layout":...} config as visible text. A chart's JSON belongs ONLY inside its hidden <script type="application/json" class="plotly-spec"> — if a reader can see JSON on a slide, that is a bug. Each chart spec must appear EXACTLY ONCE, inside that one hidden script; do NOT also place a copy in a visible <pre>/<code>/<div> or as a text node, and do NOT HTML-escape a copy onto the slide.
 - KPI DISCIPLINE — do NOT repeat the same headline metric row on every slide. Show the clicks / impressions / CTR / avg-position (or sessions/cost) KPI strip on the EXECUTIVE SUMMARY slide ONLY; every other slide focuses on its own chart/insight with at most one or two metrics relevant to THAT slide. The cover and closing carry NO KPI chips.
 - EVERY slide must fill the entire 1280x720 page edge to edge (a real full-bleed page): no letterboxing, no large empty margins or blank bands — size the hero chart/visual to consume the slide's main area.
 - Start with <!DOCTYPE html>.
@@ -453,12 +453,35 @@ def _match_brace(s: str, start: int) -> int:
     return -1
 
 
+def _strip_blobs(s: str, token: str) -> str:
+    """Delete every balanced {...} object that begins at `token` and carries BOTH a "data"
+    and a "layout" key (a leaked Plotly chart spec). Any other inline JSON is preserved."""
+    out, i, n = [], 0, len(s)
+    while i < n:
+        j = s.find(token, i)
+        if j == -1:
+            out.append(s[i:])
+            break
+        end = _match_brace(s, j)
+        if end == -1:
+            out.append(s[i:])
+            break
+        blob = s[j:end + 1]
+        if '"data"' in blob and '"layout"' in blob:   # a leaked chart spec → drop it
+            out.append(s[i:j])
+        else:                                          # other inline JSON → keep it
+            out.append(s[i:end + 1])
+        i = end + 1
+    return "".join(out)
+
+
 def _strip_leaked_specs(html: str) -> str:
-    """Remove any chart-spec JSON the model printed as VISIBLE text (a bare object with
-    "data" and "layout"). Legit specs live inside <script class="plotly-spec"> and must be
-    preserved, so script/style bodies are masked out before scanning. Safety net: even if a
-    model ignores the contract, no raw chart JSON ever reaches a slide."""
-    if '{"data"' not in html and '{ "data"' not in html:
+    """Remove any chart-spec JSON the model printed as VISIBLE text (a bare object carrying
+    both "data" and "layout", in any key order). Legit specs live inside <script class=
+    "plotly-spec"> and must be preserved, so script/style bodies are masked out before
+    scanning. Cheap first net; the render-time DOM cleanup is the authoritative guarantee
+    (it also catches HTML-escaped/oddly-wrapped leaks this regex pass can't see)."""
+    if '"data"' not in html or '"layout"' not in html:
         return html
     blocks: list = []
 
@@ -467,25 +490,10 @@ def _strip_leaked_specs(html: str) -> str:
         return f"\x00B{len(blocks) - 1}\x00"
 
     masked = _SCRIPT_STYLE_RE.sub(_hide, html)
-
-    out, i, n = [], 0, len(masked)
-    while i < n:
-        j = masked.find('{"data"', i)
-        if j == -1:
-            out.append(masked[i:])
-            break
-        end = _match_brace(masked, j)
-        if end == -1:
-            out.append(masked[i:])
-            break
-        blob = masked[j:end + 1]
-        if '"layout"' in blob:          # a leaked chart spec → drop it
-            out.append(masked[i:j])
-        else:                            # some other inline JSON → keep it
-            out.append(masked[i:end + 1])
-        i = end + 1
-    cleaned = "".join(out)
-    return re.sub(r"\x00B(\d+)\x00", lambda m: blocks[int(m.group(1))], cleaned)
+    # Catch both data-first and layout-first objects (with or without a space after '{').
+    for token in ('{"data"', '{ "data"', '{"layout"', '{ "layout"'):
+        masked = _strip_blobs(masked, token)
+    return re.sub(r"\x00B(\d+)\x00", lambda m: blocks[int(m.group(1))], masked)
 
 
 _DECK_SYSTEM_PROMPT = "You are an award-winning presentation designer who outputs only clean, self-contained HTML."
@@ -888,6 +896,36 @@ def _enforce_fill(html: str) -> str:
     return html + _FILL_CSS
 
 
+# Render-time DOM cleanup: in the parsed page (where escaping is resolved and "visible" is
+# unambiguous) remove any TEXT node the model printed that is a raw Plotly chart spec — a JSON
+# object carrying "data" + ("layout" | paper_bgcolor). This is the authoritative guard against
+# leaked specs: it catches HTML-escaped, key-reordered and oddly-wrapped copies the pre-render
+# regex (_strip_leaked_specs) can't. It SKIPS <script>/<style> so the real plotly-spec scripts
+# Plotly reads survive, and never removes an element with an id (e.g. a chart container).
+_LEAK_CLEANUP_JS = (
+    "<script>(function(){try{"
+    "function isSpec(t){t=(t||'').trim();"
+    "return t.length>40&&t.charAt(0)==='{'&&t.indexOf('\"data\"')!==-1&&"
+    "(t.indexOf('\"layout\"')!==-1||t.indexOf('paper_bgcolor')!==-1);}"
+    "var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null),n,kill=[];"
+    "while(n=w.nextNode()){var p=n.parentNode;if(!p)continue;"
+    "var tag=p.nodeName;if(tag==='SCRIPT'||tag==='STYLE')continue;"
+    "if(isSpec(n.nodeValue))kill.push(n);}"
+    "kill.forEach(function(n){var p=n.parentNode;n.nodeValue='';"
+    "if(p&&p!==document.body&&!p.id&&!p.querySelector('*')&&!(p.textContent||'').trim()){"
+    "try{p.parentNode.removeChild(p);}catch(e){}}});"
+    "}catch(e){}})();</script>"
+)
+
+
+def _inject_leak_cleanup(html: str) -> str:
+    """Inject the DOM leak-cleanup script before </body> so it runs on every deck (independent
+    of whether charts are present)."""
+    if "</body>" in html:
+        return html.replace("</body>", _LEAK_CLEANUP_JS + "</body>", 1)
+    return html + _LEAK_CLEANUP_JS
+
+
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
@@ -896,6 +934,8 @@ def _prepare_html_for_render(html: str) -> str:
     # Deterministic full-height backstop — applies to every deck (incl. chart-less) so a
     # model that under-fills a slide still produces a balanced, full-canvas page.
     html = _enforce_fill(html)
+    # Authoritative leaked-spec guard — runs on every deck, including the chart-less path.
+    html = _inject_leak_cleanup(html)
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
     html = _polish_plotly_specs(html)
