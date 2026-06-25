@@ -126,8 +126,36 @@ def validate_deck_html(html: str, data_brief: str) -> ValidationResult:
     # 4. Design quality — conservative heuristics so good decks aren't flagged.
     _check_design(html, res)
 
+    # 5. Required keyword-opportunity bubble slide present when its data exists.
+    _check_bubble(html, data_brief, res)
+
     res.ok = not (res.structural or res.plotly or res.ungrounded_numbers or res.design)
     return res
+
+
+# A scatter whose axis titles pair position + impressions (mirrors _is_keyword_bubble in
+# ai_deck_service.py without importing it — keeps validation dependency-free).
+_BUBBLE_AXES_RE = re.compile(r'"(?:title|text)"\s*:\s*"[^"]*position[^"]*"', re.IGNORECASE)
+
+
+def _check_bubble(html: str, data_brief: str, res: "ValidationResult") -> None:
+    """The keyword position-vs-impressions bubble slide is REQUIRED whenever the brief carries
+    that data, but the model sometimes drops it. Detect the data section (real rows, not (none))
+    and flag a repair when no bubble is present in the HTML, so the existing repair loop adds it."""
+    # Is there real bubble data in the brief?
+    m = re.search(r'KEYWORD POSITION vs IMPRESSIONS.*?\n(.*?)(?:\n\n|\Z)', data_brief, re.DOTALL | re.IGNORECASE)
+    section = (m.group(1) if m else "").strip()
+    if not section or section.lower().startswith("(none)"):
+        return  # no bubble data → the slide is legitimately absent
+    # Is a bubble present? meta flag is the strong signal; axis-title pairing is the fallback.
+    has_meta = '"keyword-bubble"' in html
+    has_axes = bool(_BUBBLE_AXES_RE.search(html)) and "impress" in html.lower()
+    if not (has_meta or has_axes):
+        res.design.append(
+            'The REQUIRED Keyword Opportunity bubble slide is missing. Add a full-page slide whose '
+            'hero is ONE Plotly scatter of every query (x = avg position with the x-axis REVERSED, '
+            'y = impressions), carrying "meta":{"chart":"keyword-bubble"} and a "customdata" array of '
+            'the query strings. Do not omit this slide.')
 
 
 def _check_design(html: str, res: "ValidationResult") -> None:

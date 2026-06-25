@@ -93,26 +93,16 @@ slide blueprints, "Slide X:" headings, "VISUAL LAYOUT COMPOSITION", or chart-con
 content — translate all of that directly into the HTML/CSS and the hidden chart script. The reader must
 see a finished slide, never the instructions or data behind it.
 
-Your slide sequence must seamlessly guide the viewer through these core thematic phases:
+SLIDE SEQUENCE — produce ONE slide for EACH numbered item in the structure below, IN ORDER. This is
+the authoritative outline for this specific report; follow it faithfully:
 
-- PHASE 1: PRESTIGE WELCOME — A minimalist, striking cover frame tailored to the brand's industry context.
+{structure}
 
-- PHASE 2: THE EXECUTIVE DASHBOARD HUB (PRE-PHASE 2) — A single, high-impact overview screen designed to act as a unified command center.
-  * Visual Layout: A premium dashboard grid interface layout.
-  * Plotly Requirement: This slide MUST include a comprehensive Plotly.js multi-chart grid configuration (e.g., a combined subplots breakdown or side-by-side comparison charts displaying performance distribution, macro summaries, and growth curves simultaneously).
-  * Text: Brief structural anchor notes highlighting how to read the visual data matrix below it.
-
-- PHASE 3: EXECUTIVE SUMMARY & AGGREGATE CORE METRICS — This slide is CHART-LED, not card-led. Make one or two large Plotly.js charts the visual focus (filling the majority of the slide), and place the high-level snapshot numbers ONLY as a slim, compact KPI strip along the top or bottom (small values in a single row, NOT large cards with empty space below). Do NOT fill the slide with big number cards.
-
-- PHASE 4: DEEP-DIVE TRENDS & DISTRIBUTIONS — Dynamic slides visualizing data groups, keyword shifts, or metric clusters using Plotly.js graphs.
-
-- PHASE 5: THE SUCCESS MATRIX (WINS) — Highlighting the top performing categories, highest climbers, and stable anchors.
-
-- PHASE 6: RECOVERY & OPTIMIZATION TARGETS — High-volume segments that shifted downward, framed completely as strategic optimization paths.
-
-- PHASE 7: STEP-BY-STEP STRATEGIC ROADMAP — A horizontal, numbered action plan mapping data vulnerabilities directly to execution solutions.
-
-- PHASE 8: CLOSING CONTEXT — A professional thank-you page that anchors the core momentum takeaway alongside a minimal footer displaying primary high-level snapshot metrics.
+SLIDE-COUNT DISCIPLINE (critical): generate a SEPARATE slide for every applicable item above — do NOT
+merge several items onto one slide, do NOT shorten the deck to a generic 8-10 slide summary, and NEVER
+skip an item marked REQUIRED (especially the keyword-opportunity bubble slide). The ONLY items you may
+omit are those explicitly marked "OMIT … if …" whose data is absent/(none). Expect a rich deck of
+roughly 12-19 slides depending on which optional data is present.
 
 =======================================================
 INPUT DATA TO PROCESS:
@@ -411,7 +401,10 @@ def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
         .replace("{structure}", structure or DEFAULT_STRUCTURE)
         .replace("{data}", data_brief)
     )
-    # If a custom prompt forgot the data placeholder, append the data anyway.
+    # If a custom prompt forgot a placeholder, append it anyway so the model still gets the
+    # authoritative slide outline and the data (otherwise they're silently dropped).
+    if "{structure}" not in template:
+        filled = filled + "\n\nSLIDE SEQUENCE — produce one slide per item, in order:\n" + (structure or DEFAULT_STRUCTURE)
     if "{data}" not in template:
         filled = filled + "\n\nDATA (use ONLY this):\n" + data_brief
     parts = [filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
@@ -638,7 +631,7 @@ _PLOTLY_SPEC_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 # How big the largest bubble should render (px diameter) and how many to label.
-_BUBBLE_MAX_PX = 95
+_BUBBLE_MAX_PX = 55
 _BUBBLE_LABELS = 8
 
 
@@ -704,7 +697,7 @@ def _enforce_keyword_bubble(html: str) -> str:
             marker["size"] = ys
             marker["sizemode"] = "area"
             marker["sizeref"] = (2.0 * maxy) / (_BUBBLE_MAX_PX ** 2)
-            marker["sizemin"] = 6
+            marker["sizemin"] = 4
             marker.setdefault("opacity", 0.7)
             trace["marker"] = marker
 
@@ -868,11 +861,41 @@ def _polish_plotly_specs(html: str) -> str:
     return _PLOTLY_SPEC_RE.sub(_polish, html)
 
 
+# Deterministic full-height CSS, injected last with !important so it wins over the model's
+# inline styles. Forces every slide to a full-height flex column and vertically centers its
+# content, so an under-filled slide rebalances its whitespace (no one-sided blank band)
+# instead of clustering at the top. Charts that sit in a growing flex region are stretched to
+# fill — but fixed-aspect charts (pie/choropleth) keep their own height so they don't distort.
+_FILL_CSS = """<style>/* deterministic-fill */
+.slide{display:flex !important;flex-direction:column !important;height:720px !important;
+  justify-content:center !important;overflow:hidden !important;position:relative !important;}
+/* pin the page index to the bottom-right so centering the content can't displace it */
+.slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;}
+/* let a chart that is the slide's direct hero grow to fill the column */
+.slide > .js-plotly-plot{flex:1 1 auto;min-height:320px;}
+</style>"""
+
+
+def _enforce_fill(html: str) -> str:
+    """Append the full-height fill stylesheet just before </head> (or </body> as a fallback)
+    so it loads after the deck's own <style> and wins on cascade order + !important."""
+    if "slide" not in html:
+        return html
+    if "</head>" in html:
+        return html.replace("</head>", _FILL_CSS + "</head>", 1)
+    if "</body>" in html:
+        return html.replace("</body>", _FILL_CSS + "</body>", 1)
+    return html + _FILL_CSS
+
+
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
     # Inline fonts first so typography is offline-safe even for text-only (chart-less) decks.
     html = _inline_fonts(html)
+    # Deterministic full-height backstop — applies to every deck (incl. chart-less) so a
+    # model that under-fills a slide still produces a balanced, full-canvas page.
+    html = _enforce_fill(html)
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
     html = _polish_plotly_specs(html)
