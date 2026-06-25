@@ -322,12 +322,20 @@ per-slide colours, fonts or spacing — everything references the tokens below.
 
 # A short menu of vetted, cohesive palette + Google-font pairings. The model picks ONE
 # that fits the industry and binds it to the tokens — prevents clashing colour/type.
-THEME_PRESETS = """=== THEME PRESETS (pick exactly ONE that fits the industry, then bind it to the tokens) ===
-A. "Editorial Cream" — bg #FAF7F0, surface #FFFFFF, ink #1A1A1A, muted #6B6B6B, accent #E4572E, accent-2 #2A4D69; display 'Fraunces', body 'Inter'.
-B. "Modern Mono" — bg #0E0E10 (dark) for covers / #F5F5F4 content, ink #111 / #FAFAFA, accent #FACC15, accent-2 #64748B; display 'Space Grotesk', body 'Inter'.
-C. "Clean Corporate" — bg #FFFFFF, surface #F8FAFC, ink #0F172A, muted #64748B, accent #2563EB, accent-2 #0EA5E9; display 'Archivo', body 'Inter'.
-D. "Warm Premium" — bg #FBF6F1, surface #FFFFFF, ink #20140E, muted #7A6A5F, accent #B45309, accent-2 #166534; display 'Playfair Display', body 'Source Sans 3'.
-E. "Bold Vermillion" — bg #FFF8F4, surface #FFFFFF, ink #1C1917, muted #78716C, accent #DC2626, accent-2 #1E293B; display 'Bricolage Grotesque', body 'Inter'.
+THEME_PRESETS = """=== THEME PRESETS (pick exactly ONE that best fits THIS site's industry, then bind it to the tokens) ===
+Choose the preset whose mood matches the brand; two different industries should rarely land on the same one.
+A. "Editorial Cream" — bg #FAF7F0, surface #FFFFFF, ink #1A1A1A, muted #6B6B6B, accent #E4572E, accent-2 #2A4D69; display 'Fraunces', body 'Inter'. (lifestyle, retail, hospitality)
+B. "Modern Mono" — bg #0E0E10 (dark) for covers / #F5F5F4 content, ink #111 / #FAFAFA, accent #FACC15, accent-2 #64748B; display 'Space Grotesk', body 'Inter'. (tech, SaaS, startups)
+C. "Clean Corporate" — bg #FFFFFF, surface #F8FAFC, ink #0F172A, muted #64748B, accent #2563EB, accent-2 #0EA5E9; display 'Archivo', body 'Inter'. (B2B, finance, consulting)
+D. "Warm Premium" — bg #FBF6F1, surface #FFFFFF, ink #20140E, muted #7A6A5F, accent #B45309, accent-2 #166534; display 'Playfair Display', body 'Source Sans 3'. (luxury, craft, food & beverage)
+E. "Bold Vermillion" — bg #FFF8F4, surface #FFFFFF, ink #1C1917, muted #78716C, accent #DC2626, accent-2 #1E293B; display 'Bricolage Grotesque', body 'Inter'. (media, sport, bold consumer brands)
+F. "Forest Botanical" — bg #F6F4EC, surface #FFFFFF, ink #14241B, muted #5E6B60, accent #2F7A4D, accent-2 #B07B2C; display 'Fraunces', body 'Inter'. (health, wellness, sustainability, agriculture)
+G. "Deep Teal" — bg #F2F6F6, surface #FFFFFF, ink #07292B, muted #5A7173, accent #0E8388, accent-2 #E2A33B; display 'Syne', body 'Inter'. (clinics, dental, science, marine)
+H. "Royal Plum" — bg #FAF6FB, surface #FFFFFF, ink #1E1024, muted #6E5C72, accent #7C3AED, accent-2 #DB2777; display 'Instrument Serif', body 'Inter'. (beauty, fashion, creative agencies)
+I. "Ink & Gold" — bg #0F1115 (dark) for covers / #F4F1EA content, ink #0F1115 / #F7F4EC, accent #C9A227, accent-2 #8C7A4B; display 'Libre Caslon Display', body 'Source Sans 3'. (legal, jewellery, premium services)
+J. "Slate Industrial" — bg #F1F2F4, surface #FFFFFF, ink #15191E, muted #5B6470, accent #EA580C, accent-2 #334155; display 'Archivo', body 'Inter'. (manufacturing, automotive, logistics, construction)
+K. "Coastal Sky" — bg #F3F7FB, surface #FFFFFF, ink #0B2540, muted #5C7287, accent #0EA5E9, accent-2 #14B8A6; display 'Space Grotesk', body 'Inter'. (travel, real estate, education)
+L. "Berry Cream" — bg #FBF5F4, surface #FFFFFF, ink #2A1116, muted #7A5E60, accent #BE123C, accent-2 #2563EB; display 'Playfair Display', body 'Inter'. (restaurants, events, florists, boutique retail)
 Load the chosen fonts from fonts.googleapis.com. You MAY tune the accent toward the brand's industry, but keep the palette cohesive and high-contrast."""
 
 
@@ -365,11 +373,42 @@ relevant icon on every KPI and list bullet, and use ai-img photos liberally — 
 hero photo on the cover, and photo backgrounds/side-panels on most content slides."""
 
 
+_PRESET_LETTERS = "ABCDEFGHIJKL"  # the 12 THEME_PRESETS entries
+
+
+def _seeded_preset(seed: str) -> str:
+    """Deterministically map a site (domain) to ONE theme preset letter, so the same
+    client always gets the same typographic identity and different clients spread across
+    the menu — instead of the model defaulting most decks to the first preset. Uses a
+    stable hash (not Python's salted hash) so it's consistent across processes/restarts."""
+    import hashlib
+    h = int(hashlib.sha1(seed.strip().lower().encode()).hexdigest(), 16)
+    return _PRESET_LETTERS[h % len(_PRESET_LETTERS)]
+
+
+def _seed_directive(seed: str) -> str:
+    """A directive that pins the deck to the seed's preset for background + fonts + mood.
+    The accent is overridden downstream (_apply_theme) to the real brand colour, so we only
+    fix the typographic/background identity here — that's what makes clients look distinct."""
+    letter = _seeded_preset(seed)
+    return (
+        "=== ASSIGNED THEME PRESET (use THIS one) ===\n"
+        f"For THIS site, use THEME PRESET {letter} — adopt its BACKGROUND, SURFACE, font "
+        f"pairing (display + body) and overall mood exactly. (The --accent / --accent-2 will be "
+        f"set to the brand's own colour automatically, so don't worry about matching the preset's "
+        f"accent — just take its grounds, fonts and feel.) Do not substitute a different preset."
+    )
+
+
 def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
-                 brand: Optional[str] = None, structure: Optional[str] = None) -> str:
+                 brand: Optional[str] = None, structure: Optional[str] = None,
+                 seed: Optional[str] = None) -> str:
     """Fill the (possibly user-customised) prompt template with brand/structure/data,
     then append the rendering contract + design system + theme presets + exemplar so
-    every deck — default or custom — gets the same template-grade quality bar."""
+    every deck — default or custom — gets the same template-grade quality bar.
+
+    If `seed` (e.g. the site domain) is given, a deterministic preset is pinned so the
+    same client always gets the same typographic identity and clients look distinct."""
     template = prompt or DEFAULT_DECK_PROMPT
     # Use replace (not str.format): prompts contain literal CSS braces.
     filled = (
@@ -381,7 +420,11 @@ def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
     # If a custom prompt forgot the data placeholder, append the data anyway.
     if "{data}" not in template:
         filled = filled + "\n\nDATA (use ONLY this):\n" + data_brief
-    return "\n\n".join([filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS, DESIGN_EXEMPLARS])
+    parts = [filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
+    if seed and seed.strip():
+        parts.append(_seed_directive(seed))
+    parts.append(DESIGN_EXEMPLARS)
+    return "\n\n".join(parts)
 
 
 def _clean_html(text: str) -> str:
@@ -504,7 +547,8 @@ def _make_image_prewarmer(image_cache: Dict[str, "asyncio.Task"]):
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
                              provider: str = "deepseek", on_progress: ProgressCb = None,
-                             image_cache: Optional[Dict[str, "asyncio.Task"]] = None) -> str:
+                             image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
+                             seed: Optional[str] = None) -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
 
     Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
@@ -519,7 +563,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
     # prompt is normally resolved by the route (from the chosen prompt id); fall back
     # to the built-in default if none was passed.
-    full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure)
+    full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure, seed=seed)
     if on_progress:
         await on_progress("Writing slides…")
     # Stream + prewarm images only when a cache is supplied and images are enabled.
@@ -833,6 +877,8 @@ def _polish_plotly_specs(html: str) -> str:
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
+    # Inline fonts first so typography is offline-safe even for text-only (chart-less) decks.
+    html = _inline_fonts(html)
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
     html = _polish_plotly_specs(html)
@@ -862,6 +908,46 @@ def _prepare_html_for_render(html: str) -> str:
     if "</body>" in html:
         return html.replace("</body>", bootstrap + "</body>", 1)
     return html + bootstrap
+
+
+_FONTS_CSS: Optional[str] = None
+_GOOGLE_FONT_LINK_RE = re.compile(
+    r'<link\b[^>]*fonts\.googleapis\.com[^>]*>', re.IGNORECASE)
+_GOOGLE_FONT_IMPORT_RE = re.compile(
+    r'@import\s+url\([^)]*fonts\.googleapis\.com[^)]*\)\s*;?', re.IGNORECASE)
+
+
+def _fonts_css() -> str:
+    """Load the bundled font CSS once and bind its {FONTS_DIR} placeholder to the absolute
+    file URI of assets/fonts/ so the woff2 files resolve from the temp HTML file. Empty if
+    the bundle hasn't been fetched (then the remote Google Font link is left in place)."""
+    global _FONTS_CSS
+    if _FONTS_CSS is None:
+        assets = Path(__file__).resolve().parent.parent / "assets"
+        f = assets / "fonts.css"
+        try:
+            uri = (assets / "fonts").as_uri()  # file:///C:/.../assets/fonts
+            _FONTS_CSS = f.read_text(encoding="utf-8").replace("{FONTS_DIR}", uri)
+        except Exception:
+            _FONTS_CSS = ""
+    return _FONTS_CSS
+
+
+def _inline_fonts(html: str) -> str:
+    """Inject the bundled @font-face CSS and drop the remote Google Font references so the
+    deck renders with correct typography even on a host that can't reach fonts.googleapis.com.
+    No-op if the bundle is missing — the remote <link> stays so online rendering still works."""
+    css = _fonts_css()
+    if not css:
+        return html
+    html = _GOOGLE_FONT_LINK_RE.sub("", html)
+    html = _GOOGLE_FONT_IMPORT_RE.sub("", html)
+    block = "<style>/* bundled-fonts */\n" + css + "\n</style>"
+    if "<head>" in html:
+        return html.replace("<head>", "<head>" + block, 1)
+    if "</head>" in html:
+        return html.replace("</head>", block + "</head>", 1)
+    return block + html
 
 
 _AI_IMG_RE = re.compile(r'<img\b[^>]*\bai-img\b[^>]*>', re.IGNORECASE)
@@ -1025,6 +1111,13 @@ async def _render(html: str) -> Dict:
                 except Exception:
                     pass
                 await page.wait_for_timeout(1500)
+            # Wait for the Google Fonts to actually load before capturing — otherwise a slow
+            # font fetch means we screenshot fallback fonts (Times/Arial) silently, wrecking
+            # the editorial typography the whole design hinges on.
+            try:
+                await page.evaluate("document.fonts.ready")
+            except Exception:
+                pass
             # Build the PDF from the SAME per-slide screenshots the preview uses, rather than
             # page.pdf() (which forces print-media emulation and produced blank/black pages).
             # This guarantees PDF == preview == PPTX.
@@ -1119,6 +1212,11 @@ async def render_slide_images(html: str, *, quality: int = 72, on_progress: Prog
                 except Exception:
                     pass
                 await page.wait_for_timeout(1500)
+            # Same font-load gate as _render so the preview matches the file exactly.
+            try:
+                await page.evaluate("document.fonts.ready")
+            except Exception:
+                pass
             imgs: List[bytes] = []
             for el in await page.query_selector_all(".slide"):
                 imgs.append(await el.screenshot(type="jpeg", quality=quality))
@@ -1142,10 +1240,13 @@ async def generate_deck_from_pdf(
     render: bool = True,
     images: bool = True,
     notes: str = "",
+    seed: Optional[str] = None,
     on_progress: ProgressCb = None,
 ) -> Dict:
     """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
-    chosen prompt + provider. Renders to the file unless render=False (deferred to download)."""
+    chosen prompt + provider. Renders to the file unless render=False (deferred to download).
+
+    `seed` (e.g. the uploaded file's name) pins a deterministic theme preset per client."""
     from services.pdf_extract import extract_pdf_text
     from services.highlights import to_brief_block
 
@@ -1165,6 +1266,7 @@ async def generate_deck_from_pdf(
         provider=provider,
         on_progress=on_progress,
         image_cache=image_cache,
+        seed=seed,
     )
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))

@@ -99,7 +99,7 @@ async def presentation_ai_deck_from_pdf(
     async def run(on_progress):
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider, render=False,
                                               images=images and images_enabled(),
-                                              notes=notes, on_progress=on_progress)
+                                              notes=notes, seed=label, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
                                      label=label, provider=provider)

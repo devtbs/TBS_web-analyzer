@@ -459,7 +459,8 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
     image_cache = {} if images else None
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GSC_STRUCTURE, provider=provider,
-                                    on_progress=on_progress, image_cache=image_cache)
+                                    on_progress=on_progress, image_cache=image_cache,
+                                    seed=context["domain"])
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
@@ -583,7 +584,8 @@ async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
     image_cache = {} if images else None
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=GA4_STRUCTURE, provider=provider,
-                                    on_progress=on_progress, image_cache=image_cache)
+                                    on_progress=on_progress, image_cache=image_cache,
+                                    seed=name)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
@@ -671,7 +673,8 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
     image_cache = {} if images else None
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=GOOGLE_ADS_STRUCTURE, provider=provider,
-                                    on_progress=on_progress, image_cache=image_cache)
+                                    on_progress=on_progress, image_cache=image_cache,
+                                    seed=name)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
