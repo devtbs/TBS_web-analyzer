@@ -115,45 +115,67 @@ class AdsService:
             return await asyncio.to_thread(_run)
 
     async def get_customers(self) -> List[Dict]:
-        """List the Google Ads accounts the authenticated user can access."""
+        """List Google Ads accounts under the configured MCC, or all accessible accounts
+        if no MCC login_customer_id is set."""
         cache_key = (self.user_email, 'ads_customers')
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info("Ads cache HIT: customers")
             return cached
 
-        def _list_resource_names():
-            customer_service = self.client.get_service("CustomerService")
-            return list(customer_service.list_accessible_customers().resource_names)
-
         from services.gsc_service import GOOGLE_CALL_GATE
-        async with GOOGLE_CALL_GATE:
-            resource_names = await asyncio.to_thread(_list_resource_names)
+        from config import settings
+
+        login_cid = (settings.GOOGLE_ADS_LOGIN_CUSTOMER_ID or '').replace('-', '').strip()
 
         customers: List[Dict] = []
-        for resource_name in resource_names:
-            # resource_name looks like "customers/1234567890"
-            cid = resource_name.split('/')[-1]
-            try:
-                rows = await self._asearch(cid, (
-                    "SELECT customer.id, customer.descriptive_name, "
-                    "customer.currency_code, customer.manager "
-                    "FROM customer LIMIT 1"
-                ))
-                if rows:
-                    c = rows[0].customer
-                    # Skip manager (MCC) accounts — they hold no campaign data themselves.
-                    if getattr(c, 'manager', False):
-                        continue
-                    customers.append({
-                        'customer_id': str(c.id),
-                        'display': c.descriptive_name or f"Account {c.id}",
-                        'currency': c.currency_code or '',
-                    })
-            except Exception as e:
-                # An individual account may be inaccessible (e.g. cancelled); skip it.
-                logger.warning(f"Ads: could not read customer {cid}: {e}")
-                continue
+
+        if login_cid:
+            # Query child accounts directly from the MCC — avoids list_accessible_customers()
+            # which returns every account the Google identity can reach (ignores login_customer_id).
+            rows = await self._asearch(login_cid, (
+                "SELECT customer_client.id, customer_client.descriptive_name, "
+                "customer_client.currency_code, customer_client.manager, "
+                "customer_client.level "
+                "FROM customer_client "
+                "WHERE customer_client.manager = FALSE AND customer_client.level = 1"
+            ))
+            for row in rows:
+                c = row.customer_client
+                customers.append({
+                    'customer_id': str(c.id),
+                    'display': c.descriptive_name or f"Account {c.id}",
+                    'currency': c.currency_code or '',
+                })
+        else:
+            # Fallback: no MCC configured — list everything the token can reach.
+            def _list_resource_names():
+                customer_service = self.client.get_service("CustomerService")
+                return list(customer_service.list_accessible_customers().resource_names)
+
+            async with GOOGLE_CALL_GATE:
+                resource_names = await asyncio.to_thread(_list_resource_names)
+
+            for resource_name in resource_names:
+                cid = resource_name.split('/')[-1]
+                try:
+                    rows = await self._asearch(cid, (
+                        "SELECT customer.id, customer.descriptive_name, "
+                        "customer.currency_code, customer.manager "
+                        "FROM customer LIMIT 1"
+                    ))
+                    if rows:
+                        c = rows[0].customer
+                        if getattr(c, 'manager', False):
+                            continue
+                        customers.append({
+                            'customer_id': str(c.id),
+                            'display': c.descriptive_name or f"Account {c.id}",
+                            'currency': c.currency_code or '',
+                        })
+                except Exception as e:
+                    logger.warning(f"Ads: could not read customer {cid}: {e}")
+                    continue
 
         customers.sort(key=lambda x: x['display'].lower())
         _cache_set(cache_key, customers, _TTL_CUSTOMERS)

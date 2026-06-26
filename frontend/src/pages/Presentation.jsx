@@ -46,6 +46,9 @@ const Presentation = () => {
     const [adsLoading, setAdsLoading] = useState(false);
     const [adsLoaded, setAdsLoaded] = useState(false);
     const [adsCustId, setAdsCustId] = useState('');
+    const [adsQuery, setAdsQuery] = useState('');
+    const [adsOpen, setAdsOpen] = useState(false);
+    const adsBoxRef = useRef(null);
 
     // shared period (gsc / ads)
     const [days, setDays] = useState(28);
@@ -90,6 +93,12 @@ const Presentation = () => {
 
     useEffect(() => {
         const onClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', onClick);
+        return () => document.removeEventListener('mousedown', onClick);
+    }, []);
+
+    useEffect(() => {
+        const onClick = (e) => { if (adsBoxRef.current && !adsBoxRef.current.contains(e.target)) setAdsOpen(false); };
         document.addEventListener('mousedown', onClick);
         return () => document.removeEventListener('mousedown', onClick);
     }, []);
@@ -298,15 +307,57 @@ const Presentation = () => {
                 {mode === 'ads' && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Google Ads account</label>
-                        <select value={adsCustId} onChange={(e) => setAdsCustId(e.target.value)} disabled={adsLoading || generating} className={fieldCls + ' mb-6'}>
-                            {adsLoading && <option value="">Loading accounts…</option>}
-                            {!adsLoading && adsCusts.length === 0 && <option value="">No Google Ads accounts found</option>}
-                            {adsCusts.map((c) => (
-                                <option key={c.customer_id} value={c.customer_id}>
-                                    {c.display}{c.currency ? ` (${c.currency})` : ''}
-                                </option>
-                            ))}
-                        </select>
+                        <div className="relative mb-6" ref={adsBoxRef}>
+                            <button
+                                type="button"
+                                disabled={adsLoading || generating}
+                                onClick={() => !adsLoading && !generating && setAdsOpen(o => !o)}
+                                className={fieldCls + ' flex items-center justify-between text-left'}
+                            >
+                                <span className={adsCustId ? 'text-slate-800' : 'text-slate-400'}>
+                                    {adsLoading
+                                        ? 'Loading accounts…'
+                                        : adsCustId
+                                            ? (() => { const c = adsCusts.find(x => x.customer_id === adsCustId); return c ? `${c.display}${c.currency ? ` (${c.currency})` : ''}` : adsCustId; })()
+                                            : adsCusts.length === 0 ? 'No Google Ads accounts found' : 'Select an account…'}
+                                </span>
+                                <svg className={`w-4 h-4 text-slate-400 transition-transform ${adsOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {adsOpen && (
+                                <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
+                                        <MagnifyingGlassIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            placeholder="Search accounts…"
+                                            value={adsQuery}
+                                            onChange={e => setAdsQuery(e.target.value)}
+                                            className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder:text-slate-400"
+                                        />
+                                    </div>
+                                    <ul className="max-h-52 overflow-y-auto">
+                                        {adsCusts
+                                            .filter(c => c.display.toLowerCase().includes(adsQuery.toLowerCase()) || c.customer_id.includes(adsQuery))
+                                            .map(c => (
+                                                <li key={c.customer_id}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => { setAdsCustId(c.customer_id); setAdsOpen(false); setAdsQuery(''); }}
+                                                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between gap-2 ${c.customer_id === adsCustId ? 'bg-indigo-50 text-[#26397A] font-medium' : 'text-slate-700'}`}
+                                                    >
+                                                        <span>{c.display}{c.currency ? ` (${c.currency})` : ''}</span>
+                                                        {c.customer_id === adsCustId && <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        {adsCusts.filter(c => c.display.toLowerCase().includes(adsQuery.toLowerCase()) || c.customer_id.includes(adsQuery)).length === 0 && (
+                                            <li className="px-4 py-3 text-sm text-slate-400">No accounts match "{adsQuery}"</li>
+                                        )}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
 
