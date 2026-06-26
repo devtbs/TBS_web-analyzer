@@ -26,6 +26,8 @@ import { ArrowTrendingUpIcon, ArrowTrendingDownIcon } from '@heroicons/react/24/
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Favicon from '../components/ui/Favicon';
+import LookerStudioTables from '../components/seo/LookerStudioTables';
+import { countryLabel } from '../utils/countries';
 
 /* ── sessionStorage cache (15-min TTL) ────────────────────── */
 const ssGet = (key) => {
@@ -40,6 +42,30 @@ const ssGet = (key) => {
 const ssSet = (key, data) => {
     try { sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch {}
 };
+
+/* ── Looker export helpers ────────────────────────────────── */
+// Default brand regex from the property domain, e.g. "egothai.shop" -> "egothai|ego thai".
+// Includes a spacing variant so multi-word brands match even when typed with a space.
+const defaultBrand = (property) => {
+    if (!property) return '';
+    const host = property.replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/^www\./, '');
+    const sld = host.split('.')[0] || '';
+    if (!sld) return '';
+    // crude camel/word split: "egothai" stays; if it contains digits/caps keep as-is.
+    const spaced = sld.replace(/([a-z])([A-Z])/g, '$1 $2');
+    return spaced !== sld ? `${sld}|${spaced.toLowerCase()}` : sld;
+};
+// Per-property persisted brand regex (a curated brand list should stick across reloads).
+const brandKey = (property) => `gsc_brand_regex_${property}`;
+const loadBrand = (property) => {
+    try { return localStorage.getItem(brandKey(property)) || defaultBrand(property); }
+    catch { return defaultBrand(property); }
+};
+const saveBrand = (property, val) => {
+    try { localStorage.setItem(brandKey(property), val); } catch {}
+};
+const domainOf = (property) =>
+    (property || '').replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '');
 
 
 /* ── Country list for filter dropdown ─────────────────────── */
@@ -111,7 +137,7 @@ const SkeletonTableRow = ({ i }) => (
 );
 
 const SkeletonWidget = ({ height = 'h-48' }) => (
-    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.18)]">
         <Shimmer className="w-32 h-4 mb-4" />
         <Shimmer className={`w-full ${height} rounded-xl`} />
     </div>
@@ -319,6 +345,12 @@ const SEOAnalytics = () => {
     const [selectedPreset, setSelectedPreset] = useState('Last 28 days');
     const [days, setDays] = useState(28);
 
+    // Looker export (GA4 + GSC parity tables). Fetched at page level so the whole widgets
+    // area can block-load as one unit.
+    const [lookerData, setLookerData] = useState(null);
+    const [lookerLoading, setLookerLoading] = useState(false);
+    const [brandRegex, setBrandRegex] = useState('');
+
     const [queryViewMode, setQueryViewMode] = useState('Total');
     const [pagesViewMode, setPagesViewMode] = useState('Total');
     const [devicesTab, setDevicesTab] = useState('All');
@@ -423,7 +455,7 @@ const SEOAnalytics = () => {
 
         const apiFilters = gscFilters.filter(f => ['query', 'page', 'country', 'device'].includes(f.dimension));
         const filterHash = apiFilters.length > 0 ? '_' + btoa(JSON.stringify(apiFilters)) : '';
-        const cacheKey = `seo_analytics_${selectedProperty}_${chartGrouping}_${days}${filterHash}`;
+        const cacheKey = `seo_analytics_v2_${selectedProperty}_${chartGrouping}_${days}${filterHash}`;
 
         // Delete this key so filters always fetch fresh — never serve stale cache on filter change
         try { sessionStorage.removeItem(cacheKey); } catch {}
@@ -481,7 +513,7 @@ const SEOAnalytics = () => {
         const fetchBreakdowns = async () => {
             const apiFilters = gscFilters.filter(f => ['query', 'page', 'country', 'device'].includes(f.dimension));
             const filterHash = apiFilters.length > 0 ? '_' + btoa(JSON.stringify(apiFilters)) : '';
-            const bdKey = `seo_breakdowns_${selectedProperty}_${days}${filterHash}`;
+            const bdKey = `seo_breakdowns_v2_${selectedProperty}_${days}${filterHash}`;
 
             // Delete cache so filter changes always fetch fresh data
             try { sessionStorage.removeItem(bdKey); } catch {}
@@ -520,6 +552,59 @@ const SEOAnalytics = () => {
         };
         fetchBreakdowns();
     }, [selectedProperty, days, gscFilters]);
+
+    // ── Looker export fetch (GA4 + GSC parity tables) ──
+    // Self-contained: resolves the matching GA4 property, then pulls the export. Uses a ref
+    // for the brand regex so re-fetching on property/days change doesn't depend on it (the
+    // "Apply" button calls fetchLooker explicitly when brand changes).
+    const brandRef = useRef('');
+    const fetchLooker = useCallback(async (force = false) => {
+        if (!selectedProperty) { setLookerData(null); return; }
+        const brand = brandRef.current || defaultBrand(selectedProperty);
+        // Client cache (15-min TTL): makes reloads / revisits of the report instant. Keyed by
+        // property+days+brand since brand changes the brand/generic/bucket/bubble tables.
+        const cacheKey = `looker_${selectedProperty}_${days}_${brand}`;
+        if (!force) {
+            const cached = ssGet(cacheKey);
+            if (cached) { setLookerData(cached); setLookerLoading(false); return; }
+        }
+        setLookerLoading(true);
+        try {
+            let ga4Id = null;
+            try {
+                const m = await api.get('/auth/ga4/match', { params: { domain: domainOf(selectedProperty) } });
+                ga4Id = m.data?.property?.property_id || null;
+            } catch { /* GA4 optional */ }
+
+            const params = { days };
+            if (brand) params.brand_regex = brand;
+            if (ga4Id) params.ga4_property_id = ga4Id;
+
+            const res = await api.get(`/auth/gsc/looker-export/${encodeURIComponent(selectedProperty)}`, { params });
+            setLookerData(res.data);
+            ssSet(cacheKey, res.data);
+        } catch (err) {
+            if (err.response?.status !== 403) console.warn('Looker export failed:', err.message);
+            setLookerData(null);
+        } finally {
+            setLookerLoading(false);
+        }
+    }, [selectedProperty, days]);
+
+    useEffect(() => {
+        const b = loadBrand(selectedProperty);  // persisted curated list, or domain default
+        setBrandRegex(b);
+        brandRef.current = b;
+    }, [selectedProperty]);
+
+    useEffect(() => { fetchLooker(); }, [fetchLooker]);
+
+    const applyBrand = (val) => { setBrandRegex(val); };
+    const refreshLooker = () => {
+        brandRef.current = brandRegex;
+        saveBrand(selectedProperty, brandRegex);  // remember the curated regex per property
+        fetchLooker(true);  // force a fresh fetch (brand changed)
+    };
 
     const handleLogoutGSC = async (e) => {
         if (e) e.preventDefault();
@@ -866,6 +951,17 @@ const SEOAnalytics = () => {
         // Add Pages Sheet
         const wsPages = XLSX.utils.json_to_sheet(pageRows);
         XLSX.utils.book_append_sheet(wb, wsPages, 'Pages');
+
+        // 3b. Add every Looker export table (GSC + GA4 + blends) as its own sheet so the
+        //     boss gets the full report in one file. Skips empty tables; sheet names ≤31 chars.
+        const taken = new Set(['Queries', 'Pages']);
+        Object.entries(lookerData?.tables || {}).forEach(([name, rows]) => {
+            if (!Array.isArray(rows) || rows.length === 0) return;
+            let sheetName = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).slice(0, 31);
+            while (taken.has(sheetName)) sheetName = (sheetName.slice(0, 28) + '_2').slice(0, 31);
+            taken.add(sheetName);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), sheetName);
+        });
 
         // 4. Trigger Download
         const domain = getDomain(selectedProperty).replace(/\./g, '_');
@@ -1433,49 +1529,18 @@ const SEOAnalytics = () => {
                             </div>
                         </div>
 
+                        {/* ── Looker report tables — load independently so the fast widgets
+                             below render immediately (non-blocking). ── */}
+                        <LookerStudioTables data={lookerData} loading={lookerLoading} brand={brandRegex} onBrandChange={applyBrand} onRefresh={refreshLooker} />
+
                         {/* ── Dashboard Advanced Widgets (GSC Wizard style) ── */}
                         {computedWidgets && (
                             <div className="flex flex-col gap-4 mb-8">
-                                {/* Row 1: Impressions by Position & Query Counting */}
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {/* Impressions by Position */}
-                                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                                        <h3 className="text-[14px] font-bold text-slate-800 mb-4">Impressions by Position</h3>
-                                        {/* Legend */}
-                                        <div className="flex flex-wrap items-center gap-4 mb-4">
-                                            {computedWidgets.posBuckets.map((b, i) => {
-                                                const colors = ['#0f766e', '#115e59', '#34d399', '#a7f3d0'];
-                                                return (
-                                                    <div key={b.name} className="flex items-center gap-1.5">
-                                                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: colors[i] }} />
-                                                        <span className="text-[11px] font-bold text-slate-700">{b.name}</span>
-                                                        <span className="text-[11px] text-slate-500">{b.count.toLocaleString()}</span>
-                                                        <span className="text-[11px] text-slate-400">({b.percent}%)</span>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        {/* Chart */}
-                                        <div className="h-[200px]">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <BarChart data={computedWidgets.posBuckets} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={val => val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val} />
-                                                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                                    <Bar dataKey="count" radius={[2, 2, 0, 0]}>
-                                                        {computedWidgets.posBuckets.map((entry, index) => {
-                                                            const colors = ['#0f766e', '#115e59', '#34d399', '#a7f3d0'];
-                                                            return <Cell key={`cell-${index}`} fill={colors[index]} />;
-                                                        })}
-                                                    </Bar>
-                                                </BarChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </div>
-
+                                {/* Row 1: Query Counting (Impressions-by-Position removed — superseded
+                                    by the new Position Tracking tile in the Looker section) */}
+                                <div className="grid grid-cols-1 gap-4">
                                     {/* Query Counting */}
-                                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col">
+                                    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.18)] flex flex-col">
                                         <div className="flex justify-between items-center mb-4">
                                             <h3 className="text-[14px] font-bold text-slate-800">Query Counting</h3>
                                             <div className="flex bg-slate-50 border border-slate-200 rounded-lg p-0.5">
@@ -1543,7 +1608,7 @@ const SEOAnalytics = () => {
                                 {/* Row 2: Devices Table & Pages Ranking */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {/* Devices Table */}
-                                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col">
+                                    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.18)] flex flex-col">
                                         <div className="flex justify-between items-center mb-6">
                                             <div className="flex items-center gap-4">
                                                 <h3 className="text-[14px] font-bold text-slate-800">Devices</h3>
@@ -1600,7 +1665,7 @@ const SEOAnalytics = () => {
                                     </div>
 
                                     {/* Pages Ranking */}
-                                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col">
+                                    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.18)] flex flex-col">
                                         <div className="flex justify-between items-center mb-4">
                                             <div className="flex items-center gap-2">
                                                 <h3 className="text-[14px] font-bold text-slate-800">Pages Ranking</h3>
@@ -1669,7 +1734,7 @@ const SEOAnalytics = () => {
                                 {/* Row 4: Countries & New Rankings */}
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {/* Countries Table */}
-                                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col">
+                                    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.18)] flex flex-col">
                                         <div className="flex justify-between items-center mb-6">
                                             <div className="flex items-center gap-4">
                                                 <h3 className="text-[14px] font-bold text-slate-800">Countries</h3>
@@ -1702,7 +1767,7 @@ const SEOAnalytics = () => {
                                                         .filter(row => countriesTab === 'All' ? true : countriesTab === 'Winning' ? row.cd > 0 : row.cd <= 0)
                                                         .map((row, i) => (
                                                         <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors">
-                                                            <td className="py-3.5 text-[12px] font-bold text-slate-700">{row.name}</td>
+                                                            <td className="py-3.5 text-[12px] font-bold text-slate-700">{countryLabel(row.name)}</td>
                                                             <td className="py-3.5 text-[13px] font-bold text-slate-800 text-right">
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     <span>{row.clicks.toLocaleString()}</span>
@@ -1743,7 +1808,7 @@ const SEOAnalytics = () => {
                                     </div>
 
                                     {/* New Rankings Table */}
-                                    <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col">
+                                    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-[0_1px_3px_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.12)] transition-shadow hover:shadow-[0_2px_6px_rgba(15,23,42,0.06),0_12px_32px_-12px_rgba(15,23,42,0.18)] flex flex-col">
                                         <div className="flex justify-between items-center mb-6">
                                             <h3 className="text-[14px] font-bold text-slate-800">New Rankings</h3>
                                             <div className="flex bg-slate-50 border border-slate-200 rounded-lg p-0.5">

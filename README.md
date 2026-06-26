@@ -171,7 +171,6 @@ web/
     │   │   ├── PagesPage.jsx      # Page-level GSC performance data
     │   │   ├── QueriesPage.jsx    # Keyword/query performance data
     │   │   ├── CountriesPage.jsx  # Geographic performance breakdown
-    │   │   ├── GlobalReports.jsx  # Aggregated cross-site reporting
     │   │   ├── NewLostRankingsPage.jsx # New vs. lost keyword rankings
     │   │   └── PageSelector.jsx   # Property/page selection utility
     │   ├── App.jsx                # Route definitions

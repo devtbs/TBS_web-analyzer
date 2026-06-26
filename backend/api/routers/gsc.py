@@ -7,7 +7,7 @@ from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db
 from config import settings
-from api.routers._shared import _gsc_service_for
+from api.routers._shared import _gsc_service_for, _ga4_service_for
 
 router = APIRouter()
 
@@ -571,6 +571,63 @@ async def gsc_topic_clusters(
         service = _gsc_service_for(db, current_user.email)
         data = await service.get_topic_clusters(property_url, days, filters_json=filters_json)
         return {"clusters": data, "total": len(data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        msg = str(e)
+        if "403" in msg or "sufficient permission" in msg:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"No permission for {property_url}.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed: {msg}")
+
+
+# ============= Looker Studio export =============
+
+@router.get("/auth/gsc/looker-export/{property_url:path}")
+async def gsc_looker_export(
+    property_url: str,
+    days: int = 30,
+    brand_regex: str = None,
+    cluster_rules_json: str = None,
+    filters_json: str = None,
+    ga4_property_id: str = None,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Flat, Looker-Studio-ready export for one property.
+
+    Returns every table (GSC: queries, pages, movers, striking_distance, ctr_gaps,
+    position_buckets, gsc_monthly, gsc_kpis, gsc_timeseries, gsc_brand_generic,
+    gsc_position_buckets_summary, gsc_keyword_bubble, + technical-health stubs; and — when
+    `ga4_property_id` is supplied — GA4: ga4_kpis, ga4_sessions_timeseries, ga4_channels,
+    ga4_countries, ga4_devices) as flat list[dict] alongside a column→type schema and an
+    LLM-readable summary. This single JSON feeds a Looker Community Connector, a Sheets
+    import, or a BigQuery load with no schema mapping.
+
+    Query params:
+      • brand_regex        — e.g. "brandname|brand name" to tag Branded vs Generic.
+      • cluster_rules_json — JSON list [{"label","pattern"}, ...] for topic clustering.
+      • ga4_property_id    — GA4 property id (e.g. "123456789") to include the GA4 section.
+    """
+    import json
+    from urllib.parse import unquote
+    from services.looker_export_service import build_export
+
+    property_url = unquote(property_url)
+    cluster_rules = None
+    if cluster_rules_json:
+        try:
+            cluster_rules = json.loads(cluster_rules_json)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="cluster_rules_json must be valid JSON.")
+    try:
+        service = _gsc_service_for(db, current_user.email)
+        ga4_service = _ga4_service_for(db, current_user.email) if ga4_property_id else None
+        return await build_export(
+            service, property_url, days=days, brand_regex=brand_regex,
+            cluster_rules=cluster_rules, filters_json=filters_json,
+            ga4_service=ga4_service, ga4_property_id=ga4_property_id,
+        )
     except HTTPException:
         raise
     except Exception as e:

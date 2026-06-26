@@ -203,13 +203,15 @@ class AdsService:
                 agg['conversions_value'] += float(m.conversions_value)
             return agg
 
+
+
         current = await _totals(start_date, end_date)
         previous = await _totals(prev_start, prev_end)
 
         # ── Daily time series for the chart ─────────────────────────
         series_rows = await self._asearch(customer_id, (
-            "SELECT segments.date, metrics.clicks, metrics.cost_micros, "
-            "metrics.conversions FROM customer "
+            "SELECT segments.date, metrics.impressions, metrics.clicks, "
+            "metrics.cost_micros, metrics.conversions FROM customer "
             f"WHERE segments.date BETWEEN '{_d(start_date)}' AND '{_d(end_date)}' "
             "ORDER BY segments.date"
         ))
@@ -223,6 +225,7 @@ class AdsService:
             chart_data.append({
                 'date': raw,
                 'name': label,
+                'impressions': int(r.metrics.impressions),
                 'clicks': int(r.metrics.clicks),
                 'cost': round(r.metrics.cost_micros / 1e6, 2),
                 'conversions': round(float(r.metrics.conversions), 1),
@@ -231,20 +234,26 @@ class AdsService:
         # ── Top campaigns by cost ───────────────────────────────────
         campaign_rows = await self._asearch(customer_id, (
             "SELECT campaign.name, campaign.status, metrics.impressions, "
-            "metrics.clicks, metrics.cost_micros, metrics.conversions "
+            "metrics.clicks, metrics.ctr, metrics.cost_micros, metrics.conversions, "
+            "metrics.conversions_value "
             "FROM campaign "
             f"WHERE segments.date BETWEEN '{_d(start_date)}' AND '{_d(end_date)}' "
             "ORDER BY metrics.cost_micros DESC LIMIT 25"
         ))
         campaigns = []
         for r in campaign_rows:
+            c_cost = round(r.metrics.cost_micros / 1e6, 2)
+            c_conv_val = round(float(r.metrics.conversions_value), 2)
             campaigns.append({
                 'name': r.campaign.name,
                 'status': r.campaign.status.name if hasattr(r.campaign.status, 'name') else str(r.campaign.status),
                 'impressions': int(r.metrics.impressions),
                 'clicks': int(r.metrics.clicks),
-                'cost': round(r.metrics.cost_micros / 1e6, 2),
+                'ctr': round(float(r.metrics.ctr) * 100, 2),
+                'cost': c_cost,
                 'conversions': round(float(r.metrics.conversions), 1),
+                'conversions_value': c_conv_val,
+                'roas': round(c_conv_val / c_cost, 2) if c_cost else 0,
             })
 
         def derive(d: Dict[str, float]) -> Dict:
@@ -252,6 +261,7 @@ class AdsService:
             clicks = d['clicks']
             cost = d['cost']
             conv = d['conversions']
+            conv_val = d['conversions_value']
             return {
                 'impressions': int(imp),
                 'clicks': int(clicks),
@@ -261,6 +271,8 @@ class AdsService:
                 'conversions': round(conv, 1),
                 'conversion_rate': round((conv / clicks * 100) if clicks else 0, 2),
                 'cost_per_conversion': round((cost / conv) if conv else 0, 2),
+                'conversions_value': round(conv_val, 2),
+                'roas': round(conv_val / cost, 2) if cost else 0,
             }
 
         cur_t = derive(current)
@@ -281,6 +293,231 @@ class AdsService:
             'deltas': deltas,
             'chart_data': chart_data,
             'campaigns': campaigns,
+            'period': {'start': _d(start_date), 'end': _d(end_date)},
+        }
+        _cache_set(cache_key, result, _TTL_REPORT)
+        return result
+
+    async def get_deep_dive(self, customer_id: str, days: int = 28) -> Dict:
+        """Granular performance breakdowns for the Fold-2 deep-dive section."""
+        customer_id = customer_id.replace('-', '').strip()
+        cache_key = (self.user_email, 'ads_deepdive', customer_id, days)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"Ads cache HIT: deep_dive {customer_id}")
+            return cached
+
+        from datetime import datetime, timedelta
+
+        end_date = datetime.now().date() - timedelta(days=ADS_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+
+        def _d(d):
+            return d.strftime('%Y-%m-%d')
+
+        date_clause = f"segments.date BETWEEN '{_d(start_date)}' AND '{_d(end_date)}'"
+
+        def _m(r):
+            cost = round(r.metrics.cost_micros / 1e6, 2)
+            conv_val = round(float(r.metrics.conversions_value), 2)
+            return {
+                'impressions': int(r.metrics.impressions),
+                'clicks': int(r.metrics.clicks),
+                'ctr': round(float(r.metrics.ctr) * 100, 2),
+                'cost': cost,
+                'conversions': round(float(r.metrics.conversions), 1),
+                'conversions_value': conv_val,
+                'roas': round(conv_val / cost, 2) if cost else 0,
+            }
+
+        # Keywords
+        kw_rows = await self._asearch(customer_id, (
+            "SELECT ad_group_criterion.keyword.text, "
+            "ad_group_criterion.keyword.match_type, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM keyword_view "
+            f"WHERE {date_clause} "
+            "ORDER BY metrics.conversions DESC LIMIT 20"
+        ))
+        keywords = []
+        for r in kw_rows:
+            kw = r.ad_group_criterion.keyword
+            entry = _m(r)
+            entry['keyword'] = kw.text
+            match_type = kw.match_type
+            entry['match_type'] = match_type.name if hasattr(match_type, 'name') else str(match_type)
+            keywords.append(entry)
+
+        # Search terms
+        st_rows = await self._asearch(customer_id, (
+            "SELECT search_term_view.search_term, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM search_term_view "
+            f"WHERE {date_clause} "
+            "ORDER BY metrics.clicks DESC LIMIT 20"
+        ))
+        search_terms = [dict({'term': r.search_term_view.search_term}, **_m(r)) for r in st_rows]
+
+        # Network split
+        net_rows = await self._asearch(customer_id, (
+            "SELECT segments.ad_network_type, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM campaign "
+            f"WHERE {date_clause}"
+        ))
+        net_agg: Dict[str, Dict] = {}
+        for r in net_rows:
+            net = r.segments.ad_network_type
+            key = net.name if hasattr(net, 'name') else str(net)
+            m = r.metrics
+            if key not in net_agg:
+                net_agg[key] = {'network': key, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0, 'conversions_value': 0.0}
+            net_agg[key]['impressions'] += int(m.impressions)
+            net_agg[key]['clicks'] += int(m.clicks)
+            net_agg[key]['cost'] += m.cost_micros / 1e6
+            net_agg[key]['conversions'] += float(m.conversions)
+            net_agg[key]['conversions_value'] += float(m.conversions_value)
+        networks = list(net_agg.values())
+
+        # Device split
+        dev_rows = await self._asearch(customer_id, (
+            "SELECT segments.device, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM campaign "
+            f"WHERE {date_clause}"
+        ))
+        dev_agg: Dict[str, Dict] = {}
+        for r in dev_rows:
+            dev = r.segments.device
+            key = dev.name if hasattr(dev, 'name') else str(dev)
+            m = r.metrics
+            if key not in dev_agg:
+                dev_agg[key] = {'device': key, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0, 'conversions_value': 0.0}
+            dev_agg[key]['impressions'] += int(m.impressions)
+            dev_agg[key]['clicks'] += int(m.clicks)
+            dev_agg[key]['cost'] += m.cost_micros / 1e6
+            dev_agg[key]['conversions'] += float(m.conversions)
+            dev_agg[key]['conversions_value'] += float(m.conversions_value)
+        devices = list(dev_agg.values())
+
+        # Age ranges
+        age_rows = await self._asearch(customer_id, (
+            "SELECT ad_group_criterion.age_range.type, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM age_range_view "
+            f"WHERE {date_clause}"
+        ))
+        age_agg: Dict[str, Dict] = {}
+        for r in age_rows:
+            at = r.ad_group_criterion.age_range.type_
+            key = at.name if hasattr(at, 'name') else str(at)
+            m = r.metrics
+            if key not in age_agg:
+                age_agg[key] = {'age_range': key, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0, 'conversions_value': 0.0}
+            age_agg[key]['impressions'] += int(m.impressions)
+            age_agg[key]['clicks'] += int(m.clicks)
+            age_agg[key]['cost'] += m.cost_micros / 1e6
+            age_agg[key]['conversions'] += float(m.conversions)
+            age_agg[key]['conversions_value'] += float(m.conversions_value)
+        age_ranges = list(age_agg.values())
+
+        # Gender
+        gen_rows = await self._asearch(customer_id, (
+            "SELECT ad_group_criterion.gender.type, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM gender_view "
+            f"WHERE {date_clause}"
+        ))
+        gen_agg: Dict[str, Dict] = {}
+        for r in gen_rows:
+            gt = r.ad_group_criterion.gender.type_
+            key = gt.name if hasattr(gt, 'name') else str(gt)
+            m = r.metrics
+            if key not in gen_agg:
+                gen_agg[key] = {'gender': key, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0, 'conversions_value': 0.0}
+            gen_agg[key]['impressions'] += int(m.impressions)
+            gen_agg[key]['clicks'] += int(m.clicks)
+            gen_agg[key]['cost'] += m.cost_micros / 1e6
+            gen_agg[key]['conversions'] += float(m.conversions)
+            gen_agg[key]['conversions_value'] += float(m.conversions_value)
+        genders = list(gen_agg.values())
+
+        # Geographic (country/region level)
+        geo_rows = await self._asearch(customer_id, (
+            "SELECT geographic_view.country_criterion_id, geographic_view.location_type, "
+            "campaign.name, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM geographic_view "
+            f"WHERE {date_clause} "
+            "ORDER BY metrics.cost_micros DESC LIMIT 20"
+        ))
+        geo = []
+        for r in geo_rows:
+            entry = _m(r)
+            entry['country_criterion_id'] = r.geographic_view.country_criterion_id
+            loc_type = r.geographic_view.location_type
+            entry['location_type'] = loc_type.name if hasattr(loc_type, 'name') else str(loc_type)
+            geo.append(entry)
+
+        # Day of week
+        dow_rows = await self._asearch(customer_id, (
+            "SELECT segments.day_of_week, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM campaign "
+            f"WHERE {date_clause}"
+        ))
+        dow_agg: Dict[str, Dict] = {}
+        for r in dow_rows:
+            dow = r.segments.day_of_week
+            key = dow.name if hasattr(dow, 'name') else str(dow)
+            m = r.metrics
+            if key not in dow_agg:
+                dow_agg[key] = {'day': key, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0}
+            dow_agg[key]['impressions'] += int(m.impressions)
+            dow_agg[key]['clicks'] += int(m.clicks)
+            dow_agg[key]['cost'] += round(m.cost_micros / 1e6, 2)
+            dow_agg[key]['conversions'] += float(m.conversions)
+        DOW_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+        by_day_of_week = sorted(dow_agg.values(), key=lambda x: DOW_ORDER.index(x['day']) if x['day'] in DOW_ORDER else 99)
+
+        # Hour of day
+        hour_rows = await self._asearch(customer_id, (
+            "SELECT segments.hour, "
+            "metrics.impressions, metrics.clicks, metrics.ctr, "
+            "metrics.cost_micros, metrics.conversions, metrics.conversions_value "
+            "FROM campaign "
+            f"WHERE {date_clause}"
+        ))
+        hour_agg: Dict[int, Dict] = {}
+        for r in hour_rows:
+            h = int(r.segments.hour)
+            m = r.metrics
+            if h not in hour_agg:
+                hour_agg[h] = {'hour': h, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0}
+            hour_agg[h]['impressions'] += int(m.impressions)
+            hour_agg[h]['clicks'] += int(m.clicks)
+            hour_agg[h]['cost'] += round(m.cost_micros / 1e6, 2)
+            hour_agg[h]['conversions'] += float(m.conversions)
+        by_hour = [hour_agg.get(h, {'hour': h, 'impressions': 0, 'clicks': 0, 'cost': 0.0, 'conversions': 0.0}) for h in range(24)]
+
+        result = {
+            'keywords': keywords,
+            'search_terms': search_terms,
+            'networks': networks,
+            'devices': devices,
+            'age_ranges': age_ranges,
+            'genders': genders,
+            'geo': geo,
+            'by_day_of_week': by_day_of_week,
+            'by_hour': by_hour,
             'period': {'start': _d(start_date), 'end': _d(end_date)},
         }
         _cache_set(cache_key, result, _TTL_REPORT)

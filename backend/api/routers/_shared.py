@@ -30,6 +30,20 @@ def _gsc_service_for(db, email):
     return GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=email)
 
 
+def _ga4_service_for(db, email):
+    """Helper: build an AnalyticsService (GA4) from the user's stored token, or raise 404.
+
+    GA4 shares the same Google OAuth token as GSC (one sign-in grants both the webmasters
+    and analytics scopes), so it reads the same stored token as `_gsc_service_for`.
+    """
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+    token, is_refresh = get_user_gsc_token(db, email)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
+    return AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)
+
+
 def _save_deck_document(db, user_email: str, *, html: str, source: str, label: str,
                         provider: str) -> str:
     """Persist a generated AI deck as a Document so it shows in the Documents history

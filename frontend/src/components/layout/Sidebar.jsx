@@ -10,7 +10,6 @@ import {
     ArrowRightEndOnRectangleIcon,
     RocketLaunchIcon,
     Squares2X2Icon,
-    ChartBarIcon,
     DocumentTextIcon,
     ChevronDownIcon,
     XMarkIcon,
@@ -41,7 +40,7 @@ const PROPERTY_NAV = [
         section: 'ANALYTICS',
         collapsible: false,
         items: [
-            { label: 'GSC Dashboard',       path: '/seo-analytics',                    icon: Squares2X2Icon },
+            { label: 'Dashboard',           path: '/seo-analytics',                    icon: Squares2X2Icon },
             { label: 'Queries',             path: '/seo-analytics/queries',        icon: MagnifyingGlassIcon },
             { label: 'Pages',               path: '/seo-analytics/pages',          icon: DocumentTextIcon },
             { label: 'Countries',           path: '/seo-analytics/countries',         icon: GlobeAltIcon },
@@ -103,7 +102,6 @@ const NAV_GROUPS = [
         items: [
             { label: 'New Analysis', path: '/new-analysis', icon: RocketLaunchIcon },
             { label: 'History',      path: '/history',      icon: ClockIcon },
-            { label: 'Global Reports', path: '/global-reports', icon: ChartBarIcon },
             { label: 'GA4 Analytics', path: '/ga4-analytics', icon: ChartPieIcon },
             { label: 'Google Ads', path: '/google-ads', icon: MegaphoneIcon },
         ],

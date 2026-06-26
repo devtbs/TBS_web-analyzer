@@ -115,6 +115,81 @@ async def get_ga4_overview(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 overview: {error_msg}")
 
 
+@router.get("/auth/ga4/geo/{property_id}")
+async def get_ga4_geo(
+    property_id: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Sessions by country with period-over-period deltas for the world map."""
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
+    try:
+        service = AnalyticsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        rows = await service.get_geo_with_deltas(property_id, days)
+        return {"rows": rows}
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No Analytics access for this property.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch geo data: {error_msg}")
+
+
+@router.get("/auth/ga4/devices/{property_id}")
+async def get_ga4_devices(
+    property_id: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Sessions by device category (desktop / mobile / tablet) with % share and delta."""
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
+    try:
+        service = AnalyticsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        rows = await service.get_devices(property_id, days)
+        return {"rows": rows}
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No Analytics access for this property.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch device data: {error_msg}")
+
+
+@router.get("/auth/ga4/pages/{property_id}")
+async def get_ga4_pages(
+    property_id: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Top pages by views with users, avg engagement time and bounce rate."""
+    from services.analytics_service import AnalyticsService
+    from utils.user_manager import get_user_gsc_token
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
+    try:
+        service = AnalyticsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        rows = await service.get_top_pages(property_id, days)
+        return {"rows": rows}
+    except Exception as e:
+        error_msg = str(e)
+        if "403" in error_msg or "permission" in error_msg.lower():
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No Analytics access for this property.")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch pages data: {error_msg}")
+
+
 @router.post("/auth/ga4/cache/invalidate")
 async def invalidate_ga4_cache(current_user: UserInfo = Depends(get_current_user)):
     """Force a fresh fetch of GA4 data for the current user."""

@@ -31,6 +31,14 @@ _TTL_PAGES        = 30 * 60   # 30 min  – per-page breakdown is expensive
 # this many days so our numbers match what clients see in Search Console.
 GSC_DATA_LAG_DAYS = 3
 
+def _pct_delta(curr, prev):
+    """Percentage change vs the previous period; None when there's no prior value to compare
+    against. Used for the per-metric change badges on the Queries/Pages tables."""
+    if not prev:
+        return None
+    return round(((curr - prev) / abs(prev)) * 100, 1)
+
+
 def _cache_get(key: tuple):
     """Return cached value if still valid, else None."""
     entry = _CACHE.get(key)
@@ -561,17 +569,16 @@ class GSCService:
             result = []
             for url, cur in current.items():
                 prev = previous.get(url, {})
-                prev_clicks = prev.get('clicks', 0)
-                clicks_delta = None
-                if prev_clicks > 0:
-                    clicks_delta = round(((cur['clicks'] - prev_clicks) / prev_clicks) * 100, 1)
                 result.append({
-                    'url':          url,
-                    'clicks':       cur['clicks'],
-                    'impressions':  cur['impressions'],
-                    'ctr':          cur['ctr'],
-                    'position':     cur['position'],
-                    'clicks_delta': clicks_delta,
+                    'url':               url,
+                    'clicks':            cur['clicks'],
+                    'impressions':       cur['impressions'],
+                    'ctr':               cur['ctr'],
+                    'position':          cur['position'],
+                    'clicks_delta':      _pct_delta(cur['clicks'], prev.get('clicks', 0)),
+                    'impressions_delta': _pct_delta(cur['impressions'], prev.get('impressions', 0)),
+                    'ctr_delta':         _pct_delta(cur['ctr'], prev.get('ctr', 0)),
+                    'position_delta':    _pct_delta(cur['position'], prev.get('position', 0)),
                 })
 
             result.sort(key=lambda x: x['clicks'], reverse=True)
@@ -636,17 +643,16 @@ class GSCService:
             result = []
             for query_text, cur in current.items():
                 prev = previous.get(query_text, {})
-                prev_clicks = prev.get('clicks', 0)
-                clicks_delta = None
-                if prev_clicks > 0:
-                    clicks_delta = round(((cur['clicks'] - prev_clicks) / prev_clicks) * 100, 1)
                 result.append({
-                    'query':        query_text,
-                    'clicks':       cur['clicks'],
-                    'impressions':  cur['impressions'],
-                    'ctr':          cur['ctr'],
-                    'position':     cur['position'],
-                    'clicks_delta': clicks_delta,
+                    'query':             query_text,
+                    'clicks':            cur['clicks'],
+                    'impressions':       cur['impressions'],
+                    'ctr':               cur['ctr'],
+                    'position':          cur['position'],
+                    'clicks_delta':      _pct_delta(cur['clicks'], prev.get('clicks', 0)),
+                    'impressions_delta': _pct_delta(cur['impressions'], prev.get('impressions', 0)),
+                    'ctr_delta':         _pct_delta(cur['ctr'], prev.get('ctr', 0)),
+                    'position_delta':    _pct_delta(cur['position'], prev.get('position', 0)),
                 })
 
             result.sort(key=lambda x: x['clicks'], reverse=True)
@@ -870,38 +876,41 @@ class GSCService:
             end_date = datetime.now().date() - timedelta(days=GSC_DATA_LAG_DAYS)
             start_date = end_date - timedelta(days=days)
 
-            # --- Query-level rows (date × query) to count unique queries/day and position buckets ---
-            query_req = {
-                'startDate': start_date.strftime('%Y-%m-%d'),
-                'endDate': end_date.strftime('%Y-%m-%d'),
-                'dimensions': ['date', 'query'],
-                'rowLimit': 25000,
-                'dataState': 'all',
-            }
-            self._apply_filter(query_req, filters_json)
-            query_resp = await self._aexecute(self.service.searchanalytics().query(
-                siteUrl=property_url,
-                body=query_req
-            ))
+            # Paginate past the 25k-row cap. Without this, a long window returns only the
+            # globally top-25k (date×query)/(date×page) rows by clicks; a single high-traffic
+            # day devours the budget and every later day is under-counted — which made the
+            # Query Counting / Pages Ranking charts spike then collapse to ~0. Mirrors the
+            # _fetch_all pattern in get_query_decay.
+            async def _fetch_all(dimensions):
+                rows, start_row = [], 0
+                while True:
+                    req = {
+                        'startDate': start_date.strftime('%Y-%m-%d'),
+                        'endDate': end_date.strftime('%Y-%m-%d'),
+                        'dimensions': dimensions,
+                        'rowLimit': 25000,
+                        'startRow': start_row,
+                        'dataState': 'all',
+                    }
+                    self._apply_filter(req, filters_json)
+                    resp = await self._aexecute(self.service.searchanalytics().query(
+                        siteUrl=property_url, body=req))
+                    batch = resp.get('rows', [])
+                    rows.extend(batch)
+                    if len(batch) < 25000 or start_row >= 225000:
+                        break
+                    start_row += 25000
+                return rows
 
+            # --- Query-level rows (date × query) to count unique queries/day and position buckets ---
+            query_rows = await _fetch_all(['date', 'query'])
             # --- Page-level rows (date × page) to count unique pages/day ---
-            page_req = {
-                'startDate': start_date.strftime('%Y-%m-%d'),
-                'endDate': end_date.strftime('%Y-%m-%d'),
-                'dimensions': ['date', 'page'],
-                'rowLimit': 25000,
-                'dataState': 'all',
-            }
-            self._apply_filter(page_req, filters_json)
-            page_resp = await self._aexecute(self.service.searchanalytics().query(
-                siteUrl=property_url,
-                body=page_req
-            ))
+            page_rows = await _fetch_all(['date', 'page'])
 
             # Aggregate by date
             date_map: Dict[str, Dict] = {}
 
-            for row in query_resp.get('rows', []):
+            for row in query_rows:
                 date_str = row['keys'][0]
                 position = row.get('position', 0)
                 impressions = row.get('impressions', 0)
@@ -920,7 +929,7 @@ class GSCService:
                 else:
                     date_map[date_str]['pos_21_plus'] += impressions
 
-            for row in page_resp.get('rows', []):
+            for row in page_rows:
                 date_str = row['keys'][0]
                 if date_str not in date_map:
                     date_map[date_str] = {

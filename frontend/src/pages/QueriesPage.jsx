@@ -46,11 +46,13 @@ const METRIC_DIMS = ['clicks', 'impressions', 'ctr', 'position'];
 const opLabel = (op) => op === 'greaterThan' ? '>' : op === 'lessThan' ? '<' : '=';
 
 /* ── Delta badge ─────────────────────────────────────────── */
-const Delta = ({ value }) => {
-    if (value == null) return <span className="text-slate-300 text-[11px] ml-1">—</span>;
+// lowerIsBetter (position): a decrease is "good" (green) even though the arrow points down.
+const Delta = ({ value, lowerIsBetter = false }) => {
+    if (value == null) return <span className="text-slate-300 text-[11px] ml-1.5">—</span>;
     const up = value >= 0;
+    const good = lowerIsBetter ? value < 0 : value >= 0;
     return (
-        <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ml-1.5 ${up ? 'text-emerald-500' : 'text-rose-500'}`}>
+        <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ml-1.5 ${good ? 'text-emerald-500' : 'text-rose-500'}`}>
             {up ? <ArrowUpIcon className="w-2.5 h-2.5" /> : <ArrowDownIcon className="w-2.5 h-2.5" />}
             {Math.abs(value)}%
         </span>
@@ -145,7 +147,7 @@ export default function QueriesPage() {
     /* ── Fetch with sessionStorage cache ── */
     useEffect(() => {
         if (!selectedProperty) { setLoading(false); return; }
-        const cacheKey = `queries_${selectedProperty}_${days}`;
+        const cacheKey = `queries_v2_${selectedProperty}_${days}`;
         const cached = ssGet(cacheKey);
         if (cached) { setRawPages(cached); setLoading(false); return; }
         if (rawPages.length === 0) setLoading(true); else setIsUpdating(true);
@@ -405,17 +407,21 @@ export default function QueriesPage() {
                                                 {row.query}
                                             </span>
                                         </td>
-                                        <td className="py-3.5 px-4 text-right">
+                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
                                             <span className="text-[13px] font-bold text-slate-800">{row.clicks.toLocaleString()}</span>
+                                            <Delta value={row.clicks_delta} />
                                         </td>
-                                        <td className="py-3.5 px-4 text-right text-[13px] font-bold text-slate-800">
-                                            {row.impressions.toLocaleString()}
+                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                            <span className="text-[13px] font-bold text-slate-800">{row.impressions.toLocaleString()}</span>
+                                            <Delta value={row.impressions_delta} />
                                         </td>
-                                        <td className="py-3.5 px-4 text-right text-[13px] font-bold text-slate-700">
-                                            {row.ctr.toFixed(2)}%
+                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                            <span className="text-[13px] font-bold text-slate-700">{row.ctr.toFixed(2)}%</span>
+                                            <Delta value={row.ctr_delta} />
                                         </td>
-                                        <td className="py-3.5 px-4 text-right text-[13px] font-bold text-slate-700">
-                                            {row.position.toFixed(1)}
+                                        <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                            <span className="text-[13px] font-bold text-slate-700">{row.position.toFixed(1)}</span>
+                                            <Delta value={row.position_delta} lowerIsBetter />
                                         </td>
                                     </motion.tr>
                                 ))}

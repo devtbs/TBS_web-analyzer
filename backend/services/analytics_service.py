@@ -33,6 +33,7 @@ GA4_DATA_LAG_DAYS = 1
 _CORE_METRICS = [
     'sessions', 'totalUsers', 'newUsers', 'screenPageViews',
     'averageSessionDuration', 'engagementRate', 'bounceRate',
+    'engagedSessions',
 ]
 
 
@@ -322,27 +323,60 @@ class AnalyticsService:
                 return round(((curr - prev) / abs(prev)) * 100, 1)
 
             def fmt(d: Dict[str, float]) -> Dict:
+                sessions = d.get('sessions', 0)
+                conversions = d.get('conversions', 0)
                 return {
-                    'sessions': int(d.get('sessions', 0)),
+                    'sessions': int(sessions),
                     'users': int(d.get('totalUsers', 0)),
                     'new_users': int(d.get('newUsers', 0)),
                     'pageviews': int(d.get('screenPageViews', 0)),
+                    'engaged_sessions': int(d.get('engagedSessions', 0)),
                     'avg_session_duration': round(d.get('averageSessionDuration', 0), 1),
                     'engagement_rate': round(d.get('engagementRate', 0) * 100, 1),
                     'bounce_rate': round(d.get('bounceRate', 0) * 100, 1),
-                    'conversions': int(d.get('conversions', 0)),
+                    'conversions': int(conversions),
+                    # Goal conversion rate = conversions / sessions, as a percentage. Matches
+                    # the "Goal Conversion Rate" scorecard in the Looker template.
+                    'goal_conversion_rate': round(conversions / sessions * 100, 2) if sessions else 0,
                 }
 
             cur_t = fmt(current)
             prv_t = fmt(previous)
             deltas = {k: pct_change(cur_t[k], prv_t[k]) for k in cur_t}
+            # Absolute change too (the template shows both % and absolute under each KPI).
+            abs_deltas = {k: round(cur_t[k] - prv_t[k], 2) for k in cur_t}
+
+            # ── Previous-period daily series (for the "vs previous month" overlay) ──
+            prev_series_body = {
+                'dateRanges': [{'startDate': prev_start.strftime('%Y-%m-%d'),
+                                'endDate': prev_end.strftime('%Y-%m-%d')}],
+                'dimensions': [{'name': 'date'}],
+                'metrics': [{'name': 'sessions'}],
+                'orderBys': [{'dimension': {'dimensionName': 'date'}}],
+            }
+            prev_series_resp = await self._run_report(property_id, prev_series_body)
+            prev_chart_data = []
+            for row in prev_series_resp.get('rows', []):
+                raw = row['keys'][0] if 'keys' in row else row['dimensionValues'][0]['value']
+                vals = [v.get('value', 0) for v in row.get('metricValues', [])]
+                try:
+                    label = datetime.strptime(raw, '%Y%m%d').strftime('%b %d')
+                except Exception:
+                    label = raw
+                prev_chart_data.append({
+                    'date': raw,
+                    'name': label,
+                    'sessions': int(float(vals[0])) if vals else 0,
+                })
 
             result = {
                 'property_id': property_id,
                 'totals': cur_t,
                 'previous_totals': prv_t,
                 'deltas': deltas,
+                'abs_deltas': abs_deltas,
                 'chart_data': chart_data,
+                'prev_chart_data': prev_chart_data,
                 'channels': channels,
                 'period': {
                     'start': start_date.strftime('%Y-%m-%d'),
@@ -390,6 +424,214 @@ class AnalyticsService:
                 'country': name,
                 'sessions': int(float(vals[0])) if len(vals) > 0 else 0,
                 'users': int(float(vals[1])) if len(vals) > 1 else 0,
+            })
+        _cache_set(cache_key, rows, _TTL_REPORT)
+        return rows
+
+    async def get_devices(self, property_id: str, days: int = 28) -> List[Dict]:
+        """Sessions by device category (desktop / mobile / tablet) with a session-share %
+        and period-over-period delta — feeds the "Sessions By Device" donut. Cached 15 min."""
+        cache_key = (self.user_email, 'ga4_devices', property_id, days)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"GA4 cache HIT: devices {property_id}")
+            return cached
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now().date() - timedelta(days=GA4_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+        prev_end = start_date - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=days)
+
+        async def _fetch(start, end) -> Dict[str, int]:
+            body = {
+                'dateRanges': [{'startDate': start.strftime('%Y-%m-%d'),
+                                'endDate': end.strftime('%Y-%m-%d')}],
+                'dimensions': [{'name': 'deviceCategory'}],
+                'metrics': [{'name': 'sessions'}],
+                'orderBys': [{'metric': {'metricName': 'sessions'}, 'desc': True}],
+                'limit': 10,
+            }
+            resp = await self._run_report(property_id, body)
+            out = {}
+            for row in resp.get('rows', []):
+                name = (row['dimensionValues'][0]['value']
+                        if 'dimensionValues' in row else row['keys'][0])
+                vals = [v.get('value', 0) for v in row.get('metricValues', [])]
+                out[name] = int(float(vals[0])) if vals else 0
+            return out
+
+        current = await _fetch(start_date, end_date)
+        previous = await _fetch(prev_start, prev_end)
+        total = sum(current.values()) or 1
+
+        rows = []
+        for device, sessions in current.items():
+            prev_sessions = previous.get(device, 0)
+            pct = None
+            if prev_sessions > 0:
+                pct = round(((sessions - prev_sessions) / prev_sessions) * 100, 1)
+            rows.append({
+                'device': device,
+                'sessions': sessions,
+                'session_share_pct': round(sessions / total * 100, 1),
+                'sessions_delta_pct': pct,
+            })
+        rows.sort(key=lambda r: r['sessions'], reverse=True)
+        _cache_set(cache_key, rows, _TTL_REPORT)
+        return rows
+
+    async def get_geo_with_deltas(self, property_id: str, days: int = 28, limit: int = 20) -> List[Dict]:
+        """Sessions by country with a period-over-period session delta — feeds the
+        "Sessions By Country" map + top-3 list (which shows ▲/▼ % per country)."""
+        cache_key = (self.user_email, 'ga4_geo_delta', property_id, days, limit)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now().date() - timedelta(days=GA4_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+        prev_end = start_date - timedelta(days=1)
+        prev_start = prev_end - timedelta(days=days)
+
+        async def _fetch(start, end) -> Dict[str, Dict]:
+            body = {
+                'dateRanges': [{'startDate': start.strftime('%Y-%m-%d'),
+                                'endDate': end.strftime('%Y-%m-%d')}],
+                'dimensions': [{'name': 'country'}],
+                'metrics': [{'name': 'sessions'}, {'name': 'totalUsers'}],
+                'orderBys': [{'metric': {'metricName': 'sessions'}, 'desc': True}],
+                'limit': limit,
+            }
+            resp = await self._run_report(property_id, body)
+            out = {}
+            for row in resp.get('rows', []):
+                name = (row['dimensionValues'][0]['value']
+                        if 'dimensionValues' in row else row['keys'][0])
+                vals = [v.get('value', 0) for v in row.get('metricValues', [])]
+                out[name] = {
+                    'sessions': int(float(vals[0])) if len(vals) > 0 else 0,
+                    'users': int(float(vals[1])) if len(vals) > 1 else 0,
+                }
+            return out
+
+        current = await _fetch(start_date, end_date)
+        previous = await _fetch(prev_start, prev_end)
+        rows = []
+        for country, cur in current.items():
+            prev_sessions = previous.get(country, {}).get('sessions', 0)
+            pct = None
+            if prev_sessions > 0:
+                pct = round(((cur['sessions'] - prev_sessions) / prev_sessions) * 100, 1)
+            rows.append({
+                'country': country,
+                'sessions': cur['sessions'],
+                'users': cur['users'],
+                'sessions_delta_pct': pct,
+            })
+        rows.sort(key=lambda r: r['sessions'], reverse=True)
+        _cache_set(cache_key, rows, _TTL_REPORT)
+        return rows
+
+    async def get_landing_pages(self, property_id: str, days: int = 28, limit: int = 1000) -> Dict[str, Dict]:
+        """sessions / conversions / engagement_rate keyed by landing-page PATH.
+
+        Returns a dict path -> metrics (not a list) so the export can join it to GSC pages by
+        URL path. GA4's `landingPage` dimension is already a path (e.g. '/blog/post'), which
+        matches the path component of a GSC page URL. Cached 15 min."""
+        cache_key = (self.user_email, 'ga4_landing', property_id, days, limit)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"GA4 cache HIT: landing {property_id}")
+            return cached
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now().date() - timedelta(days=GA4_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+        body = {
+            'dateRanges': [{'startDate': start_date.strftime('%Y-%m-%d'),
+                            'endDate': end_date.strftime('%Y-%m-%d')}],
+            'dimensions': [{'name': 'landingPage'}],
+            'metrics': [{'name': 'sessions'}, {'name': 'conversions'}, {'name': 'engagementRate'}],
+            'orderBys': [{'metric': {'metricName': 'sessions'}, 'desc': True}],
+            'limit': limit,
+        }
+        resp = await self._run_report(property_id, body)
+        out: Dict[str, Dict] = {}
+        for row in resp.get('rows', []):
+            path = (row['dimensionValues'][0]['value']
+                    if 'dimensionValues' in row else row['keys'][0])
+            if not path:
+                continue
+            vals = [v.get('value', 0) for v in row.get('metricValues', [])]
+            try:
+                sessions = int(float(vals[0])) if len(vals) > 0 else 0
+                conversions = int(float(vals[1])) if len(vals) > 1 else 0
+                engagement = round(float(vals[2]) * 100, 1) if len(vals) > 2 else 0
+            except (TypeError, ValueError):
+                sessions, conversions, engagement = 0, 0, 0
+            out[path.rstrip('/') or '/'] = {
+                'sessions': sessions,
+                'conversions': conversions,
+                'engagement_rate': engagement,
+            }
+        _cache_set(cache_key, out, _TTL_REPORT)
+        return out
+
+
+    async def get_top_pages(self, property_id: str, days: int = 28, limit: int = 20) -> List[Dict]:
+        """Top pages by views with users, avg engagement time and bounce rate.
+
+        Uses the `pagePath` dimension so paths are returned as-is (e.g. '/blog/post').
+        `userEngagementDuration` is the total engagement time across all sessions for
+        a page; dividing by sessions gives avg engagement time per session. Cached 15 min.
+        """
+        cache_key = (self.user_email, 'ga4_top_pages', property_id, days, limit)
+        cached = _cache_get(cache_key)
+        if cached is not None:
+            logger.info(f"GA4 cache HIT: top_pages {property_id}")
+            return cached
+
+        from datetime import datetime, timedelta
+        end_date = datetime.now().date() - timedelta(days=GA4_DATA_LAG_DAYS)
+        start_date = end_date - timedelta(days=days)
+        body = {
+            'dateRanges': [{'startDate': start_date.strftime('%Y-%m-%d'),
+                            'endDate': end_date.strftime('%Y-%m-%d')}],
+            'dimensions': [{'name': 'pagePath'}],
+            'metrics': [
+                {'name': 'screenPageViews'},
+                {'name': 'totalUsers'},
+                {'name': 'userEngagementDuration'},
+                {'name': 'sessions'},
+                {'name': 'bounceRate'},
+            ],
+            'orderBys': [{'metric': {'metricName': 'screenPageViews'}, 'desc': True}],
+            'limit': limit,
+        }
+        resp = await self._run_report(property_id, body)
+        rows = []
+        for row in resp.get('rows', []):
+            path = (row['dimensionValues'][0]['value']
+                    if 'dimensionValues' in row else row['keys'][0])
+            vals = [v.get('value', 0) for v in row.get('metricValues', [])]
+            try:
+                views = int(float(vals[0])) if len(vals) > 0 else 0
+                users = int(float(vals[1])) if len(vals) > 1 else 0
+                engagement_total = float(vals[2]) if len(vals) > 2 else 0
+                sessions = int(float(vals[3])) if len(vals) > 3 else 0
+                bounce_rate = round(float(vals[4]) * 100, 1) if len(vals) > 4 else 0
+            except (TypeError, ValueError):
+                views, users, engagement_total, sessions, bounce_rate = 0, 0, 0, 0, 0
+            avg_engagement_secs = round(engagement_total / sessions, 1) if sessions > 0 else 0
+            rows.append({
+                'path': path or '/',
+                'views': views,
+                'users': users,
+                'avg_engagement_secs': avg_engagement_secs,
+                'sessions': sessions,
+                'bounce_rate': bounce_rate,
             })
         _cache_set(cache_key, rows, _TTL_REPORT)
         return rows

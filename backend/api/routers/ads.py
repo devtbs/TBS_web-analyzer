@@ -30,6 +30,11 @@ def _classify_ads_error(msg: str) -> Optional[str]:
     if 'service_disabled' in m or 'has not been used' in m or 'is disabled' in m:
         return ("The Google Ads API is not enabled in this project's Google Cloud "
                 "console. Enable it, wait a few minutes, then retry.")
+    if ('developer_token_not_approved' in m or 'not approved to access' in m
+            or 'test account' in m):
+        return ("This developer token only has Test access, which can't read real "
+                "Google Ads accounts — only empty test accounts return data. Apply "
+                "for Basic access in your MCC's API Center (it's free), then retry.")
     if 'developer token' in m or 'developer_token' in m:
         return ("The Google Ads developer token is invalid or not approved. "
                 "Check GOOGLE_ADS_DEVELOPER_TOKEN (it must come from a Google Ads "
@@ -119,6 +124,39 @@ async def get_ads_overview(
         if detail:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch Google Ads data: {error_msg}")
+
+
+@router.get("/auth/ads/deep-dive/{customer_id}")
+async def get_ads_deep_dive(
+    customer_id: str,
+    days: int = 28,
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Granular performance breakdowns: keywords, search terms, device, network, demographics, geo, scheduling."""
+    from services.ads_service import ads_is_configured, AdsService
+    from utils.user_manager import get_user_gsc_token
+
+    if not ads_is_configured():
+        return {"configured": False}
+
+    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    if not google_token or not is_refresh:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Google account not connected. Please connect your Google account first."
+        )
+    try:
+        service = AdsService.from_stored_token(google_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        return await service.get_deep_dive(customer_id, days)
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = str(e)
+        detail = _classify_ads_error(error_msg)
+        if detail:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch deep-dive data: {error_msg}")
 
 
 @router.post("/auth/ads/cache/invalidate")

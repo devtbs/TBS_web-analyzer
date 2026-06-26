@@ -31,7 +31,6 @@ const CtrOpportunitiesPage = lazy(() => import('./pages/CtrOpportunitiesPage'));
 const QueryDecayPage = lazy(() => import('./pages/QueryDecayPage'));
 const CannibalizationPage = lazy(() => import('./pages/CannibalizationPage'));
 const TopicClustersPage = lazy(() => import('./pages/TopicClustersPage'));
-const GlobalReports = lazy(() => import('./pages/GlobalReports'));
 const Documents = lazy(() => import('./pages/Documents'));
 const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
 const Presentation = lazy(() => import('./pages/Presentation'));
@@ -170,7 +169,6 @@ function AppContent() {
                 <Route element={<ProtectedLayout />}>
                     <Route path="/my-sites" element={<MySites />} />
                     <Route path="/dashboard" element={<Navigate to="/my-sites" replace />} />
-                    <Route path="/global-reports" element={<GlobalReports />} />
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />
                     <Route path="/ga4-analytics" element={<GA4Analytics />} />
                     <Route path="/google-ads" element={<GoogleAdsAnalytics />} />
