@@ -3,7 +3,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import (
-    auth, gsc, analytics, ads, ranking, reports, decks, analysis, content,
+    auth, gsc, analytics, ads, ranking, reports, decks, analysis, content, alerts, audit,
 )
 from config import settings
 from database import init_db
@@ -37,6 +37,22 @@ async def startup_event():
         ThreadPoolExecutor(max_workers=8, thread_name_prefix="google-io")
     )
 
+    # Daily anomaly-detection job. In-process scheduler — run the backend
+    # single-worker, or each gunicorn worker would schedule its own copy.
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        from services.alert_service import evaluate_all_users
+
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(evaluate_all_users, CronTrigger(hour=7, minute=0),
+                          id="daily_alerts", replace_existing=True)
+        scheduler.start()
+        app.state.scheduler = scheduler
+        print("⏰ Alert scheduler started (daily 07:00)")
+    except Exception as e:
+        print(f"⚠️  Alert scheduler not started: {e}")
+
     print("✅ Database initialized successfully")
     print(f"🌍 Allowed Origins: {settings.allowed_origins_list}")
 
@@ -50,7 +66,7 @@ app.add_middleware(
 )
 
 # Include routes — one router per domain (paths unchanged, mounted with no prefix)
-for _router in (auth, gsc, analytics, ads, ranking, reports, decks, analysis, content):
+for _router in (auth, gsc, analytics, ads, ranking, reports, decks, analysis, content, alerts, audit):
     app.include_router(_router.router)
 
 

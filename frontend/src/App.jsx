@@ -8,6 +8,8 @@ import { Bars3Icon } from '@heroicons/react/24/outline';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
+import ErrorBoundary from './components/ErrorBoundary';
+import NotificationBell from './components/NotificationBell';
 
 // Home is the public landing page (first paint when logged out) — keep it eager.
 import Home from './pages/Home';
@@ -34,6 +36,8 @@ const TopicClustersPage = lazy(() => import('./pages/TopicClustersPage'));
 const Documents = lazy(() => import('./pages/Documents'));
 const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
 const Presentation = lazy(() => import('./pages/Presentation'));
+const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const TechnicalAuditPage = lazy(() => import('./pages/TechnicalAuditPage'));
 
 /* Lightweight fallback shown while a lazily-loaded page chunk downloads. */
 const PageSpinner = () => (
@@ -114,12 +118,13 @@ const ProtectedLayout = () => {
                 <div className="md:hidden flex items-center justify-between px-4 h-14 bg-[#1e293b] flex-shrink-0 z-30 sticky top-0">
                     <button
                         onClick={() => setMobileOpen(true)}
+                        aria-label="Open navigation menu"
                         className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 text-slate-300 hover:bg-white/20 transition-colors"
                     >
-                        <Bars3Icon className="w-5 h-5" />
+                        <Bars3Icon className="w-5 h-5" aria-hidden="true" />
                     </button>
-                    <img src="/TBS-Logo.webp" alt="TBS Logo" className="h-8 w-auto object-contain" />
-                    <div className="w-9" /> {/* spacer to center logo */}
+                    <img src="/TBS-Logo.webp" alt="TBS Marketing home" className="h-8 w-auto object-contain" />
+                    <NotificationBell />
                 </div>
                 <main ref={mainRef} className={`flex-1 ${mobileOpen ? 'overflow-y-hidden' : 'overflow-y-auto'}`}>
                     <motion.div
@@ -129,9 +134,11 @@ const ProtectedLayout = () => {
                         transition={{ duration: 0.3, ease: 'easeOut' }}
                         className="min-h-full"
                     >
-                        <Suspense fallback={<PageSpinner />}>
-                            <Outlet />
-                        </Suspense>
+                        <ErrorBoundary resetKey={location.pathname}>
+                            <Suspense fallback={<PageSpinner />}>
+                                <Outlet />
+                            </Suspense>
+                        </ErrorBoundary>
                     </motion.div>
                 </main>
             </div>
@@ -163,7 +170,7 @@ function AppContent() {
         <>
             <Routes>
                 {/* Public pages — top header + footer */}
-                <Route path="/" element={<PublicLayout><Home /></PublicLayout>} />
+                <Route path="/" element={<PublicLayout><ErrorBoundary><Home /></ErrorBoundary></PublicLayout>} />
 
                 {/* All protected pages share the same Layout wrapper */}
                 <Route element={<ProtectedLayout />}>
@@ -188,6 +195,8 @@ function AppContent() {
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/documents/:documentId" element={<DocumentDetail />} />
                     <Route path="/presentation" element={<Presentation />} />
+                    <Route path="/alerts" element={<AlertsPage />} />
+                    <Route path="/technical-audit" element={<TechnicalAuditPage />} />
                 </Route>
             </Routes>
             

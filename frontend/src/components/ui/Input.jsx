@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, useId } from 'react';
 
 const Input = forwardRef(({
     label,
@@ -7,12 +7,21 @@ const Input = forwardRef(({
     leftIcon,
     rightIcon,
     className = '',
+    id,
     ...props
 }, ref) => {
+    const generatedId = useId();
+    const inputId = id || generatedId;
+    const describedById = error
+        ? `${inputId}-error`
+        : helperText
+            ? `${inputId}-helper`
+            : undefined;
+
     return (
         <div className="w-full">
             {label && (
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label htmlFor={inputId} className="block text-sm font-medium text-slate-700 mb-1">
                     {label}
                 </label>
             )}
@@ -26,6 +35,9 @@ const Input = forwardRef(({
 
                 <input
                     ref={ref}
+                    id={inputId}
+                    aria-invalid={error ? true : undefined}
+                    aria-describedby={describedById}
                     className={`
             block w-full rounded-lg border-2 
             ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-slate-200 focus:border-primary-500 focus:ring-primary-500'}
@@ -48,11 +60,11 @@ const Input = forwardRef(({
             </div>
 
             {error && (
-                <p className="mt-1 text-sm text-red-600">{error}</p>
+                <p id={`${inputId}-error`} className="mt-1 text-sm text-red-600">{error}</p>
             )}
 
             {helperText && !error && (
-                <p className="mt-1 text-sm text-slate-500">{helperText}</p>
+                <p id={`${inputId}-helper`} className="mt-1 text-sm text-slate-500">{helperText}</p>
             )}
         </div>
     );

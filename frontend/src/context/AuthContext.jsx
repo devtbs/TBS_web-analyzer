@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import api from '../api/axios';
+import storage from '../utils/storage';
 
 const AuthContext = createContext();
 
@@ -12,24 +13,18 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(() => {
-        const cached = localStorage.getItem('user_data');
-        if (cached) {
-            try { return JSON.parse(cached); } catch { return null; }
-        }
-        return null;
-    });
+    const [user, setUser] = useState(() => storage.getJSON('user_data', null));
     const [loading, setLoading] = useState(() => {
         // If we have a token and cached user, we can start in non-loading state
-        const token = localStorage.getItem('access_token');
-        const cachedUser = localStorage.getItem('user_data');
+        const token = storage.get('access_token');
+        const cachedUser = storage.get('user_data');
         return !(token && cachedUser);
     });
 
     useEffect(() => {
         // Check for existing token and cached user data
-        const token = localStorage.getItem('access_token');
-        
+        const token = storage.get('access_token');
+
         // Background / Safety check
         const safetyTimer = setTimeout(() => {
             if (loading) {
@@ -45,14 +40,14 @@ export const AuthProvider = ({ children }) => {
                     const userData = response.data;
                     setUser(userData);
                     // Cache the user data for next reload
-                    localStorage.setItem('user_data', JSON.stringify(userData));
+                    storage.setJSON('user_data', userData);
                 })
                 .catch((err) => {
                     console.error('Session verification failed:', err);
                     // Only clear if it's a real 401/403 auth error
                     if (err.response?.status === 401 || err.response?.status === 403) {
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('user_data');
+                        storage.remove('access_token');
+                        storage.remove('user_data');
                         setUser(null);
                     }
                 })
@@ -76,8 +71,8 @@ export const AuthProvider = ({ children }) => {
             const response = await api.post('/auth/google/login', body);
 
             const { access_token, user: userData } = response.data;
-            localStorage.setItem('access_token', access_token);
-            localStorage.setItem('user_data', JSON.stringify(userData));
+            storage.set('access_token', access_token);
+            storage.setJSON('user_data', userData);
             setUser(userData);
 
             return userData;
@@ -92,8 +87,8 @@ export const AuthProvider = ({ children }) => {
     const devLogin = async () => {
         const response = await api.post('/auth/dev-login', {});
         const { access_token, user: userData } = response.data;
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('user_data', JSON.stringify(userData));
+        storage.set('access_token', access_token);
+        storage.setJSON('user_data', userData);
         setUser(userData);
         return userData;
     };
@@ -104,11 +99,11 @@ export const AuthProvider = ({ children }) => {
         } catch (error) {
             console.error('Logout error:', error);
         } finally {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('user_data');
-            localStorage.removeItem('gsc_selected_property');
-            localStorage.removeItem('gsc_token');  // ← fix: monitor needs this cleared
-            sessionStorage.clear();
+            storage.remove('access_token');
+            storage.remove('user_data');
+            storage.remove('gsc_selected_property');
+            storage.remove('gsc_token');  // ← fix: monitor needs this cleared
+            try { sessionStorage.clear(); } catch { /* storage unavailable */ }
             setUser(null);
         }
     };

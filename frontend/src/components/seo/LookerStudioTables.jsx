@@ -335,7 +335,7 @@ export default function LookerStudioTables({ data, loading, brand, onBrandChange
                                 cols={['Page', 'Clicks', 'Position', 'Sessions', 'Conv.', 'Conv. Rate']}
                                 rows={landingPages.slice(0, 15).map((p) => {
                                     return [
-                                        <span className="truncate block max-w-[360px]" title={prettyUrl(p.page)}>{prettyPath(p.page)}</span>,
+                                        <span key="page" className="truncate block max-w-[360px]" title={prettyUrl(p.page)}>{prettyPath(p.page)}</span>,
                                         fmt(p.clicks),
                                         p.position,
                                         p.sessions == null ? '—' : fmt(p.sessions),
@@ -356,9 +356,9 @@ export default function LookerStudioTables({ data, loading, brand, onBrandChange
                                 <SimpleTable
                                     cols={['Query', 'Pos', 'Impr.', 'Potential']}
                                     rows={striking.slice(0, 10).map((s) => [
-                                        <span title={s.query} className="truncate block max-w-[220px]">{s.query}</span>,
+                                        <span key="query" title={s.query} className="truncate block max-w-[220px]">{s.query}</span>,
                                         s.position, fmt(s.impressions),
-                                        <span className="text-emerald-600">+{fmt(s.potential_clicks)}</span>,
+                                        <span key="pot" className="text-emerald-600">+{fmt(s.potential_clicks)}</span>,
                                     ])}
                                 />
                             </div>
@@ -370,10 +370,10 @@ export default function LookerStudioTables({ data, loading, brand, onBrandChange
                                 <SimpleTable
                                     cols={['Query', 'Pos', 'CTR', 'Missed']}
                                     rows={ctrGaps.slice(0, 10).map((c) => [
-                                        <span title={c.query} className="truncate block max-w-[220px]">{c.query}</span>,
+                                        <span key="query" title={c.query} className="truncate block max-w-[220px]">{c.query}</span>,
                                         c.position,
-                                        <span><span className="text-rose-500">{c.actual_ctr}%</span> <span className="text-slate-300">/ {c.expected_ctr}%</span></span>,
-                                        <span className="text-amber-600">{fmt(c.missed_clicks)}</span>,
+                                        <span key="ctr"><span className="text-rose-500">{c.actual_ctr}%</span> <span className="text-slate-300">/ {c.expected_ctr}%</span></span>,
+                                        <span key="missed" className="text-amber-600">{fmt(c.missed_clicks)}</span>,
                                     ])}
                                 />
                             </div>
@@ -439,7 +439,7 @@ export default function LookerStudioTables({ data, loading, brand, onBrandChange
                                             cols={['Country', 'Sessions', 'Change']}
                                             rows={ga4Countries.slice(0, 10).map((c) => [
                                                 c.country, fmt(c.sessions),
-                                                <span className={pctColor(c.sessions_delta_pct)}>{pct(c.sessions_delta_pct)}</span>,
+                                                <span key="delta" className={pctColor(c.sessions_delta_pct)}>{pct(c.sessions_delta_pct)}</span>,
                                             ])}
                                         />
                                     </div>

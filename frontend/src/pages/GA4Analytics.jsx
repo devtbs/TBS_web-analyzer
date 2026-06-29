@@ -143,7 +143,7 @@ const NAME_TO_ISO = {
     'United Arab Emirates':'784','UAE':'784','United Kingdom':'826',
     'United States':'840','Uruguay':'858','Uzbekistan':'860','Venezuela':'862',
     'Vietnam':'704','Yemen':'887','Zimbabwe':'716','Serbia':'688',
-    'Netherlands':'528','Czechia':'203','Republic of Korea':'410',
+    'Czechia':'203','Republic of Korea':'410',
     'Democratic Republic of the Congo':'180','Congo':'178',
 };
 

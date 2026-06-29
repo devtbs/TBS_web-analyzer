@@ -78,6 +78,55 @@ class Document(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class Audit(Base):
+    """A technical-SEO crawl/audit run for one property."""
+    __tablename__ = "audits"
+
+    audit_id = Column(String, primary_key=True, index=True)
+    user_email = Column(String, index=True, nullable=False)
+    property_url = Column(String, nullable=False)
+    status = Column(String, default="processing", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+    summary = Column(JSON, nullable=True)   # {pages_crawled, score, counts_by_severity, ...}
+    issues = Column(JSON, nullable=True)    # [{type, severity, message, urls:[...]}]
+    error = Column(Text, nullable=True)
+
+
+class AlertRule(Base):
+    """A user-configurable threshold for anomaly detection on a GSC property.
+
+    property_url NULL means the rule applies to all of the user's properties.
+    metric: clicks | impressions | ctr | position
+    direction: drop | spike | worsen  (worsen used for position = rank going up)
+    """
+    __tablename__ = "alert_rules"
+
+    id = Column(String, primary_key=True, index=True)
+    user_email = Column(String, index=True, nullable=False)
+    property_url = Column(String, nullable=True)
+    metric = Column(String, nullable=False)
+    direction = Column(String, nullable=False)
+    threshold_pct = Column(String, nullable=False)  # stored as string; parsed to float
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlertEvent(Base):
+    """A fired alert — something crossed a rule's threshold."""
+    __tablename__ = "alert_events"
+
+    id = Column(String, primary_key=True, index=True)
+    user_email = Column(String, index=True, nullable=False)
+    property_url = Column(String, index=True, nullable=False)
+    type = Column(String, nullable=False)          # e.g. "clicks_drop"
+    metric = Column(String, nullable=False)
+    severity = Column(String, default="warning", nullable=False)  # info|warning|critical
+    message = Column(String, nullable=False)
+    data = Column(JSON, nullable=True)             # {current, previous, delta_pct}
+    created_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+    read_at = Column(DateTime, nullable=True)
+
+
 # Create tables
 def init_db():
     """Initialize database tables"""

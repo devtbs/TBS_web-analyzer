@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ui/ConfirmDialog';
+import NotificationBell from '../NotificationBell';
  
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,6 +27,7 @@ import {
     ArrowLeftIcon,
     ChartPieIcon,
     MegaphoneIcon,
+    WrenchScrewdriverIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -104,6 +106,7 @@ const NAV_GROUPS = [
             { label: 'History',      path: '/history',      icon: ClockIcon },
             { label: 'GA4 Analytics', path: '/ga4-analytics', icon: ChartPieIcon },
             { label: 'Google Ads', path: '/google-ads', icon: MegaphoneIcon },
+            { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
         ],
     },
     {
@@ -321,6 +324,9 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                     ) : (
                         <div className="flex items-center w-full">
                             <img src="/TBS-Logo.webp" alt="TBS Logo" className="h-[52px] w-auto object-contain flex-shrink-0" />
+                            <div className="ml-auto">
+                                <NotificationBell />
+                            </div>
                         </div>
                     )}
                 </div>

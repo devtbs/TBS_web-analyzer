@@ -7,6 +7,7 @@ import {
 } from '@heroicons/react/24/outline';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { downloadCSV } from '../../utils/exportTable';
 
 /* ── sessionStorage cache (15-min TTL) ───────────────────── */
 const ssGet = (key) => {
@@ -33,33 +34,6 @@ const SortIcon = ({ col, sortKey, sortDir }) => {
     return sortDir === 'desc'
         ? <ArrowDownIcon className="w-3 h-3 text-emerald-500 ml-1 inline" />
         : <ArrowUpIcon className="w-3 h-3 text-emerald-500 ml-1 inline" />;
-};
-
-const downloadCSV = (data, filename) => {
-    if (!data || !data.length) return;
-    const flat = data.map(r => {
-        const o = {};
-        for (const [k, v] of Object.entries(r)) {
-            if (Array.isArray(v) || typeof v === 'object') continue; // skip nested
-            o[k] = v;
-        }
-        return o;
-    });
-    const headers = Object.keys(flat[0]);
-    const csv = [
-        headers.join(','),
-        ...flat.map(row => headers.map(h => {
-            const val = row[h];
-            return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
-        }).join(',')),
-    ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
 };
 
 /**
