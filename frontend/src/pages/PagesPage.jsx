@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Pagination from '../components/ui/Pagination';
 import { motion } from 'framer-motion';
 import {
     ArrowLeftIcon,
@@ -89,25 +90,7 @@ const SortIcon = ({ col, sortKey, sortDir }) => {
 /* ── Operator label ─────────────────────────────────────── */
 const opLabel = (op) => op === 'greaterThan' ? '>' : op === 'lessThan' ? '<' : '=';
 
-const handleDownloadCSV = (data, filename) => {
-    if (!data || !data.length) return;
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-        headers.join(','),
-        ...data.map(row => headers.map(header => {
-            let val = row[header];
-            if (typeof val === 'string') return `"${val.replace(/"/g, '""')}"`;
-            return val;
-        }).join(','))
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
+import { handleDownloadCSV } from '../utils/exportTable';
 
 export default function PagesPage() {
     const navigate = useNavigate();
@@ -132,7 +115,7 @@ export default function PagesPage() {
     const [sortKey, setSortKey]         = useState('clicks');
     const [sortDir, setSortDir]         = useState('desc');
     const [currentPage, setCurrentPage] = useState(1);
-    const PAGE_SIZE = 50;
+    const PAGE_SIZE = 10;
     const [search, setSearch]           = useState('');
 
     // Metric filters
@@ -427,28 +410,15 @@ export default function PagesPage() {
                 </div>
             </div>
 
-            {!loading && filtered.length > 0 && totalPages > 1 && (
-                <div className="sticky bottom-0 border-t border-slate-200 bg-white px-6 py-4 flex items-center justify-between shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)] z-20">
-                    <span className="text-[13px] text-slate-500 font-medium">
-                        Showing {(currentPage - 1) * PAGE_SIZE + 1} to {Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} pages
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                            disabled={currentPage === 1}
-                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            Previous
-                        </button>
-                        <button
-                            onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                            disabled={currentPage === totalPages}
-                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            Next
-                        </button>
-                    </div>
-                </div>
+            {!loading && (
+                <Pagination
+                    page={currentPage}
+                    totalPages={totalPages}
+                    from={(currentPage - 1) * PAGE_SIZE + 1}
+                    to={Math.min(currentPage * PAGE_SIZE, filtered.length)}
+                    total={filtered.length}
+                    onPageChange={setCurrentPage}
+                />
             )}
         </div>
     );

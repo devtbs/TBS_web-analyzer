@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/ui/Pagination';
 import { motion } from 'framer-motion';
 import {
     ArrowLeftIcon,
@@ -107,27 +109,7 @@ const KpiCard = ({ label, count, isNew, icon: Icon }) => (
     </div>
 );
 
-const handleDownloadCSV = (data, filename) => {
-    if (!data || !data.length) return;
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-        headers.join(','),
-        ...data.map(row => headers.map(header => {
-            let val = row[header];
-            if (typeof val === 'string') {
-                return `"${val.replace(/"/g, '""')}"`;
-            }
-            return val;
-        }).join(','))
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
+import { handleDownloadCSV } from '../utils/exportTable';
 
 /* ── Main Page ───────────────────────────────────────────── */
 export default function NewLostRankingsPage() {
@@ -245,6 +227,8 @@ export default function NewLostRankingsPage() {
         if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
         else { setSortField(field); setSortDir('desc'); }
     };
+
+    const rowPag = usePagination(rows, 10);
 
     const counts = data?.counts || { new_queries: 0, lost_queries: 0, new_pages: 0, lost_pages: 0 };
     const period = data?.period || {};
@@ -499,7 +483,7 @@ export default function NewLostRankingsPage() {
                                             No {statusTab.toLowerCase()} {typeTab.toLowerCase()} found for this period.
                                         </td>
                                     </tr>
-                                ) : rows.map((row, i) => (
+                                ) : rowPag.pageItems.map((row, i) => (
                                     <motion.tr
                                         key={row.name}
                                         initial={{ opacity: 0, y: 3 }}
@@ -533,13 +517,16 @@ export default function NewLostRankingsPage() {
                         </table>
                     </div>
 
-                    {/* Footer */}
-                    {!loading && rows.length > 0 && (
-                        <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[12px] text-slate-400 font-medium">
-                                Showing {rows.length} of {totalForTab} {statusTab.toLowerCase()} {typeTab.toLowerCase()}
-                            </span>
-                        </div>
+                    {/* Pagination */}
+                    {!loading && (
+                        <Pagination
+                            page={rowPag.page}
+                            totalPages={rowPag.totalPages}
+                            from={rowPag.from}
+                            to={rowPag.to}
+                            total={rowPag.total}
+                            onPageChange={rowPag.setPage}
+                        />
                     )}
                 </div>
             </div>

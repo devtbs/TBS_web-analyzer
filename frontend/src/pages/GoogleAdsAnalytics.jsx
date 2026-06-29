@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { usePagination } from '../hooks/usePagination';
+import Pagination from '../components/ui/Pagination';
 import {
     AreaChart, Area, BarChart, Bar, ComposedChart, Line,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -166,6 +168,11 @@ const GoogleAdsAnalytics = () => {
     const [deepDive, setDeepDive] = useState(null);
     const [deepDiveLoading, setDeepDiveLoading] = useState(false);
     const [deepDiveLoaded, setDeepDiveLoaded] = useState(false);
+
+    const campPag = usePagination(overview?.campaigns, 10);
+    const kwPag = usePagination(deepDive?.keywords, 10);
+    const stPag = usePagination(deepDive?.search_terms, 10);
+    const geoPag = usePagination(deepDive?.geo, 10);
 
     useEffect(() => {
         const init = async () => {
@@ -537,25 +544,28 @@ const GoogleAdsAnalytics = () => {
                         {loading ? (
                             <div className="space-y-2">{[...Array(5)].map((_, i) => <Shimmer key={i} className="w-full h-10" />)}</div>
                         ) : (overview?.campaigns?.length ? (
-                            <DataTable headers={['Campaign', 'Status', 'Impressions', 'Clicks', 'CTR', 'Cost', 'Conversions', 'ROAS']}>
-                                {overview.campaigns.map((c, i) => {
-                                    const campRoas = c.cost > 0 ? (c.conversions_value / c.cost) : 0;
-                                    return (
-                                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
-                                            <td className="py-3 px-3 text-[13px] font-semibold text-slate-700 max-w-[240px]">
-                                                <span className="truncate block">{c.name}</span>
-                                            </td>
-                                            <td className="py-3 px-3"><StatusDot status={c.status} /></td>
-                                            <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtNum(c.impressions)}</td>
-                                            <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtNum(c.clicks)}</td>
-                                            <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtPct(c.ctr)}</td>
-                                            <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtCost(c.cost, currency)}</td>
-                                            <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtNum(c.conversions)}</td>
-                                            <td className="py-3 px-3 text-right text-[13px] font-bold text-blue-600">{fmtRoas(campRoas)}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </DataTable>
+                            <>
+                                <DataTable headers={['Campaign', 'Status', 'Impressions', 'Clicks', 'CTR', 'Cost', 'Conversions', 'ROAS']}>
+                                    {campPag.pageItems.map((c, i) => {
+                                        const campRoas = c.cost > 0 ? (c.conversions_value / c.cost) : 0;
+                                        return (
+                                            <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                                                <td className="py-3 px-3 text-[13px] font-semibold text-slate-700 max-w-[240px]">
+                                                    <span className="truncate block">{c.name}</span>
+                                                </td>
+                                                <td className="py-3 px-3"><StatusDot status={c.status} /></td>
+                                                <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtNum(c.impressions)}</td>
+                                                <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtNum(c.clicks)}</td>
+                                                <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtPct(c.ctr)}</td>
+                                                <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtCost(c.cost, currency)}</td>
+                                                <td className="py-3 px-3 text-right text-[13px] text-slate-600">{fmtNum(c.conversions)}</td>
+                                                <td className="py-3 px-3 text-right text-[13px] font-bold text-blue-600">{fmtRoas(campRoas)}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </DataTable>
+                                <Pagination {...campPag} onPageChange={campPag.setPage} className="rounded-b-3xl" />
+                            </>
                         ) : (
                             <p className="text-slate-400 text-sm text-center py-8">No campaign data for this period.</p>
                         ))}
@@ -604,9 +614,9 @@ const GoogleAdsAnalytics = () => {
 
                             {/* 1. Keywords */}
                             <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-                                <SectionHeading icon={MagnifyingGlassIcon} title="Keyword Performance" subtitle="Top 20 keywords by conversions" />
+                                <SectionHeading icon={MagnifyingGlassIcon} title="Keyword Performance" subtitle="Top keywords by conversions" />
                                 <DataTable headers={['Keyword', 'Match Type', 'Clicks', 'Cost', 'Conversions', 'ROAS']}>
-                                    {(deepDive.keywords || []).map((kw, i) => (
+                                    {kwPag.pageItems.map((kw, i) => (
                                         <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
                                             <td className="py-2.5 px-3 text-[13px] font-semibold text-slate-700">{kw.keyword}</td>
                                             <td className="py-2.5 px-3 text-[12px] text-slate-500">{(kw.match_type || '').replace('_', ' ')}</td>
@@ -617,13 +627,14 @@ const GoogleAdsAnalytics = () => {
                                         </tr>
                                     ))}
                                 </DataTable>
+                                <Pagination {...kwPag} onPageChange={kwPag.setPage} className="rounded-b-3xl" />
                             </div>
 
                             {/* 2. Search Terms */}
                             <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-                                <SectionHeading icon={MagnifyingGlassIcon} title="Search Terms Report" subtitle="Top 20 user queries by clicks" />
+                                <SectionHeading icon={MagnifyingGlassIcon} title="Search Terms Report" subtitle="Top user queries by clicks" />
                                 <DataTable headers={['Search Term', 'Impressions', 'Clicks', 'CTR', 'Cost', 'Conversions']}>
-                                    {(deepDive.search_terms || []).map((st, i) => (
+                                    {stPag.pageItems.map((st, i) => (
                                         <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
                                             <td className="py-2.5 px-3 text-[13px] font-semibold text-slate-700">{st.term}</td>
                                             <td className="py-2.5 px-3 text-right text-[13px] text-slate-600">{fmtNum(st.impressions)}</td>
@@ -634,6 +645,7 @@ const GoogleAdsAnalytics = () => {
                                         </tr>
                                     ))}
                                 </DataTable>
+                                <Pagination {...stPag} onPageChange={stPag.setPage} className="rounded-b-3xl" />
                             </div>
 
                             {/* 3. Network & Device */}
@@ -696,9 +708,9 @@ const GoogleAdsAnalytics = () => {
 
                             {/* 5. Geographic */}
                             <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm">
-                                <SectionHeading icon={MapPinIcon} title="Geographic Performance" subtitle="Top 20 locations by cost" />
+                                <SectionHeading icon={MapPinIcon} title="Geographic Performance" subtitle="Top locations by cost" />
                                 <DataTable headers={['Location ID', 'Type', 'Impressions', 'Clicks', 'CTR', 'Cost', 'Conversions']}>
-                                    {(deepDive.geo || []).map((g, i) => (
+                                    {geoPag.pageItems.map((g, i) => (
                                         <tr key={i} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
                                             <td className="py-2.5 px-3 text-[13px] font-semibold text-slate-700">{g.country_criterion_id}</td>
                                             <td className="py-2.5 px-3 text-[12px] text-slate-500">{(g.location_type || '').replace('_', ' ')}</td>
@@ -710,6 +722,7 @@ const GoogleAdsAnalytics = () => {
                                         </tr>
                                     ))}
                                 </DataTable>
+                                <Pagination {...geoPag} onPageChange={geoPag.setPage} className="rounded-b-3xl" />
                             </div>
 
                             {/* 6. Day-of-Week heatmap */}

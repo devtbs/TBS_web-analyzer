@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Pagination from '../components/ui/Pagination';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ArrowLeftIcon,
@@ -124,27 +125,7 @@ const SkeletonRow = ({ i }) => (
 /* ══════════════════════════════════════════════════════
    CountriesPage
    ══════════════════════════════════════════════════════ */
-const handleDownloadCSV = (data, filename) => {
-    if (!data || !data.length) return;
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-        headers.join(','),
-        ...data.map(row => headers.map(header => {
-            let val = row[header];
-            if (typeof val === 'string') {
-                return `"${val.replace(/"/g, '""')}"`;
-            }
-            return val;
-        }).join(','))
-    ].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
+import { handleDownloadCSV } from '../utils/exportTable';
 
 export default function CountriesPage() {
     const navigate = useNavigate();
@@ -188,7 +169,7 @@ export default function CountriesPage() {
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    const ITEMS_PER_PAGE = 50;
+    const ITEMS_PER_PAGE = 10;
 
     /* ── Fetch with caching ── */
     useEffect(() => {
@@ -496,34 +477,15 @@ export default function CountriesPage() {
             </div>
 
             {/* Pagination Controls */}
-            {!loading && totalPages > 1 && (
-                <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-white sticky bottom-0">
-                    <span className="text-[13px] text-slate-500 font-medium">
-                        Showing {((page - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(page * ITEMS_PER_PAGE, displayed.length)} of {displayed.length} countries
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <button 
-                            disabled={page === 1}
-                            onClick={() => {
-                                setPage(p => Math.max(1, p - 1));
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            Previous
-                        </button>
-                        <button 
-                            disabled={page === totalPages}
-                            onClick={() => {
-                                setPage(p => Math.min(totalPages, p + 1));
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="px-3 py-1.5 text-[13px] font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            Next
-                        </button>
-                    </div>
-                </div>
+            {!loading && (
+                <Pagination
+                    page={page}
+                    totalPages={totalPages}
+                    from={(page - 1) * ITEMS_PER_PAGE + 1}
+                    to={Math.min(page * ITEMS_PER_PAGE, displayed.length)}
+                    total={displayed.length}
+                    onPageChange={setPage}
+                />
             )}
         </div>
     );
