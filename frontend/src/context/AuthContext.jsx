@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../api/axios';
 import storage from '../utils/storage';
 
@@ -15,17 +15,30 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(() => storage.getJSON('user_data', null));
     const [loading, setLoading] = useState(() => {
-        // If we have a token and cached user, we can start in non-loading state
         const token = storage.get('access_token');
         const cachedUser = storage.get('user_data');
         return !(token && cachedUser);
     });
 
+    // Multi-account state
+    const [connectedAccounts, setConnectedAccounts] = useState([]);
+    const [selectedAccountId, setSelectedAccountId] = useState(() => {
+        const raw = storage.get('selected_account_id');
+        return raw ? parseInt(raw, 10) : null;
+    });
+
+    const fetchAccounts = useCallback(async () => {
+        try {
+            const res = await api.get('/auth/accounts');
+            setConnectedAccounts(res.data.accounts || []);
+        } catch {
+            setConnectedAccounts([]);
+        }
+    }, []);
+
     useEffect(() => {
-        // Check for existing token and cached user data
         const token = storage.get('access_token');
 
-        // Background / Safety check
         const safetyTimer = setTimeout(() => {
             if (loading) {
                 console.warn('Auth check timed out after 15s.');
@@ -34,17 +47,15 @@ export const AuthProvider = ({ children }) => {
         }, 15000);
 
         if (token) {
-            // Verify session in background (or foreground if not cached)
             api.get('/auth/me')
                 .then(response => {
                     const userData = response.data;
                     setUser(userData);
-                    // Cache the user data for next reload
                     storage.setJSON('user_data', userData);
+                    fetchAccounts();
                 })
                 .catch((err) => {
                     console.error('Session verification failed:', err);
-                    // Only clear if it's a real 401/403 auth error
                     if (err.response?.status === 401 || err.response?.status === 403) {
                         storage.remove('access_token');
                         storage.remove('user_data');
@@ -63,18 +74,15 @@ export const AuthProvider = ({ children }) => {
         return () => clearTimeout(safetyTimer);
     }, []);
 
-    // Accepts { code } from the authorization-code flow (preferred — grants GSC/GA4
-    // data access for the login account) or { token } for legacy id-token login.
     const login = async (payload) => {
         try {
             const body = typeof payload === 'string' ? { token: payload } : payload;
             const response = await api.post('/auth/google/login', body);
-
             const { access_token, user: userData } = response.data;
             storage.set('access_token', access_token);
             storage.setJSON('user_data', userData);
             setUser(userData);
-
+            await fetchAccounts();
             return userData;
         } catch (error) {
             console.error('Login error:', error);
@@ -82,8 +90,6 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // Local development only: sign in without Google OAuth (backend gates this to
-    // ENVIRONMENT=development). Lets the app be used on localhost.
     const devLogin = async () => {
         const response = await api.post('/auth/dev-login', {});
         const { access_token, user: userData } = response.data;
@@ -102,11 +108,35 @@ export const AuthProvider = ({ children }) => {
             storage.remove('access_token');
             storage.remove('user_data');
             storage.remove('gsc_selected_property');
-            storage.remove('gsc_token');  // ← fix: monitor needs this cleared
+            storage.remove('gsc_token');
+            storage.remove('selected_account_id');
             try { sessionStorage.clear(); } catch { /* storage unavailable */ }
             setUser(null);
+            setConnectedAccounts([]);
+            setSelectedAccountId(null);
         }
     };
+
+    const switchAccount = useCallback((id) => {
+        setSelectedAccountId(id);
+        if (id == null) {
+            storage.remove('selected_account_id');
+        } else {
+            storage.set('selected_account_id', String(id));
+        }
+    }, []);
+
+    const connectAccount = useCallback(async (code) => {
+        const res = await api.post('/auth/accounts/connect', { code });
+        await fetchAccounts();
+        return res.data;
+    }, [fetchAccounts]);
+
+    const disconnectAccount = useCallback(async (accountId) => {
+        await api.delete(`/auth/accounts/${accountId}`);
+        await fetchAccounts();
+        if (selectedAccountId === accountId) switchAccount(null);
+    }, [fetchAccounts, selectedAccountId, switchAccount]);
 
     const value = useMemo(() => ({
         user,
@@ -114,7 +144,12 @@ export const AuthProvider = ({ children }) => {
         login,
         devLogin,
         logout,
-    }), [user, loading]);
+        connectedAccounts,
+        selectedAccountId,
+        switchAccount,
+        connectAccount,
+        disconnectAccount,
+    }), [user, loading, connectedAccounts, selectedAccountId, switchAccount, connectAccount, disconnectAccount]);
 
     return (
         <AuthContext.Provider value={value}>

@@ -81,6 +81,17 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
     if refresh_token:
         update_gsc_token(db, user_info.email, refresh_token, is_refresh_token=True)
         db.refresh(db_user)
+        # Also upsert into google_accounts so the primary Gmail appears in the
+        # multi-account list alongside any additional connected accounts.
+        from utils.user_manager import upsert_google_account
+        upsert_google_account(
+            db,
+            user_email=user_info.email,
+            google_email=user_info.email,
+            refresh_token=refresh_token,
+            display_name=user_info.name,
+            picture=user_info.picture,
+        )
 
     # Create JWT access token
     access_token = create_access_token(

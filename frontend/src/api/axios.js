@@ -8,12 +8,16 @@ const api = axios.create({
     timeout: 300000, 
 });
 
-// Request interceptor to add authorization header to every request
+// Request interceptor to add authorization header and selected Google account to every request
 api.interceptors.request.use(
     (config) => {
         const token = localStorage.getItem('access_token');
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
+        }
+        const accountId = localStorage.getItem('selected_account_id');
+        if (accountId) {
+            config.headers['X-Account-Id'] = accountId;
         }
         return config;
     },

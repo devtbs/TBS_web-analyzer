@@ -1,8 +1,8 @@
 """User management utilities"""
 from sqlalchemy.orm import Session
-from database import User
+from database import User, GoogleAccount
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
 
 
 def get_or_create_user(db: Session, email: str, name: str = None, picture: str = None) -> User:
@@ -75,14 +75,97 @@ def clear_gsc_token(db: Session, email: str) -> User:
 def get_user_gsc_token(db: Session, email: str) -> Optional[tuple]:
     """
     Get user's GSC token if it exists.
-    
+
     Returns:
         Tuple of (token_string, is_refresh_token) or (None, False).
     """
     user = db.query(User).filter(User.email == email).first()
-    
+
     if user and user.gsc_token:
         is_refresh = getattr(user, 'gsc_token_is_refresh', False) or False
         return user.gsc_token, is_refresh
-    
+
     return None, False
+
+
+# ---------------------------------------------------------------------------
+# Multi-Google-account helpers
+# ---------------------------------------------------------------------------
+
+def upsert_google_account(
+    db: Session,
+    user_email: str,
+    google_email: str,
+    refresh_token: str,
+    display_name: str = None,
+    picture: str = None,
+) -> GoogleAccount:
+    """Insert or update a connected Google account for a TBS user."""
+    acct = (
+        db.query(GoogleAccount)
+        .filter(GoogleAccount.user_email == user_email, GoogleAccount.google_email == google_email)
+        .first()
+    )
+    if acct:
+        acct.refresh_token = refresh_token
+        acct.connected_at = datetime.utcnow()
+        if display_name:
+            acct.display_name = display_name
+        if picture:
+            acct.picture = picture
+    else:
+        acct = GoogleAccount(
+            user_email=user_email,
+            google_email=google_email,
+            refresh_token=refresh_token,
+            display_name=display_name,
+            picture=picture,
+        )
+        db.add(acct)
+    db.commit()
+    db.refresh(acct)
+    return acct
+
+
+def get_google_accounts(db: Session, user_email: str) -> List[Dict]:
+    """Return all connected Google accounts for a TBS user (tokens excluded)."""
+    rows = (
+        db.query(GoogleAccount)
+        .filter(GoogleAccount.user_email == user_email)
+        .order_by(GoogleAccount.connected_at)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "google_email": r.google_email,
+            "display_name": r.display_name,
+            "picture": r.picture,
+            "connected_at": r.connected_at.isoformat() if r.connected_at else None,
+        }
+        for r in rows
+    ]
+
+
+def get_google_account_token(db: Session, user_email: str, account_id: int) -> Optional[str]:
+    """Return the refresh token for a specific connected Google account."""
+    acct = (
+        db.query(GoogleAccount)
+        .filter(GoogleAccount.user_email == user_email, GoogleAccount.id == account_id)
+        .first()
+    )
+    return acct.refresh_token if acct else None
+
+
+def delete_google_account(db: Session, user_email: str, account_id: int) -> bool:
+    """Disconnect a Google account. Returns True if deleted, False if not found."""
+    acct = (
+        db.query(GoogleAccount)
+        .filter(GoogleAccount.user_email == user_email, GoogleAccount.id == account_id)
+        .first()
+    )
+    if not acct:
+        return False
+    db.delete(acct)
+    db.commit()
+    return True

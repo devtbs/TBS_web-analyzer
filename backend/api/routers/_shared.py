@@ -7,10 +7,24 @@ import json
 import uuid
 import asyncio
 from datetime import datetime
+from typing import Optional
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
 
 from database import Document
+
+
+def get_account_id(request: Request) -> Optional[int]:
+    """FastAPI dependency: read the selected Google account id from the
+    X-Account-Id request header. Returns None if the header is absent,
+    which means use the primary token stored on the User row."""
+    raw = request.headers.get("X-Account-Id")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    return None
 
 # Media types for streamed file downloads.
 PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
@@ -20,25 +34,32 @@ PDF_MEDIA_TYPE = "application/pdf"
 _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
-def _gsc_service_for(db, email):
+def _resolve_token(db, email, account_id=None):
+    """Return (token, is_refresh) for the given account_id, or fall back to the
+    primary token stored on the User row when account_id is None."""
+    from utils.user_manager import get_user_gsc_token, get_google_account_token
+    if account_id is not None:
+        token = get_google_account_token(db, email, account_id)
+        if not token:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Connected Google account not found.")
+        return token, True  # extra accounts always store a refresh token
+    return get_user_gsc_token(db, email)
+
+
+def _gsc_service_for(db, email, account_id=None):
     """Helper: build a GSCService from the user's stored token, or raise 404."""
     from services.gsc_service import GSCService
-    from utils.user_manager import get_user_gsc_token
-    gsc_token, is_refresh = get_user_gsc_token(db, email)
-    if not gsc_token:
+    token, is_refresh = _resolve_token(db, email, account_id)
+    if not token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
-    return GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=email)
+    return GSCService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)
 
 
-def _ga4_service_for(db, email):
-    """Helper: build an AnalyticsService (GA4) from the user's stored token, or raise 404.
-
-    GA4 shares the same Google OAuth token as GSC (one sign-in grants both the webmasters
-    and analytics scopes), so it reads the same stored token as `_gsc_service_for`.
-    """
+def _ga4_service_for(db, email, account_id=None):
+    """Helper: build an AnalyticsService (GA4) from the user's stored token, or raise 404."""
     from services.analytics_service import AnalyticsService
-    from utils.user_manager import get_user_gsc_token
-    token, is_refresh = get_user_gsc_token(db, email)
+    token, is_refresh = _resolve_token(db, email, account_id)
     if not token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
     return AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)

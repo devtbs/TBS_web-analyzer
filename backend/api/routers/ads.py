@@ -16,8 +16,21 @@ from sqlalchemy.orm import Session
 from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db
+from api.routers._shared import get_account_id
 
 router = APIRouter()
+
+
+def _get_ads_token(db, email, account_id):
+    """Resolve refresh token for Ads — primary or secondary Google account."""
+    from utils.user_manager import get_user_gsc_token, get_google_account_token
+    if account_id is not None:
+        token = get_google_account_token(db, email, account_id)
+        if not token:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                detail="Connected Google account not found.")
+        return token, True
+    return get_user_gsc_token(db, email)
 
 
 def _classify_ads_error(msg: str) -> Optional[str]:
@@ -66,15 +79,15 @@ async def get_ads_status(
 async def get_ads_customers(
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id),
 ):
     """List the Google Ads accounts the user can access."""
     from services.ads_service import ads_is_configured, get_user_ads_customers
-    from utils.user_manager import get_user_gsc_token
 
     if not ads_is_configured():
         return {"configured": False, "customers": []}
 
-    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    google_token, is_refresh = _get_ads_token(db, current_user.email, account_id)
     if not google_token or not is_refresh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -99,15 +112,15 @@ async def get_ads_overview(
     days: int = 28,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id),
 ):
     """Get headline Google Ads metrics, daily time-series, deltas and top campaigns."""
     from services.ads_service import ads_is_configured, AdsService
-    from utils.user_manager import get_user_gsc_token
 
     if not ads_is_configured():
         return {"configured": False}
 
-    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    google_token, is_refresh = _get_ads_token(db, current_user.email, account_id)
     if not google_token or not is_refresh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -132,15 +145,15 @@ async def get_ads_deep_dive(
     days: int = 28,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id),
 ):
     """Granular performance breakdowns: keywords, search terms, device, network, demographics, geo, scheduling."""
     from services.ads_service import ads_is_configured, AdsService
-    from utils.user_manager import get_user_gsc_token
 
     if not ads_is_configured():
         return {"configured": False}
 
-    google_token, is_refresh = get_user_gsc_token(db, current_user.email)
+    google_token, is_refresh = _get_ads_token(db, current_user.email, account_id)
     if not google_token or not is_refresh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

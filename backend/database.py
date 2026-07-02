@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON, Boolean
+from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON, Boolean, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -41,6 +41,24 @@ class User(Base):
     gsc_connected_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     last_login = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class GoogleAccount(Base):
+    """A Google account (Gmail) connected to a TBS app user.
+
+    One app user can connect multiple Google accounts. Each row stores the refresh token
+    for one Gmail so the app can query GSC/GA4/Ads for that account without re-login.
+    """
+    __tablename__ = "google_accounts"
+    __table_args__ = (UniqueConstraint("user_email", "google_email", name="uq_user_google"),)
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    user_email    = Column(String, ForeignKey("users.email"), index=True, nullable=False)
+    google_email  = Column(String, nullable=False)
+    display_name  = Column(String, nullable=True)
+    picture       = Column(String, nullable=True)
+    refresh_token = Column(Text, nullable=False)
+    connected_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class Analysis(Base):

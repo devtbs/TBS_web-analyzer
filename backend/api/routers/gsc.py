@@ -7,7 +7,8 @@ from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db
 from config import settings
-from api.routers._shared import _gsc_service_for, _ga4_service_for
+from api.routers._shared import _gsc_service_for, _ga4_service_for, get_account_id
+from typing import Optional
 
 router = APIRouter()
 
@@ -447,13 +448,14 @@ async def get_gsc_new_lost_rankings(
 @router.get("/auth/gsc/striking-distance/{property_url:path}")
 async def gsc_striking_distance(
     property_url: str, days: int = 28, filters_json: str = None,
-    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id)
 ):
     """Keywords at positions 4–20 — the quickest page-1 wins."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
     try:
-        service = _gsc_service_for(db, current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         data = await service.get_striking_distance(property_url, days, filters_json=filters_json)
         return {"keywords": data, "total": len(data)}
     except HTTPException:
@@ -468,13 +470,14 @@ async def gsc_striking_distance(
 @router.get("/auth/gsc/ctr-opportunities/{property_url:path}")
 async def gsc_ctr_opportunities(
     property_url: str, days: int = 28, filters_json: str = None,
-    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id)
 ):
     """Full CTR analysis: site CTR curve (1–20) + every query vs benchmark."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
     try:
-        service = _gsc_service_for(db, current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         data = await service.get_ctr_analysis(property_url, days, filters_json=filters_json)
         return data
     except HTTPException:
@@ -489,13 +492,14 @@ async def gsc_ctr_opportunities(
 @router.get("/auth/gsc/query-decay/{property_url:path}")
 async def gsc_query_decay(
     property_url: str, periods: int = 16, granularity: str = "month", filters_json: str = None,
-    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id)
 ):
     """Per-query performance over time (month/week buckets) for the decay heatmap."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
     try:
-        service = _gsc_service_for(db, current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         data = await service.get_query_decay(property_url, periods, granularity, filters_json=filters_json)
         return data
     except HTTPException:
@@ -511,7 +515,8 @@ async def gsc_query_decay(
 async def gsc_cannibalization(
     property_url: str, days: int = 28, min_impressions_pct: float = 20.0,
     brand: str = None, topic: str = None, filters_json: str = None,
-    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id)
 ):
     """URLs competing against each other for the same keywords in search.
 
@@ -524,7 +529,7 @@ async def gsc_cannibalization(
     property_url = unquote(property_url)
     brand_keywords = [b for b in (brand or '').split(',') if b.strip()]
     try:
-        service = _gsc_service_for(db, current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         data = await service.get_cannibalization(
             property_url, days, min_impressions_pct=min_impressions_pct,
             brand_keywords=brand_keywords, topic=topic, filters_json=filters_json)
@@ -541,13 +546,14 @@ async def gsc_cannibalization(
 @router.get("/auth/gsc/query-insights/{property_url:path}")
 async def gsc_query_insights(
     property_url: str, days: int = 28, history_months: int = 6, filters_json: str = None,
-    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id)
 ):
     """Per-query deltas + monthly time-series (powers user-defined Topic Clusters)."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
     try:
-        service = _gsc_service_for(db, current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         data = await service.get_query_insights(property_url, days, history_months, filters_json=filters_json)
         return data
     except HTTPException:
@@ -562,13 +568,14 @@ async def gsc_query_insights(
 @router.get("/auth/gsc/topic-clusters/{property_url:path}")
 async def gsc_topic_clusters(
     property_url: str, days: int = 28, filters_json: str = None,
-    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id)
 ):
     """Group queries into topic clusters with aggregate metrics."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
     try:
-        service = _gsc_service_for(db, current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         data = await service.get_topic_clusters(property_url, days, filters_json=filters_json)
         return {"clusters": data, "total": len(data)}
     except HTTPException:
@@ -592,6 +599,7 @@ async def gsc_looker_export(
     ga4_property_id: str = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id),
 ):
     """Flat, Looker-Studio-ready export for one property.
 
@@ -621,8 +629,8 @@ async def gsc_looker_export(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                                 detail="cluster_rules_json must be valid JSON.")
     try:
-        service = _gsc_service_for(db, current_user.email)
-        ga4_service = _ga4_service_for(db, current_user.email) if ga4_property_id else None
+        service = _gsc_service_for(db, current_user.email, account_id)
+        ga4_service = _ga4_service_for(db, current_user.email, account_id) if ga4_property_id else None
         return await build_export(
             service, property_url, days=days, brand_regex=brand_regex,
             cluster_rules=cluster_rules, filters_json=filters_json,
