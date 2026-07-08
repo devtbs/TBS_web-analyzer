@@ -10,6 +10,7 @@ import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import NotificationBell from './components/NotificationBell';
+import AssistantWidget from './components/assistant/AssistantWidget';
 
 // Home is the public landing page (first paint when logged out) — keep it eager.
 import Home from './pages/Home';
@@ -142,6 +143,8 @@ const ProtectedLayout = () => {
                     </motion.div>
                 </main>
             </div>
+            {/* In-app AI assistant — only in the authed layout */}
+            <AssistantWidget />
         </div>
     );
 };

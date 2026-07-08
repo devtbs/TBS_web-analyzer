@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     REPLICATE_API_KEY: str = ""   # Replicate
     XAI_API_KEY: str = ""         # xAI (Grok)
     MINIMAX_API_KEY: str = ""     # MiniMax
+    # MiniMax OpenAI-compatible endpoint + model, used by the in-app AI assistant.
+    # Region differs per account (global api.minimax.io vs china api.minimax.chat).
+    MINIMAX_BASE_URL: str = "https://api.minimax.io/v1"
+    MINIMAX_MODEL: str = "MiniMax-M1"
     PEXELS_API_KEY: str = ""      # Pexels stock images
     PIXABAY_API_KEY: str = ""     # Pixabay stock images
     
