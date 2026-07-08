@@ -43,6 +43,7 @@ async def assistant_chat(
     messages = body.get("messages") or []
     context = body.get("context") or {}
     approved_action = body.get("approved_action")
+    provider = body.get("provider")
 
     ctx = ToolContext(
         db=db,
@@ -55,7 +56,7 @@ async def assistant_chat(
 
     async def stream():
         try:
-            async for event in run_assistant(ctx, messages, approved_action=approved_action):
+            async for event in run_assistant(ctx, messages, approved_action=approved_action, provider=provider):
                 etype = event.pop("type", "message")
                 yield _sse(etype, event)
         except Exception as e:  # noqa: BLE001

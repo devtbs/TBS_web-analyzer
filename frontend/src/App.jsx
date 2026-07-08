@@ -38,6 +38,7 @@ const Documents = lazy(() => import('./pages/Documents'));
 const DocumentDetail = lazy(() => import('./pages/DocumentDetail'));
 const Presentation = lazy(() => import('./pages/Presentation'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const Assistant = lazy(() => import('./pages/Assistant'));
 const TechnicalAuditPage = lazy(() => import('./pages/TechnicalAuditPage'));
 
 /* Lightweight fallback shown while a lazily-loaded page chunk downloads. */
@@ -198,6 +199,7 @@ function AppContent() {
                     <Route path="/documents" element={<Documents />} />
                     <Route path="/documents/:documentId" element={<DocumentDetail />} />
                     <Route path="/presentation" element={<Presentation />} />
+                    <Route path="/assistant" element={<Assistant />} />
                     <Route path="/alerts" element={<AlertsPage />} />
                     <Route path="/technical-audit" element={<TechnicalAuditPage />} />
                 </Route>

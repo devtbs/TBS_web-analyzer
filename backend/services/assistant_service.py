@@ -59,6 +59,8 @@ READ_TOOLS = {"get_context", "list_gsc_properties", "list_ga4_properties",
               "list_ads_customers", "ga4_overview", "ads_overview",
               "gsc_striking_distance", "gsc_cannibalization"}
 ACTION_TOOLS = {"generate_deck"}
+# Tools that pause the loop to ask the user to pick a client (rendered as clickable options).
+SELECT_TOOLS = {"ask_client_choice"}
 
 TOOL_SCHEMAS = [
     {"type": "function", "function": {
@@ -120,6 +122,17 @@ TOOL_SCHEMAS = [
         }, "required": ["property_url"]},
     }},
     {"type": "function", "function": {
+        "name": "ask_client_choice",
+        "description": "Ask the user which client/site to use, shown as clickable options. Call "
+                       "this whenever a request needs a specific client and the user hasn't named "
+                       "one and none is selected (get_context returned nulls). Pick the kind that "
+                       "matches the request: gsc_property for Search Console/organic/keywords, "
+                       "ga4_property for traffic/analytics, ads_customer for Google Ads.",
+        "parameters": {"type": "object", "properties": {
+            "kind": {"type": "string", "enum": ["gsc_property", "ga4_property", "ads_customer"]},
+        }, "required": ["kind"]},
+    }},
+    {"type": "function", "function": {
         "name": "generate_deck",
         "description": "Generate an AI-designed presentation deck for a client. ACTION: this "
                        "produces a deliverable and must be confirmed by the user before running.",
@@ -142,8 +155,9 @@ _SYSTEM_PROMPT = (
     "- Be concise and concrete: lead with the numbers that matter and a short takeaway.\n"
     "- generate_deck is an action that creates a deliverable — the app will ask the user to confirm "
     "it before it runs, so just call it when asked.\n"
-    "- When you don't have enough info (e.g. no client selected and none named), ask a brief "
-    "clarifying question instead of guessing."
+    "- If a request needs a specific client/site and the user hasn't named one and get_context "
+    "shows nothing selected, call ask_client_choice (with the right kind) so they can pick from "
+    "their list — do NOT guess or assume a client."
 )
 
 
@@ -207,6 +221,26 @@ async def _handle(name: str, args: dict, ctx: ToolContext) -> dict:
     raise ValueError(f"Unknown tool: {name}")
 
 
+async def _client_choices(kind: str, ctx: ToolContext) -> dict:
+    """Build the clickable option list for the 'pick a client' prompt."""
+    if kind == "gsc_property":
+        data = await _handle("list_gsc_properties", {}, ctx)
+        opts = [{"label": p.get("display") or p.get("url"), "value": p.get("url")}
+                for p in data.get("properties", []) if p.get("url")]
+        prompt = "Which Search Console property should I use?"
+    elif kind == "ads_customer":
+        data = await _handle("list_ads_customers", {}, ctx)
+        opts = [{"label": c.get("display") or c.get("customer_id"), "value": c.get("customer_id")}
+                for c in data.get("customers", []) if c.get("customer_id")]
+        prompt = "Which Google Ads account should I use?"
+    else:  # ga4_property
+        data = await _handle("list_ga4_properties", {}, ctx)
+        opts = [{"label": p.get("display") or p.get("property_id"), "value": p.get("property_id")}
+                for p in data.get("properties", []) if p.get("property_id")]
+        prompt = "Which GA4 property should I use?"
+    return {"kind": kind, "prompt": prompt, "options": opts[:50]}
+
+
 async def _run_generate_deck(args: dict, ctx: ToolContext) -> dict:
     """Execute the confirmed deck action, reusing the existing deck pipeline. Returns a link."""
     from api.routers._shared import _resolve_token
@@ -260,9 +294,34 @@ def _confirm_summary(name: str, args: dict) -> str:
     return f"Run {name} with {json.dumps(args)}?"
 
 
+# ── Providers ───────────────────────────────────────────────────────────────
+def _providers() -> dict:
+    """OpenAI-compatible providers the assistant can drive. Both support tool calls."""
+    return {
+        "minimax": {"key": settings.MINIMAX_API_KEY, "base_url": settings.MINIMAX_BASE_URL,
+                    "model": settings.MINIMAX_MODEL},
+        "deepseek": {"key": settings.DEEPSEEK_API_KEY, "base_url": "https://api.deepseek.com",
+                     "model": "deepseek-chat"},
+    }
+
+
+def _resolve_provider(provider: Optional[str]) -> dict:
+    """Pick a configured provider, falling back to MiniMax then any configured one."""
+    provs = _providers()
+    cfg = provs.get(provider or "minimax")
+    if cfg and cfg["key"]:
+        return cfg
+    if provs["minimax"]["key"]:
+        return provs["minimax"]
+    for c in provs.values():
+        if c["key"]:
+            return c
+    return provs["minimax"]  # unconfigured; caller reports the missing-key error
+
+
 # ── Agent loop ──────────────────────────────────────────────────────────────
-def _client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=settings.MINIMAX_API_KEY, base_url=settings.MINIMAX_BASE_URL)
+def _client(cfg: dict) -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=cfg["key"], base_url=cfg["base_url"])
 
 
 def _norm_messages(messages: list) -> list:
@@ -293,13 +352,16 @@ async def _emit_text(text: str) -> AsyncGenerator[dict, None]:
 
 
 async def run_assistant(ctx: ToolContext, messages: list,
-                        approved_action: Optional[dict] = None) -> AsyncGenerator[dict, None]:
+                        approved_action: Optional[dict] = None,
+                        provider: Optional[str] = None) -> AsyncGenerator[dict, None]:
     """Drive the tool-calling loop. Yields event dicts (see module docstring)."""
-    if not assistant_configured():
-        yield {"type": "error", "detail": "The assistant is not configured (MINIMAX_API_KEY missing)."}
+    cfg = _resolve_provider(provider)
+    if not cfg["key"]:
+        yield {"type": "error", "detail": "The assistant is not configured (no LLM API key set)."}
         return
 
-    client = _client()
+    client = _client(cfg)
+    model = cfg["model"]
 
     # If the user just approved a pending action, execute it now and report back.
     if approved_action:
@@ -333,7 +395,7 @@ async def run_assistant(ctx: ToolContext, messages: list,
     for _hop in range(_MAX_HOPS):
         try:
             resp = await client.chat.completions.create(
-                model=settings.MINIMAX_MODEL, messages=convo,
+                model=model, messages=convo,
                 tools=TOOL_SCHEMAS, tool_choice="auto", max_tokens=4000,
             )
         except Exception as e:  # noqa: BLE001
@@ -367,6 +429,24 @@ async def run_assistant(ctx: ToolContext, messages: list,
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
+
+            # Picker tools pause and ask the user to choose a client (clickable options).
+            if name in SELECT_TOOLS:
+                try:
+                    choice = await _client_choices(args.get("kind", "ga4_property"), ctx)
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("assistant client-choice failed")
+                    yield {"type": "error", "detail": str(e)}
+                    return
+                if not choice["options"]:
+                    async for ev in _emit_text(
+                        "I couldn't find any clients to choose from for that. "
+                        "Make sure a Google account with access is connected."):
+                        yield ev
+                    yield {"type": "done"}
+                    return
+                yield {"type": "select", **choice}
+                return
 
             # Action tools pause for confirmation instead of running.
             if name in ACTION_TOOLS:

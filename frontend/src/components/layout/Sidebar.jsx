@@ -28,6 +28,7 @@ import {
     ChartPieIcon,
     MegaphoneIcon,
     WrenchScrewdriverIcon,
+    SparklesIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -102,6 +103,7 @@ const NAV_GROUPS = [
     {
         section: 'Analyze',
         items: [
+            { label: 'AI Assistant', path: '/assistant', icon: SparklesIcon },
             { label: 'New Analysis', path: '/new-analysis', icon: RocketLaunchIcon },
             { label: 'History',      path: '/history',      icon: ClockIcon },
             { label: 'GA4 Analytics', path: '/ga4-analytics', icon: ChartPieIcon },
