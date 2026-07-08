@@ -26,6 +26,76 @@ def get_account_id(request: Request) -> Optional[int]:
             pass
     return None
 
+
+def exchange_google_code(code: str) -> dict:
+    """Exchange a Google OAuth authorization code for tokens.
+
+    Shared by the three consent flows (primary login, connect-additional-account, and
+    the standalone GSC connect) so the token-exchange request lives in one place.
+    Uses redirect_uri='postmessage' (required for popup/ux_mode flows). Raises a 400
+    HTTPException on a Google `error`. Callers handle id_token verification / storage.
+    """
+    import requests as http_requests
+    from config import settings
+
+    resp = http_requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": "postmessage",
+            "grant_type": "authorization_code",
+        },
+    )
+    token_data = resp.json()
+    if "error" in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Google token exchange failed: {token_data.get('error_description', token_data['error'])}",
+        )
+    return token_data
+
+
+def iter_google_accounts(db, email) -> list:
+    """Return every connected Google account for `email` as a list of dicts:
+    {account_id, google_email, token, is_refresh}.
+
+    Sources both the multi-account `google_accounts` rows (each an explicit
+    account_id, always refresh tokens) and — for users who only ever connected
+    via the standalone GSC flow — the primary `users.gsc_token` (account_id=None).
+    Used by the aggregate "/all" list endpoints to show every client across
+    every connected Gmail at once.
+    """
+    from utils.user_manager import get_google_accounts, get_google_account_token, get_user_gsc_token
+
+    accounts = []
+    seen_emails = set()
+    for a in get_google_accounts(db, email):
+        token = get_google_account_token(db, email, a["id"])
+        if not token:
+            continue
+        accounts.append({
+            "account_id": a["id"],
+            "google_email": a["google_email"],
+            "token": token,
+            "is_refresh": True,
+        })
+        seen_emails.add(a["google_email"])
+
+    # Include the primary token when it isn't already represented above (e.g. the
+    # user connected GSC via the standalone selector, which only fills users.gsc_token).
+    primary_token, primary_is_refresh = get_user_gsc_token(db, email)
+    if primary_token and email not in seen_emails:
+        accounts.append({
+            "account_id": None,
+            "google_email": email,
+            "token": primary_token,
+            "is_refresh": primary_is_refresh,
+        })
+
+    return accounts
+
 # Media types for streamed file downloads.
 PPTX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 PDF_MEDIA_TYPE = "application/pdf"

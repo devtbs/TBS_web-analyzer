@@ -16,21 +16,9 @@ from sqlalchemy.orm import Session
 from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db
-from api.routers._shared import get_account_id
+from api.routers._shared import get_account_id, _resolve_token
 
 router = APIRouter()
-
-
-def _get_ads_token(db, email, account_id):
-    """Resolve refresh token for Ads — primary or secondary Google account."""
-    from utils.user_manager import get_user_gsc_token, get_google_account_token
-    if account_id is not None:
-        token = get_google_account_token(db, email, account_id)
-        if not token:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="Connected Google account not found.")
-        return token, True
-    return get_user_gsc_token(db, email)
 
 
 def _classify_ads_error(msg: str) -> Optional[str]:
@@ -87,7 +75,7 @@ async def get_ads_customers(
     if not ads_is_configured():
         return {"configured": False, "customers": []}
 
-    google_token, is_refresh = _get_ads_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token or not is_refresh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -106,6 +94,51 @@ async def get_ads_customers(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch Google Ads accounts: {error_msg}")
 
 
+@router.get("/auth/ads/customers/all")
+async def get_ads_customers_all(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Aggregate Google Ads customers across ALL connected Google accounts, grouped by account."""
+    import asyncio
+    from services.ads_service import ads_is_configured, get_user_ads_customers
+    from api.routers._shared import iter_google_accounts
+
+    if not ads_is_configured():
+        return {"configured": False, "groups": [], "errors": []}
+
+    accounts = iter_google_accounts(db, current_user.email)
+    accounts = [a for a in accounts if a["is_refresh"]]  # Ads needs a refresh token
+    if not accounts:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Google accounts connected. Please connect your Google account first.",
+        )
+
+    async def _one(acct):
+        # Distinct cache identity per Google account so one account's customer
+        # list can't be served from another account's cached entry.
+        return await get_user_ads_customers(
+            acct["token"], is_refresh_token=acct["is_refresh"],
+            user_email=f"{current_user.email}|{acct['google_email']}",
+        )
+
+    results = await asyncio.gather(*[_one(a) for a in accounts], return_exceptions=True)
+
+    groups, errors = [], []
+    for acct, res in zip(accounts, results):
+        if isinstance(res, Exception):
+            detail = _classify_ads_error(str(res)) or str(res)
+            errors.append({"account_id": acct["account_id"], "google_email": acct["google_email"], "error": detail})
+            continue
+        groups.append({
+            "account_id": acct["account_id"],
+            "google_email": acct["google_email"],
+            "customers": res or [],
+        })
+    return {"configured": True, "groups": groups, "errors": errors}
+
+
 @router.get("/auth/ads/overview/{customer_id}")
 async def get_ads_overview(
     customer_id: str,
@@ -120,7 +153,7 @@ async def get_ads_overview(
     if not ads_is_configured():
         return {"configured": False}
 
-    google_token, is_refresh = _get_ads_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token or not is_refresh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -153,7 +186,7 @@ async def get_ads_deep_dive(
     if not ads_is_configured():
         return {"configured": False}
 
-    google_token, is_refresh = _get_ads_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token or not is_refresh:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

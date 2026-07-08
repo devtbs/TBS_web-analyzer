@@ -11,21 +11,9 @@ from sqlalchemy.orm import Session
 from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db
-from api.routers._shared import get_account_id, _ga4_service_for
+from api.routers._shared import get_account_id, _ga4_service_for, _resolve_token
 
 router = APIRouter()
-
-
-def _get_token(db, email, account_id):
-    """Resolve token for primary or secondary Google account."""
-    from utils.user_manager import get_user_gsc_token, get_google_account_token
-    if account_id is not None:
-        token = get_google_account_token(db, email, account_id)
-        if not token:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                                detail="Connected Google account not found.")
-        return token, True
-    return get_user_gsc_token(db, email)
 
 
 @router.get("/auth/ga4/properties")
@@ -37,7 +25,7 @@ async def get_ga4_properties(
     """List the GA4 properties accessible by the user."""
     from services.analytics_service import get_user_ga4_properties
 
-    google_token, is_refresh = _get_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -66,6 +54,46 @@ async def get_ga4_properties(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to fetch GA4 properties: {error_msg}")
 
 
+@router.get("/auth/ga4/properties/all")
+async def get_ga4_properties_all(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Aggregate GA4 properties across ALL connected Google accounts, grouped by account."""
+    import asyncio
+    from services.analytics_service import get_user_ga4_properties
+    from api.routers._shared import iter_google_accounts
+
+    accounts = iter_google_accounts(db, current_user.email)
+    if not accounts:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Google accounts connected. Please connect your Google account first.",
+        )
+
+    async def _one(acct):
+        # Distinct cache identity per Google account so one account's property
+        # list can't be served from another account's cached entry.
+        return await get_user_ga4_properties(
+            acct["token"], is_refresh_token=acct["is_refresh"],
+            user_email=f"{current_user.email}|{acct['google_email']}",
+        )
+
+    results = await asyncio.gather(*[_one(a) for a in accounts], return_exceptions=True)
+
+    groups, errors = [], []
+    for acct, res in zip(accounts, results):
+        if isinstance(res, Exception):
+            errors.append({"account_id": acct["account_id"], "google_email": acct["google_email"], "error": str(res)})
+            continue
+        groups.append({
+            "account_id": acct["account_id"],
+            "google_email": acct["google_email"],
+            "properties": res or [],
+        })
+    return {"groups": groups, "errors": errors}
+
+
 @router.get("/auth/ga4/match")
 async def match_ga4_property(
     domain: str,
@@ -76,7 +104,7 @@ async def match_ga4_property(
     """Resolve which GA4 property matches a given site domain (from the sidebar picker)."""
     from services.analytics_service import AnalyticsService
 
-    google_token, is_refresh = _get_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -109,7 +137,7 @@ async def get_ga4_overview(
     """Get headline GA4 metrics, daily time-series, deltas and traffic-by-channel."""
     from services.analytics_service import AnalyticsService
 
-    google_token, is_refresh = _get_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -140,7 +168,7 @@ async def get_ga4_geo(
     """Sessions by country with period-over-period deltas for the world map."""
     from services.analytics_service import AnalyticsService
 
-    google_token, is_refresh = _get_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
     try:
@@ -165,7 +193,7 @@ async def get_ga4_devices(
     """Sessions by device category (desktop / mobile / tablet) with % share and delta."""
     from services.analytics_service import AnalyticsService
 
-    google_token, is_refresh = _get_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
     try:
@@ -190,7 +218,7 @@ async def get_ga4_pages(
     """Top pages by views with users, avg engagement time and bounce rate."""
     from services.analytics_service import AnalyticsService
 
-    google_token, is_refresh = _get_token(db, current_user.email, account_id)
+    google_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not google_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google account not connected.")
     try:

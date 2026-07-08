@@ -26,7 +26,7 @@ async def connect_gsc(
     """
     from services.gsc_service import GSCService
     from utils.user_manager import update_gsc_token, get_or_create_user
-    import requests as http_requests
+    from api.routers._shared import exchange_google_code
 
     gsc_code = request.get('gsc_code')
     if not gsc_code:
@@ -37,23 +37,7 @@ async def connect_gsc(
 
     # Exchange the authorization code for access + refresh tokens
     try:
-        token_response = http_requests.post(
-            'https://oauth2.googleapis.com/token',
-            data={
-                'code': gsc_code,
-                'client_id': settings.GOOGLE_CLIENT_ID,
-                'client_secret': settings.GOOGLE_CLIENT_SECRET,
-                'redirect_uri': 'postmessage',  # Required for popup/ux_mode flows
-                'grant_type': 'authorization_code',
-            }
-        )
-        token_data = token_response.json()
-
-        if 'error' in token_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Google token exchange failed: {token_data.get('error_description', token_data['error'])}"
-            )
+        token_data = exchange_google_code(gsc_code)
 
         refresh_token = token_data.get('refresh_token')
         access_token = token_data.get('access_token')
@@ -124,6 +108,48 @@ async def get_gsc_properties(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch properties: {str(e)}"
         )
+
+
+@router.get("/auth/gsc/properties/all")
+async def get_gsc_properties_all(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Aggregate GSC properties across ALL connected Google accounts, grouped by
+    account, so every client is visible in one list without switching."""
+    import asyncio
+    from services.gsc_service import get_user_properties
+    from api.routers._shared import iter_google_accounts
+
+    accounts = iter_google_accounts(db, current_user.email)
+    if not accounts:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Google accounts connected. Please connect your Google account first.",
+        )
+
+    async def _one(acct):
+        # Distinct cache identity per Google account so one account's property
+        # list can't be served from another account's cached entry.
+        props = await get_user_properties(
+            acct["token"], is_refresh_token=acct["is_refresh"],
+            user_email=f"{current_user.email}|{acct['google_email']}",
+        )
+        return props
+
+    results = await asyncio.gather(*[_one(a) for a in accounts], return_exceptions=True)
+
+    groups, errors = [], []
+    for acct, res in zip(accounts, results):
+        if isinstance(res, Exception):
+            errors.append({"account_id": acct["account_id"], "google_email": acct["google_email"], "error": str(res)})
+            continue
+        groups.append({
+            "account_id": acct["account_id"],
+            "google_email": acct["google_email"],
+            "properties": res or [],
+        })
+    return {"groups": groups, "errors": errors}
 
 
 @router.post("/auth/gsc/disconnect")

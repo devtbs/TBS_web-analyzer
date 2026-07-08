@@ -3,6 +3,14 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
+import { useAuth } from '../context/AuthContext';
+
+/* Flatten the grouped /all response into a single list, tagging each item with
+   the Google account it belongs to. */
+const flattenGroups = (groups, key) =>
+    (groups || []).flatMap(g =>
+        (g[key] || []).map(item => ({ ...item, account_id: g.account_id, google_email: g.google_email }))
+    );
 
 const prettyName = (url) => {
     if (!url) return url;
@@ -31,6 +39,7 @@ const siteTags = (url) => {
 };
 
 const Presentation = () => {
+    const { switchAccount } = useAuth();
     const [mode, setMode] = useState('gsc');           // 'gsc' | 'ads' | 'pdf'  (gsc deck auto-includes GA4)
 
     // GSC site picker
@@ -74,10 +83,10 @@ const Presentation = () => {
     useEffect(() => {
         (async () => {
             try {
-                const res = await api.get('/auth/gsc/properties');
-                const list = res.data.properties || [];
+                const res = await api.get('/auth/gsc/properties/all');
+                const list = flattenGroups(res.data.groups, 'properties');
                 setProperties(list);
-                if (list.length) { setPropUrl(list[0].url); setQuery(prettyName(list[0].url)); }
+                if (list.length) { setPropUrl(list[0].url); setQuery(prettyName(list[0].url)); switchAccount(list[0].account_id); }
             } catch { toast.error('Could not load sites — is Search Console connected?'); }
             finally { setLoadingProps(false); }
         })();
@@ -109,10 +118,10 @@ const Presentation = () => {
             setAdsLoaded(true); setAdsLoading(true);
             (async () => {
                 try {
-                    const res = await api.get('/auth/ads/customers');
-                    const list = res.data.customers || [];
+                    const res = await api.get('/auth/ads/customers/all');
+                    const list = flattenGroups(res.data.groups, 'customers');
                     setAdsCusts(list);
-                    if (list.length) setAdsCustId(list[0].customer_id);
+                    if (list.length) { setAdsCustId(list[0].customer_id); switchAccount(list[0].account_id); }
                     else if (res.data.configured === false) toast.error('Google Ads is not configured yet.');
                 } catch { toast.error('Could not load Google Ads accounts.'); }
                 finally { setAdsLoading(false); }
@@ -128,7 +137,7 @@ const Presentation = () => {
         return list.slice(0, 100);
     }, [properties, query, propUrl]);
 
-    const pick = (p) => { setPropUrl(p.url); setQuery(prettyName(p.url)); setOpen(false); };
+    const pick = (p) => { switchAccount(p.account_id); setPropUrl(p.url); setQuery(prettyName(p.url)); setOpen(false); };
 
     const adsLabel = useMemo(
         () => adsCusts.find((c) => c.customer_id === adsCustId)?.display || '',
@@ -280,20 +289,27 @@ const Presentation = () => {
                             {open && !loadingProps && (
                                 <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg max-h-72 overflow-auto">
                                     {filtered.length === 0 && <div className="px-4 py-3 text-sm text-slate-400">No matches</div>}
-                                    {filtered.map((p) => (
-                                        <button key={p.url} onClick={() => pick(p)}
-                                            className={`flex items-center gap-2.5 w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${p.url === propUrl ? 'text-[#26397A] font-bold bg-slate-50' : 'text-slate-700'}`}>
-                                            <img src={siteFavicon(p.url)} alt="" className="w-4 h-4 rounded-sm flex-shrink-0"
-                                                onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
-                                            <span className="truncate">{prettyName(p.url)}</span>
-                                            <span className="ml-auto flex items-center gap-1 flex-shrink-0">
-                                                {siteTags(p.url).map((t) => (
-                                                    <span key={t.label} className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md border ${t.cls}`}>
-                                                        {t.label}
+                                    {Object.entries(
+                                        filtered.reduce((acc, p) => { (acc[p.google_email || 'Account'] ||= []).push(p); return acc; }, {})
+                                    ).map(([email, items]) => (
+                                        <div key={email}>
+                                            <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{email}</p>
+                                            {items.map((p) => (
+                                                <button key={p.url} onClick={() => pick(p)}
+                                                    className={`flex items-center gap-2.5 w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 ${p.url === propUrl ? 'text-[#26397A] font-bold bg-slate-50' : 'text-slate-700'}`}>
+                                                    <img src={siteFavicon(p.url)} alt="" className="w-4 h-4 rounded-sm flex-shrink-0"
+                                                        onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+                                                    <span className="truncate">{prettyName(p.url)}</span>
+                                                    <span className="ml-auto flex items-center gap-1 flex-shrink-0">
+                                                        {siteTags(p.url).map((t) => (
+                                                            <span key={t.label} className={`px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md border ${t.cls}`}>
+                                                                {t.label}
+                                                            </span>
+                                                        ))}
                                                     </span>
-                                                ))}
-                                            </span>
-                                        </button>
+                                                </button>
+                                            ))}
+                                        </div>
                                     ))}
                                 </div>
                             )}
@@ -337,23 +353,27 @@ const Presentation = () => {
                                         />
                                     </div>
                                     <ul className="max-h-52 overflow-y-auto">
-                                        {adsCusts
-                                            .filter(c => c.display.toLowerCase().includes(adsQuery.toLowerCase()) || c.customer_id.includes(adsQuery))
-                                            .map(c => (
-                                                <li key={c.customer_id}>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => { setAdsCustId(c.customer_id); setAdsOpen(false); setAdsQuery(''); }}
-                                                        className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between gap-2 ${c.customer_id === adsCustId ? 'bg-indigo-50 text-[#26397A] font-medium' : 'text-slate-700'}`}
-                                                    >
-                                                        <span>{c.display}{c.currency ? ` (${c.currency})` : ''}</span>
-                                                        {c.customer_id === adsCustId && <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                                                    </button>
+                                        {(() => {
+                                            const matches = adsCusts.filter(c => c.display.toLowerCase().includes(adsQuery.toLowerCase()) || c.customer_id.includes(adsQuery));
+                                            if (matches.length === 0) return <li className="px-4 py-3 text-sm text-slate-400">No accounts match "{adsQuery}"</li>;
+                                            const groups = matches.reduce((acc, c) => { (acc[c.google_email || 'Account'] ||= []).push(c); return acc; }, {});
+                                            return Object.entries(groups).map(([email, items]) => (
+                                                <li key={email}>
+                                                    <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{email}</p>
+                                                    {items.map(c => (
+                                                        <button
+                                                            key={c.customer_id}
+                                                            type="button"
+                                                            onClick={() => { switchAccount(c.account_id); setAdsCustId(c.customer_id); setAdsOpen(false); setAdsQuery(''); }}
+                                                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between gap-2 ${c.customer_id === adsCustId ? 'bg-indigo-50 text-[#26397A] font-medium' : 'text-slate-700'}`}
+                                                        >
+                                                            <span>{c.display}{c.currency ? ` (${c.currency})` : ''}</span>
+                                                            {c.customer_id === adsCustId && <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                                                        </button>
+                                                    ))}
                                                 </li>
-                                            ))}
-                                        {adsCusts.filter(c => c.display.toLowerCase().includes(adsQuery.toLowerCase()) || c.customer_id.includes(adsQuery)).length === 0 && (
-                                            <li className="px-4 py-3 text-sm text-slate-400">No accounts match "{adsQuery}"</li>
-                                        )}
+                                            ));
+                                        })()}
                                     </ul>
                                 </div>
                             )}

@@ -56,7 +56,12 @@ def _cache_set(key: tuple, data, ttl: int):
 
 def invalidate_cache(user_email: str = None):
     """Invalidate all cache entries, optionally scoped to a user."""
-    keys = [k for k in _CACHE if user_email is None or k[0] == user_email]
+    # Aggregate ("/all") list endpoints cache each account under a composite identity
+    # f"{user_email}|{google_email}", so match both the plain email and that prefix —
+    # otherwise per-account list entries survive invalidation and stay stale until TTL.
+    def _matches(k0):
+        return user_email is None or k0 == user_email or str(k0).startswith(user_email + "|")
+    keys = [k for k in _CACHE if _matches(k[0])]
     for k in keys:
         del _CACHE[k]
     logger.info(f"Cache invalidated: {len(keys)} entries removed")

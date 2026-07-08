@@ -22,7 +22,7 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
       • Legacy id-token flow: the frontend sends `token` (identity only, no data scopes).
     """
     from utils.user_manager import get_or_create_user, update_gsc_token
-    import requests as http_requests
+    from api.routers._shared import exchange_google_code
 
     code = request.get('code')
     token = request.get('token')
@@ -32,22 +32,7 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
 
     if code:
         # Exchange the authorization code for id/access/refresh tokens.
-        token_response = http_requests.post(
-            'https://oauth2.googleapis.com/token',
-            data={
-                'code': code,
-                'client_id': settings.GOOGLE_CLIENT_ID,
-                'client_secret': settings.GOOGLE_CLIENT_SECRET,
-                'redirect_uri': 'postmessage',  # Required for popup/ux_mode flows
-                'grant_type': 'authorization_code',
-            },
-        )
-        token_data = token_response.json()
-        if 'error' in token_data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Google token exchange failed: {token_data.get('error_description', token_data['error'])}"
-            )
+        token_data = exchange_google_code(code)
 
         id_tok = token_data.get('id_token')
         if not id_tok:

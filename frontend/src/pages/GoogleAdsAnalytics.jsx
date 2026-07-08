@@ -28,6 +28,14 @@ import {
 import { ArrowTrendingUpIcon, ArrowTrendingDownIcon } from '@heroicons/react/24/solid';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+
+/* Flatten the grouped /all response into a single list, tagging each item with
+   the Google account it belongs to. */
+const flattenGroups = (groups, key) =>
+    (groups || []).flatMap(g =>
+        (g[key] || []).map(item => ({ ...item, account_id: g.account_id, google_email: g.google_email }))
+    );
 
 /* ── Date-range presets ─────────────────────────────────────── */
 const RANGE_OPTIONS = [
@@ -153,6 +161,7 @@ const HeatCell = ({ value, max, label }) => {
 /* ── Main component ──────────────────────────────────────────── */
 const GoogleAdsAnalytics = () => {
     const navigate = useNavigate();
+    const { switchAccount } = useAuth();
     const [configured, setConfigured] = useState(null);
     const [isConnected, setIsConnected] = useState(null);
     const [customers, setCustomers] = useState([]);
@@ -189,13 +198,18 @@ const GoogleAdsAnalytics = () => {
                 setConfigured(true);
             }
             try {
-                const res = await api.get('/auth/ads/customers');
+                // Aggregate Ads customers across ALL connected Google accounts.
+                const res = await api.get('/auth/ads/customers/all');
                 if (res.data.configured === false) { setConfigured(false); return; }
-                const list = res.data.customers || [];
+                const list = flattenGroups(res.data.groups, 'customers');
                 setCustomers(list);
                 setIsConnected(list.length > 0);
                 const saved = localStorage.getItem('google_ads_selected_customer');
-                if (saved && list.some(c => c.customer_id === saved)) setSelectedCustomer(saved);
+                const savedCust = saved && list.find(c => c.customer_id === saved);
+                if (savedCust) {
+                    setSelectedCustomer(saved);
+                    switchAccount(savedCust.account_id);  // point the API at the right account
+                }
             } catch (err) {
                 setIsConnected(false);
                 if (err.response?.status === 403) {
@@ -390,15 +404,25 @@ const GoogleAdsAnalytics = () => {
                                         <div className="max-h-[300px] overflow-y-auto p-1.5">
                                             {filtered.length === 0 ? (
                                                 <p className="text-[12px] text-slate-400 text-center py-6">No accounts match "{custSearch}"</p>
-                                            ) : filtered.map(c => (
-                                                <button
-                                                    key={c.customer_id}
-                                                    onClick={() => { setSelectedCustomer(c.customer_id); setIsPickerOpen(false); setCustSearch(''); }}
-                                                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${c.customer_id === selectedCustomer ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-700'}`}
-                                                >
-                                                    <p className="text-[13px] font-semibold truncate">{c.display}</p>
-                                                    <p className="text-[11px] text-slate-400 truncate">{c.customer_id}{c.currency ? ` · ${c.currency}` : ''}</p>
-                                                </button>
+                                            ) : Object.entries(
+                                                filtered.reduce((acc, c) => {
+                                                    (acc[c.google_email] ||= []).push(c);
+                                                    return acc;
+                                                }, {})
+                                            ).map(([email, items]) => (
+                                                <div key={email} className="mb-1">
+                                                    <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{email}</p>
+                                                    {items.map(c => (
+                                                        <button
+                                                            key={c.customer_id}
+                                                            onClick={() => { switchAccount(c.account_id); setSelectedCustomer(c.customer_id); setIsPickerOpen(false); setCustSearch(''); }}
+                                                            className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${c.customer_id === selectedCustomer ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-700'}`}
+                                                        >
+                                                            <p className="text-[13px] font-semibold truncate">{c.display}</p>
+                                                            <p className="text-[11px] text-slate-400 truncate">{c.customer_id}{c.currency ? ` · ${c.currency}` : ''}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             ))}
                                         </div>
                                     </div>

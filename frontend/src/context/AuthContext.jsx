@@ -30,7 +30,16 @@ export const AuthProvider = ({ children }) => {
     const fetchAccounts = useCallback(async () => {
         try {
             const res = await api.get('/auth/accounts');
-            setConnectedAccounts(res.data.accounts || []);
+            const accounts = res.data.accounts || [];
+            setConnectedAccounts(accounts);
+            // Guard against a stale selection: if the saved account no longer exists
+            // (disconnected elsewhere / DB reset), revert to the primary token so we
+            // don't keep sending a dead X-Account-Id header (which 404s every request).
+            const raw = storage.get('selected_account_id');
+            if (raw && !accounts.some(a => a.id === parseInt(raw, 10))) {
+                storage.remove('selected_account_id');
+                setSelectedAccountId(null);
+            }
         } catch {
             setConnectedAccounts([]);
         }

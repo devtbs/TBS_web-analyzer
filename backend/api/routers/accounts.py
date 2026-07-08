@@ -40,28 +40,13 @@ async def connect_account(
     The frontend runs the same OAuth consent (webmasters + analytics + adwords
     scopes) for the new Gmail and sends the resulting `code` here.
     """
-    import requests as http_requests
+    from api.routers._shared import exchange_google_code
 
     code = request.get("code")
     if not code:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'code' is required.")
 
-    token_response = http_requests.post(
-        "https://oauth2.googleapis.com/token",
-        data={
-            "code": code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": "postmessage",
-            "grant_type": "authorization_code",
-        },
-    )
-    token_data = token_response.json()
-    if "error" in token_data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Google token exchange failed: {token_data.get('error_description', token_data['error'])}",
-        )
+    token_data = exchange_google_code(code)
 
     refresh_token = token_data.get("refresh_token")
     if not refresh_token:

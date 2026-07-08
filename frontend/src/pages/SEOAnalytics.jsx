@@ -26,6 +26,14 @@ import { ArrowTrendingUpIcon, ArrowTrendingDownIcon } from '@heroicons/react/24/
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import Favicon from '../components/ui/Favicon';
+import { useAuth } from '../context/AuthContext';
+
+/* Flatten the grouped /all response into a single property list, tagging each
+   property with the Google account it belongs to. */
+const flattenGroups = (groups) =>
+    (groups || []).flatMap(g =>
+        (g.properties || []).map(p => ({ ...p, account_id: g.account_id, google_email: g.google_email }))
+    );
 import LookerStudioTables from '../components/seo/LookerStudioTables';
 import { countryLabel } from '../utils/countries';
 
@@ -272,6 +280,7 @@ const presetToDays = (preset) => {
 /* ── Component ─────────────────────────────────────────────── */
 const SEOAnalytics = () => {
     const navigate = useNavigate();
+    const { switchAccount } = useAuth();
     const [isConnected, setIsConnected] = useState(null);
     const [properties, setProperties] = useState([]);
     const [selectedProperty, setSelectedProperty] = useState('');
@@ -383,14 +392,16 @@ const SEOAnalytics = () => {
                     setIsConnected(false);
                     return;
                 }
-                const res = await api.get('/auth/gsc/properties');
-                const fetchedProps = res.data.properties || [];
+                // Aggregate GSC properties across ALL connected Google accounts.
+                const res = await api.get('/auth/gsc/properties/all');
+                const fetchedProps = flattenGroups(res.data.groups);
                 setProperties(fetchedProps);
                 setIsConnected(true);
                 if (fetchedProps.length > 0) {
                     const savedProperty = localStorage.getItem('gsc_selected_property');
-                    const isValidSaved = fetchedProps.some(p => p.url === savedProperty);
-                    setSelectedProperty(isValidSaved ? savedProperty : fetchedProps[0].url);
+                    const chosen = fetchedProps.find(p => p.url === savedProperty) || fetchedProps[0];
+                    setSelectedProperty(chosen.url);
+                    switchAccount(chosen.account_id);  // point the API at the right account
                 }
             } catch (err) {
                 setIsConnected(false);

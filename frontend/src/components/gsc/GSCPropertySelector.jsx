@@ -12,6 +12,14 @@ import {
 import { CheckCircleIcon as SolidCheckCircle } from '@heroicons/react/24/solid';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
+
+/* Flatten the grouped /all response into a single property list, tagging each
+   property with the Google account it belongs to. */
+const flattenGroups = (groups) =>
+    (groups || []).flatMap(g =>
+        (g.properties || []).map(p => ({ ...p, account_id: g.account_id, google_email: g.google_email }))
+    );
 
 /* ─── Small helpers ───────────────────────────────────────────────── */
 // Domain properties arrive as "sc-domain:example.com" (no scheme), which breaks
@@ -55,6 +63,7 @@ const FullSkeleton = () => (
 /* ─── Main ────────────────────────────────────────────────────────── */
 const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const navigate = useNavigate();
+    const { switchAccount } = useAuth();
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
@@ -102,10 +111,11 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         setIsCheckingStatus(true);
         setProperties([]);  // clear stale data from previous account before fetching
         try {
-            const res = await api.get('/auth/gsc/properties');
-            if (res.data.properties?.length) {
+            const res = await api.get('/auth/gsc/properties/all');
+            const props = flattenGroups(res.data.groups);
+            if (props.length) {
                 setIsConnected(true);
-                setProperties(res.data.properties);
+                setProperties(props);
             } else {
                 // Connected but no properties — treat as disconnected
                 setIsConnected(false);
@@ -190,10 +200,10 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const fetchProperties = async () => {
         setIsFetching(true);
         try {
-            const authToken = localStorage.getItem('access_token');
-            const res = await api.get('/auth/gsc/properties');
-            setProperties(res.data.properties || []);
-            if (!res.data.properties?.length) toast('No Search Console properties found.', { duration: 6000 });
+            const res = await api.get('/auth/gsc/properties/all');
+            const props = flattenGroups(res.data.groups);
+            setProperties(props);
+            if (!props.length) toast('No Search Console properties found.', { duration: 6000 });
         } catch (err) {
             toast.error(err.response?.data?.detail || 'Failed to fetch properties');
             setIsConnected(false);
@@ -217,10 +227,18 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         const selected = selectedProperties.some(p => p.url === property.url);
         if (selected) {
             onPropertySelect(selectedProperties.filter(p => p.url !== property.url));
-        } else {
-            if (selectedProperties.length >= 5) { toast.error('Maximum 5 properties'); return; }
-            onPropertySelect([...selectedProperties, property]);
+            return;
         }
+        // A single analysis must stay within one Google account so all selected
+        // properties share one token. Block mixing accounts.
+        if (selectedProperties.length > 0 && selectedProperties[0].account_id !== property.account_id) {
+            toast.error('You can only analyze properties from one Google account at a time. Clear your selection to switch accounts.');
+            return;
+        }
+        if (selectedProperties.length >= 5) { toast.error('Maximum 5 properties'); return; }
+        // Point the API at the account that owns this property.
+        switchAccount(property.account_id);
+        onPropertySelect([...selectedProperties, property]);
     };
 
     const handleSelectPages = (property, e) => {
@@ -229,6 +247,79 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     };
 
     const filtered = properties.filter(p => (p.display || p.url).toLowerCase().includes(searchQuery.toLowerCase()));
+
+    // Group filtered properties by the Google account that owns them.
+    const groupedFiltered = filtered.reduce((acc, p) => {
+        (acc[p.google_email || 'Account'] ||= []).push(p);
+        return acc;
+    }, {});
+    // Once a selection exists, properties from other accounts are locked out.
+    const activeAccountId = selectedProperties.length ? selectedProperties[0].account_id : undefined;
+
+    const renderRow = (property, idx) => {
+        const isSelected = selectedProperties.some(p => p.url === property.url);
+        const domain = getDomain(property);
+        const faviconUrl = getFaviconUrl(property);
+        const permLabel = property.permission_level?.replace(/_/g, ' ');
+        const isDomainProp = property.type === 'domain';
+
+        return (
+            <motion.div
+                key={property.url}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                onClick={() => handlePropertyToggle(property)}
+                className={`flex flex-col sm:flex-row sm:items-center justify-between py-4 mb-3 border cursor-pointer transition-all duration-300 gap-4 group px-5 rounded-2xl
+                    ${isSelected
+                        ? 'bg-emerald-50/50 border-emerald-400 shadow-sm ring-1 ring-emerald-500/20'
+                        : 'bg-white border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/30 hover:-translate-y-0.5'}`}
+            >
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                    {/* Favicon / Icon */}
+                    <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100/60 flex flex-shrink-0 items-center justify-center">
+                        {faviconUrl ? (
+                            <img src={faviconUrl} alt={domain} className="w-6 h-6 object-contain opacity-90"
+                                onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'block'; }}
+                            />
+                        ) : null}
+                        <LinkIcon className={`w-6 h-6 text-slate-400 ${faviconUrl ? 'hidden' : ''}`} />
+                    </div>
+
+                    {/* Domain & Permission */}
+                    <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-center">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <p className="text-base font-bold text-slate-800 truncate">{domain}</p>
+                            {isDomainProp && (
+                                <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
+                                    Domain
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-sm font-medium text-slate-500 capitalize hidden sm:block truncate">{permLabel}</p>
+
+                        <div className="hidden lg:flex items-center gap-2 text-emerald-500 font-bold text-sm">
+                            <SolidCheckCircle className="w-5 h-5" />
+                            <span>Connected</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-4 flex-shrink-0">
+                    <div className="mr-3 h-5 w-5">
+                        {isSelected && <CheckCircleIcon className="w-6 h-6 text-emerald-600" />}
+                    </div>
+                    <button
+                        onClick={e => handleSelectPages(property, e)}
+                        className="px-5 py-2 text-sm font-bold border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors shadow-sm"
+                    >
+                        Select Pages
+                    </button>
+                </div>
+            </motion.div>
+        );
+    };
 
     /* ── Loading ── */
     if (isCheckingStatus) return <FullSkeleton />;
@@ -352,68 +443,16 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                 ) : (
                     <div className="border-t border-slate-100/80 max-h-[480px] overflow-y-auto pr-1" style={{ scrollbarWidth: 'thin' }}>
                         <AnimatePresence>
-                            {filtered.map((property, idx) => {
-                                const isSelected = selectedProperties.some(p => p.url === property.url);
-                                const domain = getDomain(property);
-                                const faviconUrl = getFaviconUrl(property);
-                                const permLabel = property.permission_level?.replace(/_/g, ' ');
-                                const isDomainProp = property.type === 'domain';
-
+                            {Object.entries(groupedFiltered).map(([email, items]) => {
+                                const locked = activeAccountId !== undefined && items[0].account_id !== activeAccountId;
                                 return (
-                                    <motion.div
-                                        key={property.url}
-                                        initial={{ opacity: 0, y: 5 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: idx * 0.05 }}
-                                        onClick={() => handlePropertyToggle(property)}
-                                        className={`flex flex-col sm:flex-row sm:items-center justify-between py-4 mb-3 border cursor-pointer transition-all duration-300 gap-4 group px-5 rounded-2xl
-                                            ${isSelected 
-                                                ? 'bg-emerald-50/50 border-emerald-400 shadow-sm ring-1 ring-emerald-500/20' 
-                                                : 'bg-white border-slate-200 shadow-sm hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/30 hover:-translate-y-0.5'}`}
-                                    >
-                                        <div className="flex items-center gap-4 flex-1 min-w-0">
-                                            {/* Favicon / Icon */}
-                                            <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100/60 flex flex-shrink-0 items-center justify-center">
-                                                {faviconUrl ? (
-                                                    <img src={faviconUrl} alt={domain} className="w-6 h-6 object-contain opacity-90"
-                                                        onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'block'; }}
-                                                    />
-                                                ) : null}
-                                                <LinkIcon className={`w-6 h-6 text-slate-400 ${faviconUrl ? 'hidden' : ''}`} />
-                                            </div>
-
-                                            {/* Domain & Permission */}
-                                            <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 items-center">
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <p className="text-base font-bold text-slate-800 truncate">{domain}</p>
-                                                    {isDomainProp && (
-                                                        <span className="flex-shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                                            Domain
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="text-sm font-medium text-slate-500 capitalize hidden sm:block truncate">{permLabel}</p>
-                                                
-                                                <div className="hidden lg:flex items-center gap-2 text-emerald-500 font-bold text-sm">
-                                                    <SolidCheckCircle className="w-5 h-5" />
-                                                    <span>Connected</span>
-                                                </div>
-                                            </div>
+                                    <div key={email} className={locked ? 'opacity-40' : ''}>
+                                        <div className="flex items-center gap-2 px-1 pt-2 pb-2">
+                                            <p className="text-xs font-bold uppercase tracking-wide text-slate-400 truncate">{email}</p>
+                                            {locked && <span className="text-[10px] font-semibold text-slate-400">(clear selection to switch)</span>}
                                         </div>
-
-                                        {/* Actions */}
-                                        <div className="flex items-center justify-end gap-4 flex-shrink-0">
-                                            <div className="mr-3 h-5 w-5">
-                                                {isSelected && <CheckCircleIcon className="w-6 h-6 text-emerald-600" />}
-                                            </div>
-                                            <button
-                                                onClick={e => handleSelectPages(property, e)}
-                                                className="px-5 py-2 text-sm font-bold border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors shadow-sm"
-                                            >
-                                                Select Pages
-                                            </button>
-                                        </div>
-                                    </motion.div>
+                                        {items.map((property, idx) => renderRow(property, idx))}
+                                    </div>
                                 );
                             })}
                         </AnimatePresence>

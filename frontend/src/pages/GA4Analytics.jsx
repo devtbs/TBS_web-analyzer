@@ -16,6 +16,14 @@ import {
 import { ArrowTrendingUpIcon, ArrowTrendingDownIcon } from '@heroicons/react/24/solid';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+
+/* Flatten the grouped /all response into a single property list, tagging each
+   property with the Google account it belongs to. */
+const flattenGroups = (groups, key) =>
+    (groups || []).flatMap(g =>
+        (g[key] || []).map(item => ({ ...item, account_id: g.account_id, google_email: g.google_email }))
+    );
 
 /* ── Date-range presets ──────────────────────────────────────── */
 const RANGE_OPTIONS = [
@@ -206,6 +214,7 @@ const WorldMap = ({ topCountries = [] }) => {
 /* ── Main component ──────────────────────────────────────────── */
 const GA4Analytics = () => {
     const navigate = useNavigate();
+    const { switchAccount } = useAuth();
 
     /* Connection / property state */
     const [isConnected,     setIsConnected]     = useState(null);
@@ -233,12 +242,17 @@ const GA4Analytics = () => {
         if (!localStorage.getItem('access_token')) { setIsConnected(false); return; }
         (async () => {
             try {
-                const res = await api.get('/auth/ga4/properties');
-                const props = res.data.properties || [];
+                // Aggregate GA4 properties across ALL connected Google accounts.
+                const res = await api.get('/auth/ga4/properties/all');
+                const props = flattenGroups(res.data.groups, 'properties');
                 setProperties(props);
                 setIsConnected(props.length > 0);
                 const saved = localStorage.getItem('ga4_selected_property');
-                if (saved && props.some(p => p.property_id === saved)) setSelectedProperty(saved);
+                const savedProp = saved && props.find(p => p.property_id === saved);
+                if (savedProp) {
+                    setSelectedProperty(saved);
+                    switchAccount(savedProp.account_id);  // point the API at the right account
+                }
             } catch (err) {
                 setIsConnected(false);
                 if (err.response?.status === 403) {
@@ -421,17 +435,27 @@ const GA4Analytics = () => {
                                         <div className="max-h-[280px] overflow-y-auto p-1.5">
                                             {filtered.length === 0 ? (
                                                 <p className="text-[12px] text-slate-400 text-center py-6">No properties match</p>
-                                            ) : filtered.map(p => (
-                                                <button
-                                                    key={p.property_id}
-                                                    onClick={() => { setSelectedProperty(p.property_id); setIsPickerOpen(false); setPropSearch(''); }}
-                                                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                                                        p.property_id === selectedProperty ? 'bg-emerald-50 text-emerald-700' : 'hover:bg-slate-50 text-slate-700'
-                                                    }`}
-                                                >
-                                                    <p className="text-[12px] font-semibold truncate">{p.display}</p>
-                                                    <p className="text-[10px] text-slate-400 truncate">{p.account} · {p.property_id}</p>
-                                                </button>
+                                            ) : Object.entries(
+                                                filtered.reduce((acc, p) => {
+                                                    (acc[p.google_email] ||= []).push(p);
+                                                    return acc;
+                                                }, {})
+                                            ).map(([email, items]) => (
+                                                <div key={email} className="mb-1">
+                                                    <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{email}</p>
+                                                    {items.map(p => (
+                                                        <button
+                                                            key={p.property_id}
+                                                            onClick={() => { switchAccount(p.account_id); setSelectedProperty(p.property_id); setIsPickerOpen(false); setPropSearch(''); }}
+                                                            className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                                                                p.property_id === selectedProperty ? 'bg-emerald-50 text-emerald-700' : 'hover:bg-slate-50 text-slate-700'
+                                                            }`}
+                                                        >
+                                                            <p className="text-[12px] font-semibold truncate">{p.display}</p>
+                                                            <p className="text-[10px] text-slate-400 truncate">{p.account} · {p.property_id}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             ))}
                                         </div>
                                     </div>

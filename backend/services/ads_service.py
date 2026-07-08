@@ -50,7 +50,12 @@ def _cache_set(key: tuple, data, ttl: int):
 
 
 def invalidate_cache(user_email: str = None):
-    keys = [k for k in _CACHE if user_email is None or k[0] == user_email]
+    # Aggregate ("/all") list endpoints cache each account under a composite identity
+    # f"{user_email}|{google_email}", so match both the plain email and that prefix —
+    # otherwise per-account list entries survive invalidation and stay stale until TTL.
+    def _matches(k0):
+        return user_email is None or k0 == user_email or str(k0).startswith(user_email + "|")
+    keys = [k for k in _CACHE if _matches(k[0])]
     for k in keys:
         del _CACHE[k]
     logger.info(f"Ads cache invalidated: {len(keys)} entries removed")
@@ -133,12 +138,15 @@ class AdsService:
         if login_cid:
             # Query child accounts directly from the MCC — avoids list_accessible_customers()
             # which returns every account the Google identity can reach (ignores login_customer_id).
+            # No `level = 1` filter: customer_client returns the MCC's full descendant tree,
+            # so dropping it also surfaces client accounts nested under a sub-manager
+            # (level 2+). manager = FALSE still excludes the sub-managers themselves.
             rows = await self._asearch(login_cid, (
                 "SELECT customer_client.id, customer_client.descriptive_name, "
                 "customer_client.currency_code, customer_client.manager, "
                 "customer_client.level "
                 "FROM customer_client "
-                "WHERE customer_client.manager = FALSE AND customer_client.level = 1"
+                "WHERE customer_client.manager = FALSE"
             ))
             for row in rows:
                 c = row.customer_client
