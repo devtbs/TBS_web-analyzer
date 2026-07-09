@@ -40,7 +40,7 @@ const siteTags = (url) => {
 
 const Presentation = () => {
     const { switchAccount } = useAuth();
-    const [mode, setMode] = useState('gsc');           // 'gsc' | 'ads' | 'pdf'  (gsc deck auto-includes GA4)
+    const [mode, setMode] = useState('gsc');           // 'gsc' | 'ga4' | 'ads' | 'pdf'
 
     // GSC site picker
     const [properties, setProperties] = useState([]);
@@ -49,6 +49,15 @@ const Presentation = () => {
     const [query, setQuery] = useState('');
     const [open, setOpen] = useState(false);
     const boxRef = useRef(null);
+
+    // GA4 property picker (loaded lazily when the GA4 tab is first opened)
+    const [ga4Props, setGa4Props] = useState([]);
+    const [ga4Loading, setGa4Loading] = useState(false);
+    const [ga4Loaded, setGa4Loaded] = useState(false);
+    const [ga4PropId, setGa4PropId] = useState('');
+    const [ga4Query, setGa4Query] = useState('');
+    const [ga4Open, setGa4Open] = useState(false);
+    const ga4BoxRef = useRef(null);
 
     // Google Ads account picker (loaded lazily when the Ads tab is first opened)
     const [adsCusts, setAdsCusts] = useState([]);
@@ -112,6 +121,28 @@ const Presentation = () => {
         return () => document.removeEventListener('mousedown', onClick);
     }, []);
 
+    useEffect(() => {
+        const onClick = (e) => { if (ga4BoxRef.current && !ga4BoxRef.current.contains(e.target)) setGa4Open(false); };
+        document.addEventListener('mousedown', onClick);
+        return () => document.removeEventListener('mousedown', onClick);
+    }, []);
+
+    // Lazily load the GA4 property list the first time its tab is opened.
+    useEffect(() => {
+        if (mode === 'ga4' && !ga4Loaded) {
+            setGa4Loaded(true); setGa4Loading(true);
+            (async () => {
+                try {
+                    const res = await api.get('/auth/ga4/properties/all');
+                    const list = flattenGroups(res.data.groups, 'properties');
+                    setGa4Props(list);
+                    if (list.length) { setGa4PropId(list[0].property_id); switchAccount(list[0].account_id); }
+                } catch { toast.error('Could not load Google Analytics properties.'); }
+                finally { setGa4Loading(false); }
+            })();
+        }
+    }, [mode, ga4Loaded]);
+
     // Lazily load the Ads source list the first time its tab is opened.
     useEffect(() => {
         if (mode === 'ads' && !adsLoaded) {
@@ -143,6 +174,10 @@ const Presentation = () => {
         () => adsCusts.find((c) => c.customer_id === adsCustId)?.display || '',
         [adsCusts, adsCustId]);
 
+    const ga4Label = useMemo(
+        () => ga4Props.find((p) => p.property_id === ga4PropId)?.display || '',
+        [ga4Props, ga4PropId]);
+
     // Read a Server-Sent Events stream, invoking handlers per (event, data) frame.
     const readSSE = async (response, { onProgress, onResult, onError }) => {
         const reader = response.body.getReader();
@@ -170,6 +205,7 @@ const Presentation = () => {
     };
 
     const canGenerate = mode === 'gsc' ? !!propUrl
+        : mode === 'ga4' ? !!ga4PropId
         : mode === 'ads' ? !!adsCustId
         : !!pdfFile;
 
@@ -177,6 +213,7 @@ const Presentation = () => {
         if (!canGenerate) {
             toast.error(mode === 'pdf' ? 'Choose a PDF first.'
                 : mode === 'ads' ? 'Pick a Google Ads account first.'
+                : mode === 'ga4' ? 'Pick a GA4 property first.'
                 : 'Pick a site first.');
             return;
         }
@@ -192,6 +229,10 @@ const Presentation = () => {
             if (mode === 'gsc') {
                 response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&images=${useImages}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+            } else if (mode === 'ga4') {
+                response = await fetch(
+                    `/api/presentation/ai-deck-ga4?property_id=${encodeURIComponent(ga4PropId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(ga4Label)}`,
                     { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
             } else if (mode === 'ads') {
                 response = await fetch(
@@ -269,7 +310,7 @@ const Presentation = () => {
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
                 <div className="grid grid-cols-3 gap-3 mb-6">
-                    {[['gsc', 'Monthly Reports'], ['ads', 'Google Ads'], ['pdf', 'From a PDF']].map(([m, label]) => (
+                    {[['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
                             className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
                                 mode === m ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
@@ -315,8 +356,69 @@ const Presentation = () => {
                             )}
                         </div>
                         <p className="-mt-4 mb-6 text-xs text-slate-400">
-                            Includes Google Analytics data automatically when a matching GA4 property is connected.
+                            Organic search performance from Google Search Console. For website analytics, use the GA4 tab.
                         </p>
+                    </>
+                )}
+
+                {mode === 'ga4' && (
+                    <>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Google Analytics property</label>
+                        <div className="relative mb-6" ref={ga4BoxRef}>
+                            <button
+                                type="button"
+                                disabled={ga4Loading || generating}
+                                onClick={() => !ga4Loading && !generating && setGa4Open(o => !o)}
+                                className={fieldCls + ' flex items-center justify-between text-left'}
+                            >
+                                <span className={ga4PropId ? 'text-slate-800' : 'text-slate-400'}>
+                                    {ga4Loading
+                                        ? 'Loading properties…'
+                                        : ga4PropId
+                                            ? (ga4Props.find(x => x.property_id === ga4PropId)?.display || ga4PropId)
+                                            : ga4Props.length === 0 ? 'No GA4 properties found' : 'Select a property…'}
+                                </span>
+                                <svg className={`w-4 h-4 text-slate-400 transition-transform ${ga4Open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {ga4Open && (
+                                <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
+                                        <MagnifyingGlassIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            placeholder="Search properties…"
+                                            value={ga4Query}
+                                            onChange={e => setGa4Query(e.target.value)}
+                                            className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder:text-slate-400"
+                                        />
+                                    </div>
+                                    <ul className="max-h-52 overflow-y-auto">
+                                        {(() => {
+                                            const matches = ga4Props.filter(p => (p.display || '').toLowerCase().includes(ga4Query.toLowerCase()) || (p.property_id || '').includes(ga4Query));
+                                            if (matches.length === 0) return <li className="px-4 py-3 text-sm text-slate-400">No properties match "{ga4Query}"</li>;
+                                            const groups = matches.reduce((acc, p) => { (acc[p.google_email || 'Account'] ||= []).push(p); return acc; }, {});
+                                            return Object.entries(groups).map(([email, items]) => (
+                                                <li key={email}>
+                                                    <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400 truncate">{email}</p>
+                                                    {items.map(p => (
+                                                        <button
+                                                            key={p.property_id}
+                                                            type="button"
+                                                            onClick={() => { switchAccount(p.account_id); setGa4PropId(p.property_id); setGa4Open(false); setGa4Query(''); }}
+                                                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between gap-2 ${p.property_id === ga4PropId ? 'bg-indigo-50 text-[#26397A] font-medium' : 'text-slate-700'}`}
+                                                        >
+                                                            <span className="truncate">{p.display}</span>
+                                                            {p.property_id === ga4PropId && <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                                                        </button>
+                                                    ))}
+                                                </li>
+                                            ));
+                                        })()}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
                     </>
                 )}
 

@@ -152,23 +152,49 @@ async def presentation_ai_deck_gsc(
     _require_llm_key()
     gsc_token, is_refresh = _require_google_token(db, current_user.email)
     service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-    # Same Google token also powers GA4 — used to put real sessions-by-country on the map
-    # (falls back to GSC clicks-by-country if there's no matching GA4 property).
-    ga4_service = None
-    try:
-        from services.analytics_service import AnalyticsService
-        ga4_service = AnalyticsService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
-    except Exception:
-        ga4_service = None
     notes = (body or {}).get("notes", "")
 
     async def run(on_progress):
         result = await generate_ai_gsc_deck(service, property, days, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, on_progress=on_progress,
-                                            ga4_service=ga4_service)
+                                            notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
+                                     label=result["domain"], provider=provider)
+        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+
+    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
+                             headers=_SSE_HEADERS)
+
+
+@router.post("/api/presentation/ai-deck-ga4")
+async def presentation_ai_deck_ga4(
+    property_id: str,
+    days: int = 28,
+    provider: str = "deepseek",
+    images: bool = True,
+    label: str = "",
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AI-designed website-analytics deck for a GA4 property, built from the logged-in
+    user's Google Analytics data. Query: ?property_id=<id>&days=N&label=<display name>"""
+    from services.report_generator import generate_ai_ga4_deck
+    from services.ai_deck_service import render_slide_images
+    from services.image_service import images_enabled
+    from services.analytics_service import AnalyticsService
+    _require_llm_key()
+    token, is_refresh = _require_google_token(db, current_user.email)
+    service = AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
+    notes = (body or {}).get("notes", "")
+
+    async def run(on_progress):
+        result = await generate_ai_ga4_deck(service, property_id, days, label=label, provider=provider,
+                                            images=images and images_enabled(),
+                                            notes=notes, on_progress=on_progress)
+        slides = await render_slide_images(result["html"], on_progress=on_progress)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="ga4",
                                      label=result["domain"], provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 

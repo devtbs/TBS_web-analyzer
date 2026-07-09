@@ -198,7 +198,7 @@ GOOGLE_ADS_STRUCTURE = (
 # When a site has no matching GA4 property the brief carries no analytics data, so the
 # GA4-only slides are explicitly OMITTABLE and the deck gracefully degrades to SEO-only.
 GSC_STRUCTURE = (
-    "1. Cover Slide — site/domain, 'Monthly Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/clicks/impressions on the cover — keep it clean.\n"
+    "1. Cover Slide — site/domain, 'Search Console Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips/clicks/impressions on the cover — keep it clean.\n"
     "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (clicks/impressions/CTR/position) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
     "3. Search Performance — clicks, impressions, CTR, average position with period-over-period change; highlight key wins visually.\n"
     "4. Performance Over Time — use MONTHLY PERFORMANCE: a Plotly COMBO chart with clicks & impressions as bars (accent / accent-2) and average POSITION as a line on a SECONDARY y-axis that is REVERSED (lower is better, so a rising line = improving rank). This chart MUST be self-explanatory: include a VISIBLE LEGEND that names each series (e.g. \"Clicks\", \"Impressions\", \"Avg position\") with \"showlegend\":true positioned at the top (and enough top margin that it is NOT clipped), give the primary y-axis the title \"clicks / impressions\" and the secondary y-axis the title \"avg position (lower is better)\", so a reader instantly knows the bars are traffic and the line is ranking. Optionally a second slide with the daily impressions and URL-clicks as filled AREA charts.\n"
@@ -237,6 +237,21 @@ GSC_STRUCTURE = (
     "17. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
     "18. Strategic Insights & Recommendations — actionable recommendations ONLY, spanning BOTH search and (when present) website analytics: SEO content/internal-linking/CTR/title improvements, target near-page-1 queries, defend declining queries/pages, plus double-down on best-converting channels and lift engagement/conversion where the analytics support it.\n"
     "19. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+)
+
+
+# Structure for the GA4-only website-analytics deck (Google Analytics on-site behaviour).
+# No Search Console / organic-search slides — this deck is purely GA4.
+GA4_STRUCTURE = (
+    "1. Cover Slide — site/property name, 'Website Analytics Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips on the cover — keep it clean.\n"
+    "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (sessions/users trend or channel mix) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (NOT large number cards with empty space). Strongest positives, short strategic summary.\n"
+    "3. Audience & Engagement — from AUDIENCE & ENGAGEMENT: sessions, total users, new users, pageviews, engagement rate, bounce rate, avg session duration and conversions with their period-over-period change; highlight key wins visually.\n"
+    "4. Sessions Over Time — from SESSIONS OVER TIME: the daily series as the hero chart, an area/line of sessions & users (with conversions overlaid if present). Include a VISIBLE LEGEND naming each series and clear axis titles.\n"
+    "5. Traffic by Channel (REQUIRED — always include this slide) — from TRAFFIC BY CHANNEL: how sessions/users/conversions split across channels (organic, direct, paid, referral, social, etc.). Use a horizontal bar or donut of sessions by channel paired with a small labelled table; highlight the strongest acquisition channels and frame conversions positively.\n"
+    "6. Sessions by Device — from BY DEVICE: a donut or bar of sessions by desktop/mobile/tablet with each device's session share; note the period-over-period movement. OMIT this slide if BY DEVICE is (none).\n"
+    "7. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\", \"locationmode\":\"country names\") shaded by sessions, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
+    "8. Strategic Insights & Recommendations — actionable recommendations ONLY, grounded in the analytics: double-down on best-converting channels, lift engagement/reduce bounce where the data supports it, grow the strongest audiences/geographies, and improve conversion paths.\n"
+    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 

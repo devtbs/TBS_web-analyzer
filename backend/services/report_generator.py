@@ -540,6 +540,95 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
 
 
 # ============================================================================
+# GA4 (Google Analytics) → AI deck. Website analytics / on-site behaviour only.
+# ============================================================================
+
+async def assemble_ga4_context(service, property_id: str, days: int = 28, *,
+                               label: str = "") -> Dict:
+    """Gather GA4 overview (audience/engagement, sessions trend, channels), device split
+    and sessions-by-country for one property. Each optional block degrades gracefully."""
+    async def _safe(coro, default):
+        try:
+            return await coro
+        except Exception as e:
+            logger.warning("GA4 sub-fetch failed (non-fatal): %s", e)
+            return default
+
+    overview = await service.get_overview(property_id, days=days)
+    devices = await _safe(service.get_devices(property_id, days=days), [])
+    geo = await _safe(service.get_geo(property_id, days=days), [])
+    period = overview.get("period") or {}
+    return {
+        "property_id": property_id,
+        "name": label or f"Property {property_id}",
+        "days": days,
+        "period_label": _human_period(period.get("start", ""), period.get("end", "")),
+        "totals": overview.get("totals") or {},
+        "deltas": overview.get("deltas") or {},
+        "trend": overview.get("chart_data") or [],
+        "channels": overview.get("channels") or [],
+        "devices": devices,
+        "geo": geo,
+    }
+
+
+def _ga4_data_brief(ctx: Dict) -> str:
+    """Client-facing brief for a GA4-only deck: reuses the shared audience/engagement,
+    sessions-trend and channel sections, plus device and geography breakdowns."""
+    device_lines = "\n".join(
+        f"  - {d.get('device','')}: {d.get('sessions',0)} sessions "
+        f"({d.get('session_share_pct',0)}% share)"
+        for d in ctx.get("devices", [])
+    ) or "  (none)"
+    geo_lines = "\n".join(
+        f"  - {r.get('country','')}: {r.get('sessions',0)} sessions, {r.get('users',0)} users"
+        for r in ctx.get("geo", [])
+    ) or "  (none)"
+
+    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    core = _ga4_brief_sections(ctx)
+    return f"""Website analytics (Google Analytics / GA4) report for {ctx['name']}.
+Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+On the COVER slide, show this reporting period ({period_label}) as the subtitle.
+
+{core}
+
+BY DEVICE (sessions by device category):
+{device_lines}
+
+GEOGRAPHY — SESSIONS BY COUNTRY (use for a choropleth world map + a top-countries bar).
+Country values are full English names — render a Plotly choropleth with "locationmode":"country names", shaded by sessions.
+{geo_lines}
+
+Use only these numbers. Positive but honest framing; declines = opportunities."""
+
+
+async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
+                               label: str = "", provider: str = "deepseek",
+                               prompt: Optional[str] = None, images: bool = True,
+                               notes: str = "", on_progress=None) -> Dict:
+    """AI-designed website-analytics deck for a GA4 property. Returns the HTML only —
+    the file is rendered on download. `label` is the property display name (for the cover)."""
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
+                                          _AI_IMG_RE, GA4_STRUCTURE, UNIQUE_STYLE_BRAND)
+    from services.highlights import to_brief_block
+    if on_progress:
+        await on_progress("Gathering Google Analytics data…")
+    context = await assemble_ga4_context(service, property_id, days, label=label)
+    name = context["name"]
+    brief = _ga4_data_brief(context) + to_brief_block(notes)
+    image_cache = {} if images else None
+    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+                                    structure=GA4_STRUCTURE, provider=provider,
+                                    on_progress=on_progress, image_cache=image_cache,
+                                    seed=name)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
+    return {"property_id": property_id, "domain": name, "html": html}
+
+
+# ============================================================================
 # Shared helpers for GA4/Ads period formatting.
 # ============================================================================
 
