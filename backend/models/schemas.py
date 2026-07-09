@@ -82,6 +82,8 @@ class AudienceSegment(BaseModel):
     primary_goal: str
     pain_points: List[str] = []
     content_types: List[str] = []
+    funnel_stage: Optional[str] = None      # "Top", "Middle", or "Bottom"
+    preferred_format: Optional[str] = None  # e.g. "Video", "Whitepapers", "Live demos"
 
 
 class ContentStrategy(BaseModel):

@@ -126,6 +126,12 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         ontology: true,
         tools: true
     });
+    const [expandedQueryCats, setExpandedQueryCats] = useState({});
+    const [articleFilter, setArticleFilter] = useState('');
+    const [articleL1, setArticleL1] = useState('');
+    const [articleL2, setArticleL2] = useState('');
+    const [articleL3, setArticleL3] = useState('');
+    const [expandedArticleInfo, setExpandedArticleInfo] = useState(new Set());
 
     if (!topicalMaps || topicalMaps.length === 0) {
         return (
@@ -722,6 +728,43 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                         </div>
                                 )}
                             </div>
+
+                            {/* Lower block — linguistic & structural relationship types */}
+                            {(() => {
+                                const relGroups = [
+                                    { key: 'synonyms', label: 'Synonyms', desc: 'Alternative terms' },
+                                    { key: 'troponyms', label: 'Troponyms', desc: 'Ways of Doing' },
+                                    { key: 'antonyms', label: 'Antonyms', desc: 'Contrasting Concepts' },
+                                    { key: 'entailments', label: 'Entailments', desc: 'Results & Consequences' },
+                                    { key: 'hypernyms', label: 'Hypernyms', desc: 'Broader Categories' },
+                                    { key: 'acronyms', label: 'Acronyms', desc: 'Abbreviations' },
+                                    { key: 'holonyms', label: 'Holonyms', desc: 'Whole Containing the Entity' },
+                                    { key: 'polysemes', label: 'Polysemes', desc: 'Multiple Meanings' },
+                                ];
+                                const hasAny = relGroups.some(g => activeMap.semantic_relationships[g.key]?.length > 0);
+                                if (!hasAny) return null;
+                                return (
+                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {relGroups.map(({ key, label, desc }) => {
+                                            const items = activeMap.semantic_relationships[key];
+                                            if (!items?.length) return null;
+                                            return (
+                                                <div key={key} className="border border-slate-200 rounded-xl p-4 bg-white">
+                                                    <div className="mb-2">
+                                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+                                                        <span className="ml-2 text-[10px] text-slate-400 italic">({desc})</span>
+                                                    </div>
+                                                    <ul className="space-y-0.5">
+                                                        {items.map((item, i) => (
+                                                            <li key={i} className="text-sm text-slate-700">• {item}</li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     )}
                 </div>
@@ -738,63 +781,86 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         elementId="export-content-strategy"
                     />
                     {expandedSections.content && (
-                        <div className="p-4">
+                        <div className="p-4 space-y-4">
+                            {/* Core / Outer two-column card layout */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Core Topics */}
-                                {activeMap.content_strategy.core_topics?.length > 0 && (
-                                    <div className="border-l-4 border-emerald-500 bg-emerald-50/50 p-4 rounded-r-xl">
-                                        <h4 className="text-sm font-black text-emerald-800 mb-2 tracking-tight">Core Topics (Revenue)</h4>
-                                        <ul className="space-y-1.5">
-                                            {activeMap.content_strategy.core_topics.map((topic, idx) => (
-                                                <li key={idx} className="text-sm text-slate-700 font-medium">• {topic}</li>
-                                            ))}
-                                        </ul>
+                                {/* Core Section */}
+                                <div className="border border-emerald-200 rounded-2xl overflow-hidden">
+                                    <div className="bg-emerald-600 px-4 py-3">
+                                        <p className="text-xs font-black text-white uppercase tracking-widest">Core Section</p>
+                                        <p className="text-[11px] text-emerald-200 mt-0.5">Revenue-driving topics</p>
                                     </div>
-                                )}
-
-                                {/* Outer Topics */}
-                                {activeMap.content_strategy.outer_topics?.length > 0 && (
-                                    <div className="border-l-4 border-slate-400 bg-slate-50/50 p-4 rounded-r-xl">
-                                        <h4 className="text-sm font-black text-slate-800 mb-2 tracking-tight">Outer Topics (Authority)</h4>
-                                        <ul className="space-y-1.5">
-                                            {activeMap.content_strategy.outer_topics.map((topic, idx) => (
-                                                <li key={idx} className="text-sm text-slate-600 font-medium leading-relaxed">• {topic}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                )}
-
-                                {/* Competitor Core Topic Gaps */}
-                                {competitorCoreTopics.length > 0 && (
-                                    <div className="border-l-4 border-violet-400 bg-violet-50/50 p-4 rounded-r-xl">
-                                        <h4 className="text-sm font-black text-violet-800 mb-2 tracking-tight">Gap Topics from Competitors</h4>
-                                        <ul className="space-y-1.5">
-                                            {competitorCoreTopics.map((g, idx) => {
-                                                const c = compColor(g.colorIdx);
-                                                return (
-                                                    <li key={idx} className="flex items-center gap-2 text-sm text-slate-700 font-medium">
-                                                        <span className={`w-1.5 h-1.5 rounded-full ${c.dot} flex-shrink-0`} />
-                                                        {g.topic}
-                                                        <span className={`text-[9px] ${c.text} ${c.bg} border ${c.border} px-1.5 py-0.5 rounded font-black`}>{g.domain}</span>
-                                                    </li>
-                                                );
-                                            })}
-                                        </ul>
-                                    </div>
-                                )}
-
-                                {/* Content Gaps */}
-                                {activeMap.content_strategy.content_gaps?.length > 0 && (
-                                    <div className="border-l-4 border-amber-500 bg-amber-50/50 p-4 rounded-r-xl md:col-span-2">
-                                        <h4 className="text-sm font-black text-amber-800 mb-3 tracking-tight">Content Gaps & Opportunities</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
-                                            {activeMap.content_strategy.content_gaps.map((gap, idx) => (
-                                                <div key={idx} className="text-sm text-slate-700 font-medium">• {gap}</div>
-                                            ))}
+                                    <div className="p-4 space-y-3 bg-emerald-50/30">
+                                        <div>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Focus</p>
+                                            <p className="text-sm font-bold text-slate-800">{activeMap.central_entity}</p>
                                         </div>
+                                        {activeMap.key_topics?.length > 0 && (
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Main Attributes</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {activeMap.key_topics.slice(0, 6).map((t, i) => (
+                                                        <span key={i} className="px-2.5 py-1 bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold">{t}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {activeMap.content_strategy.core_topics?.length > 0 && (
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Sub-Attributes</p>
+                                                <ul className="space-y-1">
+                                                    {activeMap.content_strategy.core_topics.map((t, i) => (
+                                                        <li key={i} className="text-sm text-slate-700">• {t}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
 
+                                {/* Outer Section */}
+                                <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                                    <div className="bg-slate-700 px-4 py-3">
+                                        <p className="text-xs font-black text-white uppercase tracking-widest">Outer Section</p>
+                                        <p className="text-[11px] text-slate-300 mt-0.5">Authority-building topics</p>
+                                    </div>
+                                    <div className="p-4 space-y-3 bg-slate-50/30">
+                                        <div>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Focus</p>
+                                            <p className="text-sm font-bold text-slate-800">{activeMap.business_model}</p>
+                                        </div>
+                                        {activeMap.content_strategy.outer_topics?.length > 0 && (
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Minor Attributes</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    {activeMap.content_strategy.outer_topics.slice(0, 6).map((t, i) => (
+                                                        <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-700 border border-slate-200 rounded-full text-xs font-bold">{t}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {(activeMap.content_strategy.content_gaps?.length > 0 || competitorCoreTopics.length > 0) && (
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Related Topics</p>
+                                                <ul className="space-y-1">
+                                                    {activeMap.content_strategy.content_gaps?.slice(0, 4).map((g, i) => (
+                                                        <li key={i} className="text-sm text-slate-700">• {g}</li>
+                                                    ))}
+                                                    {competitorCoreTopics.slice(0, 3).map((g, idx) => {
+                                                        const c = compColor(g.colorIdx);
+                                                        return (
+                                                            <li key={`gap-${idx}`} className="flex items-center gap-2 text-sm text-slate-700">
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${c.dot} flex-shrink-0`} />
+                                                                {g.topic}
+                                                                <span className={`text-[9px] ${c.text} ${c.bg} border ${c.border} px-1.5 py-0.5 rounded font-black`}>{g.domain}</span>
+                                                            </li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1014,47 +1080,71 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                     />
                     {expandedSections.audience && (
                         <div className="p-4">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {activeMap.audience_segments.map((segment, idx) => (
-                                    <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-white transition-all shadow-sm">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <UserGroupIcon className="w-5 h-5 text-emerald-600" />
-                                            <h4 className="text-sm font-black text-slate-800">{segment.expertise_level}</h4>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <div>
-                                                <p className="text-xs font-semibold text-slate-600 mb-1">Goal:</p>
-                                                <p className="text-sm text-slate-700">{segment.primary_goal}</p>
+                            {(() => {
+                                const funnelColor = (stage) => {
+                                    if (!stage) return 'bg-slate-100 text-slate-600 border-slate-200';
+                                    const s = stage.toLowerCase();
+                                    if (s === 'top') return 'bg-blue-100 text-blue-700 border-blue-200';
+                                    if (s === 'middle') return 'bg-purple-100 text-purple-700 border-purple-200';
+                                    if (s === 'bottom') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+                                    return 'bg-slate-100 text-slate-600 border-slate-200';
+                                };
+                                return (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    {activeMap.audience_segments.map((segment, idx) => (
+                                        <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-white transition-all shadow-sm">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-2">
+                                                    <UserGroupIcon className="w-5 h-5 text-emerald-600" />
+                                                    <h4 className="text-sm font-black text-slate-800">{segment.expertise_level}</h4>
+                                                </div>
+                                                {segment.funnel_stage && (
+                                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wider ${funnelColor(segment.funnel_stage)}`}>
+                                                        {segment.funnel_stage}
+                                                    </span>
+                                                )}
                                             </div>
 
-                                            {segment.content_types && segment.content_types.length > 0 && (
+                                            <div className="space-y-3">
                                                 <div>
-                                                    <p className="text-xs font-semibold text-slate-600 mb-1">Content Types:</p>
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {segment.content_types.map((type, typeIdx) => (
-                                                            <span key={typeIdx} className="text-xs px-2 py-0.5 bg-white rounded text-slate-700">
-                                                                {type}
-                                                            </span>
-                                                        ))}
-                                                    </div>
+                                                    <p className="text-xs font-semibold text-slate-600 mb-1">Goal:</p>
+                                                    <p className="text-sm text-slate-700">{segment.primary_goal}</p>
                                                 </div>
-                                            )}
 
-                                            {segment.pain_points && segment.pain_points.length > 0 && (
-                                                <div>
-                                                    <p className="text-xs font-semibold text-slate-600 mb-1">Pain Points:</p>
-                                                    <ul className="text-xs text-slate-600 space-y-0.5">
-                                                        {segment.pain_points.slice(0, 3).map((pain, painIdx) => (
-                                                            <li key={painIdx}>• {pain}</li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
+                                                {segment.content_types && segment.content_types.length > 0 && (
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-slate-600 mb-1">Content Types:</p>
+                                                        <ul className="text-xs text-slate-700 space-y-0.5">
+                                                            {segment.content_types.map((type, typeIdx) => (
+                                                                <li key={typeIdx}>• {type}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+
+                                                {segment.preferred_format && (
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-slate-600 mb-1">Preferred Format:</p>
+                                                        <p className="text-xs text-slate-700">{segment.preferred_format}</p>
+                                                    </div>
+                                                )}
+
+                                                {segment.pain_points && segment.pain_points.length > 0 && (
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-slate-600 mb-1">Pain Points:</p>
+                                                        <ul className="text-xs text-slate-600 space-y-0.5">
+                                                            {segment.pain_points.slice(0, 3).map((pain, painIdx) => (
+                                                                <li key={painIdx}>• {pain}</li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                                );
+                            })()}
                         </div>
                     )}
                 </div>
@@ -1099,37 +1189,72 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         elementId="export-query-research"
                     />
                     {expandedSections.queries && (
-                        <div className="p-4 space-y-3">
-                            {Object.entries(activeMap.query_templates).map(([type, queries]) => {
-                                if (!queries || queries.length === 0) return null;
-                                const colors = {
-                                    informational: 'emerald',
-                                    transactional: 'teal',
-                                    commercial: 'slate',
-                                    navigational: 'amber',
-                                    contextual: 'emerald',
-                                    audience_specific: 'teal',
-                                    predictive: 'slate',
-                                    voice_search: 'emerald',
-                                    raw_queries: 'slate'
-                                };
-                                const color = colors[type] || 'slate';
-                                const colorClass = color === 'emerald' ? 'emerald' : color === 'teal' ? 'teal' : color === 'amber' ? 'amber' : 'slate';
+                        <div className="p-4 space-y-2">
+                            {(() => {
+                                const QUERY_CATS = [
+                                    { key: 'informational', label: 'Informational Queries', color: 'bg-blue-500' },
+                                    { key: 'commercial', label: 'Commercial Queries', color: 'bg-orange-500' },
+                                    { key: 'transactional', label: 'Transactional Queries', color: 'bg-emerald-600' },
+                                    { key: 'navigational', label: 'Navigational Queries', color: 'bg-violet-500' },
+                                    { key: 'contextual', label: 'Contextual Queries', color: 'bg-teal-500' },
+                                    { key: 'audience_specific', label: 'Audience Specific Queries', color: 'bg-pink-500' },
+                                    { key: 'advanced_query_patterns', label: 'Advanced Query Patterns', color: 'bg-amber-600' },
+                                    { key: 'predictive', label: 'Predictive Queries', color: 'bg-slate-600' },
+                                    { key: 'voice_search', label: 'Voice Search Queries', color: 'bg-indigo-500' },
+                                    { key: 'raw_queries', label: 'Raw Queries', color: 'bg-slate-500' },
+                                ];
+                                const allExpanded = QUERY_CATS.every(c => {
+                                    const qs = activeMap.query_templates[c.key];
+                                    return !qs?.length || expandedQueryCats[c.key];
+                                });
                                 return (
-                                    <div key={type} className="border border-slate-200 rounded p-3">
-                                        <h4 className={`text-[10px] font-black text-${colorClass}-600 mb-2 uppercase tracking-widest`}>
-                                            {type.replace(/_/g, ' ')}
-                                        </h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                                            {queries.slice(0, 10).map((query, idx) => (
-                                                <div key={idx} className={`text-xs text-slate-700 bg-${colorClass}-100/50 px-2.5 py-1.5 rounded-md border border-${colorClass}-200/30`}>
-                                                    {query}
-                                                </div>
-                                            ))}
+                                    <>
+                                        <div className="flex items-center justify-end mb-1">
+                                            <button
+                                                onClick={() => {
+                                                    const next = {};
+                                                    QUERY_CATS.forEach(c => { next[c.key] = !allExpanded; });
+                                                    setExpandedQueryCats(next);
+                                                }}
+                                                className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors"
+                                            >
+                                                {allExpanded ? 'Collapse All' : 'Expand All'}
+                                            </button>
                                         </div>
-                                    </div>
+                                        {QUERY_CATS.map(({ key, label, color }) => {
+                                            const queries = activeMap.query_templates[key];
+                                            if (!queries?.length) return null;
+                                            const isOpen = !!expandedQueryCats[key];
+                                            return (
+                                                <div key={key} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                    <button
+                                                        onClick={() => setExpandedQueryCats(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                        className={`w-full flex items-center justify-between px-4 py-3 ${color} hover:opacity-90 transition-opacity`}
+                                                    >
+                                                        <span className="text-sm font-bold text-white">{label}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xs font-black bg-white/20 text-white px-2 py-0.5 rounded-full">{queries.length}</span>
+                                                            {isOpen
+                                                                ? <ChevronUpIcon className="w-4 h-4 text-white" />
+                                                                : <ChevronDownIcon className="w-4 h-4 text-white" />
+                                                            }
+                                                        </div>
+                                                    </button>
+                                                    {isOpen && (
+                                                        <div className="p-3 bg-slate-50 grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                                                            {queries.map((q, i) => (
+                                                                <div key={i} className="text-xs text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                                                                    {q}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </>
                                 );
-                            })}
+                            })()}
                         </div>
                     )}
                 </div>
@@ -1231,79 +1356,141 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                     </div>
                     {expandedSections.articles && (
                         <div className="p-4">
-                            {/* Table */}
-                            <div className="overflow-x-auto">
-                                <table className="w-full border-collapse">
-                                    <thead>
-                                        <tr className="bg-slate-50 border-b border-slate-200">
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Article Title <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
-                                            </th>
-                                            <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Source</th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Section <span className="hidden sm:inline-block"><ChevronUpDownIcon className="inline w-3.5 h-3.5 text-slate-400 ml-0.5" /></span>
-                                            </th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                                                Article Type
-                                            </th>
-                                            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-8 text-center">
-                                                Actions
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {mergedArticles.map((article, idx) => {
-                                            const isComp = !article._isPrimary;
-                                            const ci = article._colorIdx ?? 0;
-                                            const c = isComp ? compColor(ci) : null;
-                                            return (
-                                            <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isComp ? 'bg-violet-50/30' : ''}`}>
-                                                <td className="px-4 py-3 text-sm text-slate-700">{article.title}</td>
-                                                <td className="px-3 py-3">
-                                                    {isComp ? (
-                                                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black ${c.bg} ${c.text} border ${c.border}`}>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-                                                            {article._domain}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200">
-                                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                            Primary
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${article.section === 'Core' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/50' : 'bg-slate-100 text-slate-700 border border-slate-200'}`}>
-                                                        {article.section}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3">
-                                                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-slate-600 text-white">
-                                                        {article.article_type}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    <button
-                                                        onClick={() => handleGenerateArticle(article)}
-                                                        disabled={!!generatingArticle}
-                                                        className={`inline-flex items-center gap-x-1.5 rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all
-                                                            ${generatingArticle === article.title
-                                                                ? 'bg-emerald-100 text-emerald-600 cursor-wait'
-                                                                : generatingArticle
-                                                                ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
-                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                                            }`}
-                                                    >
-                                                        <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} />
-                                                        {generatingArticle === article.title ? 'Writing…' : 'Write'}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
+                            {/* Filter bar */}
+                            {(() => {
+                                const allL1 = [...new Set(mergedArticles.map(a => a.category_l1).filter(Boolean))];
+                                const allL2 = [...new Set(mergedArticles.filter(a => !articleL1 || a.category_l1 === articleL1).map(a => a.category_l2).filter(Boolean))];
+                                const allL3 = [...new Set(mergedArticles.filter(a => !articleL2 || a.category_l2 === articleL2).map(a => a.category_l3).filter(Boolean))];
+                                const filtered = mergedArticles.filter(a => {
+                                    if (articleFilter && !a.title.toLowerCase().includes(articleFilter.toLowerCase())) return false;
+                                    if (articleL1 && a.category_l1 !== articleL1) return false;
+                                    if (articleL2 && a.category_l2 !== articleL2) return false;
+                                    if (articleL3 && a.category_l3 !== articleL3) return false;
+                                    return true;
+                                });
+                                const selectCls = "px-3 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400";
+                                return (
+                                    <>
+                                    <div className="flex flex-wrap gap-2 mb-3">
+                                        <input
+                                            type="text"
+                                            placeholder="Filter by title…"
+                                            value={articleFilter}
+                                            onChange={e => setArticleFilter(e.target.value)}
+                                            className="flex-1 min-w-[160px] px-3 py-2 text-xs font-semibold border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                                        />
+                                        <select value={articleL1} onChange={e => { setArticleL1(e.target.value); setArticleL2(''); setArticleL3(''); }} className={selectCls}>
+                                            <option value="">All Business</option>
+                                            {allL1.map(v => <option key={v} value={v}>{v}</option>)}
+                                        </select>
+                                        <select value={articleL2} onChange={e => { setArticleL2(e.target.value); setArticleL3(''); }} className={selectCls}>
+                                            <option value="">All Level 2</option>
+                                            {allL2.map(v => <option key={v} value={v}>{v}</option>)}
+                                        </select>
+                                        <select value={articleL3} onChange={e => setArticleL3(e.target.value)} className={selectCls}>
+                                            <option value="">All Level 3</option>
+                                            {allL3.map(v => <option key={v} value={v}>{v}</option>)}
+                                        </select>
+                                        {(articleFilter || articleL1 || articleL2 || articleL3) && (
+                                            <button onClick={() => { setArticleFilter(''); setArticleL1(''); setArticleL2(''); setArticleL3(''); }} className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 border border-slate-200 rounded-lg bg-white transition-colors">
+                                                Clear
+                                            </button>
+                                        )}
+                                        <span className="px-3 py-2 text-xs font-semibold text-slate-500 flex items-center">{filtered.length} of {mergedArticles.length}</span>
+                                    </div>
+                                    {/* Table */}
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-slate-50 border-b border-slate-200">
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Article Title</th>
+                                                    <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Source</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Section</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
+                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filtered.map((article, idx) => {
+                                                    const isComp = !article._isPrimary;
+                                                    const ci = article._colorIdx ?? 0;
+                                                    const c = isComp ? compColor(ci) : null;
+                                                    const infoKey = `${idx}-${article.title}`;
+                                                    const infoOpen = expandedArticleInfo.has(infoKey);
+                                                    return (
+                                                        <>
+                                                        <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isComp ? 'bg-violet-50/30' : ''}`}>
+                                                            <td className="px-4 py-3 text-sm text-slate-700">{article.title}</td>
+                                                            <td className="px-3 py-3">
+                                                                {isComp ? (
+                                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black ${c.bg} ${c.text} border ${c.border}`}>
+                                                                        <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                                                                        {article._domain}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                                                        Primary
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${article.section === 'Core' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200/50' : 'bg-slate-100 text-slate-700 border border-slate-200'}`}>
+                                                                    {article.section}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-slate-600 text-white">
+                                                                    {article.article_type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-center">
+                                                                <div className="flex items-center justify-center gap-1.5">
+                                                                    <button
+                                                                        onClick={() => setExpandedArticleInfo(prev => {
+                                                                            const next = new Set(prev);
+                                                                            infoOpen ? next.delete(infoKey) : next.add(infoKey);
+                                                                            return next;
+                                                                        })}
+                                                                        className="inline-flex items-center gap-x-1 rounded-lg px-2.5 py-1.5 text-xs font-bold border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 transition-all"
+                                                                        title="Show context"
+                                                                    >
+                                                                        {infoOpen ? <ChevronUpIcon className="w-3.5 h-3.5" /> : <ChevronDownIcon className="w-3.5 h-3.5" />}
+                                                                        Info
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleGenerateArticle(article)}
+                                                                        disabled={!!generatingArticle}
+                                                                        className={`inline-flex items-center gap-x-1.5 rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all
+                                                                            ${generatingArticle === article.title
+                                                                                ? 'bg-emerald-100 text-emerald-600 cursor-wait'
+                                                                                : generatingArticle
+                                                                                ? 'bg-slate-50 text-slate-400 cursor-not-allowed'
+                                                                                : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                                                            }`}
+                                                                    >
+                                                                        <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} />
+                                                                        {generatingArticle === article.title ? 'Writing…' : 'Write'}
+                                                                    </button>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {infoOpen && (
+                                                            <tr key={`${idx}-info`} className="border-b border-slate-100 bg-amber-50/40">
+                                                                <td colSpan={5} className="px-6 py-3 text-xs text-slate-600 italic">
+                                                                    {article.source_context || 'No context available.'}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                        </>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                     )}
                 </div>

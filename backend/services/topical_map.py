@@ -177,7 +177,9 @@ Return ONLY this JSON (replace ALL placeholder values with real data about {doma
     "related_concepts": ["rc1","rc2","rc3"]
   }},
   "audience_segments": [
-    {{"name":"Segment Name","expertise_level":"Beginner","primary_goal":"Goal","pain_points":["p1","p2"],"content_types":["t1","t2"]}}
+    {{"name":"Segment Name","expertise_level":"Beginner","primary_goal":"Goal","pain_points":["p1","p2"],"content_types":["t1","t2"],"funnel_stage":"Top","preferred_format":"Video"}},
+    {{"name":"Segment Name","expertise_level":"Intermediate","primary_goal":"Goal","pain_points":["p1","p2"],"content_types":["t1","t2"],"funnel_stage":"Middle","preferred_format":"Case Studies"}},
+    {{"name":"Segment Name","expertise_level":"Advanced","primary_goal":"Goal","pain_points":["p1","p2"],"content_types":["t1","t2"],"funnel_stage":"Bottom","preferred_format":"Live Demos"}}
   ],
   "content_strategy": {{
     "core_topics": ["t1","t2","t3","t4"],
@@ -195,6 +197,15 @@ Return ONLY this JSON (replace ALL placeholder values with real data about {doma
     "topic_clusters": ["tc1","tc2","tc3"],
     "schema_recommendations": ["sr1","sr2","sr3"],
     "entity_optimization": ["eo1","eo2","eo3"]
+  }},
+  "query_templates": {{
+    "informational": ["What is X?","How does X work?","Why use X?","What are the benefits of X?","X explained for beginners","How to get started with X","X vs Y differences","Common X mistakes to avoid"],
+    "commercial": ["Best X for Y","X review","Top X tools","X pricing comparison","X alternatives","Is X worth it?","X pros and cons","Which X is right for me?"],
+    "transactional": ["Buy X online","X free trial","X pricing plans","Get started with X","X demo request","Download X","Sign up for X","X subscription"],
+    "navigational": ["X website","X login","X contact","X blog","X documentation","X support","X dashboard","X careers"],
+    "contextual": ["X in [industry]","X for [city/region]","X for [use case]","X for small business","X for enterprise","X for beginners","X trends 2024","Future of X"],
+    "audience_specific": ["X for entrepreneurs","X for marketing teams","X for developers","X for non-technical users","Advanced X strategies","X certification guide","X best practices"],
+    "advanced_query_patterns": ["site:competitor.com intitle:X","\"exact phrase\" X","X filetype:pdf","X inurl:guide","X -unwanted_term"]
   }},
   "competitive_advantages": ["adv1","adv2","adv3"],
   "technology_stack": ["tech1","tech2","tech3","tech4"],
@@ -219,6 +230,14 @@ CRITICAL INSTRUCTIONS:
 ✓ Use domain expertise - demonstrate deep understanding of the industry
 ✓ Be ACTIONABLE - insights should directly inform content strategy
 ✓ Return ONLY the JSON object, no markdown code blocks or explanations
+
+DEPTH REQUIREMENTS (minimum counts per field):
+• semantic_relationships: provide 5–8 items for EACH sub-field (synonyms, antonyms, hypernyms, troponyms, entailments, acronyms, holonyms, polysemes) - not just 2
+• query_templates: 6–10 real, user-typed queries per category (informational, commercial, transactional, navigational, contextual, audience_specific, advanced_query_patterns)
+• audience_segments: exactly 3 segments (Beginner/Intermediate/Advanced), each with all 7 fields including funnel_stage and preferred_format
+• taxonomy: at least 3 L1 nodes, each with 2+ L2 children, each with 2+ L3 grandchildren (minimum 15 nodes total)
+• ontology: at least 8 rows covering different relationship types
+• content_strategy: at least 6 items each for core_topics, outer_topics, content_gaps
 """
         
         try:
