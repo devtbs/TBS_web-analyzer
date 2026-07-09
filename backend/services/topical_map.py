@@ -160,10 +160,10 @@ Return ONLY this JSON (replace ALL placeholder values with real data about {doma
   "conversion_methods": ["Method 1", "Method 2"],
   "key_topics": ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5"],
   "semantic_relationships": {{
-    "core_entities": ["e1","e2","e3","e4","e5"],
-    "derived_entities": ["d1","d2","d3"],
-    "attributes": ["a1","a2","a3","a4","a5"],
-    "context_terms": ["c1","c2","c3","c4"],
+    "core_entities": ["e1","e2","e3","...as many as are useful for this site"],
+    "derived_entities": ["d1","d2","d3","...as many as are useful"],
+    "attributes": ["a1","a2","a3","...as many as are useful"],
+    "context_terms": ["c1","c2","c3","...as many as are useful"],
     "synonyms": ["s1","s2","s3"],
     "antonyms": ["an1","an2"],
     "hypernyms": ["h1","h2"],
@@ -232,6 +232,7 @@ CRITICAL INSTRUCTIONS:
 ✓ Return ONLY the JSON object, no markdown code blocks or explanations
 
 DEPTH REQUIREMENTS (minimum counts per field):
+• core_entities, derived_entities, attributes, context_terms: DO NOT default to 5. Include AS MANY as are genuinely useful for THIS specific website — there is no fixed count and no upper limit. A broad, multi-product business may warrant 12–20+ per list; a narrow single-service site may need only 5–8. Scale to the actual breadth of the business, and never pad with generic filler just to hit a number.
 • semantic_relationships: provide 5–8 items for EACH sub-field (synonyms, antonyms, hypernyms, troponyms, entailments, acronyms, holonyms, polysemes) - not just 2
 • query_templates: 6–10 real, user-typed queries per category (informational, commercial, transactional, navigational, contextual, audience_specific, advanced_query_patterns)
 • audience_segments: exactly 3 segments (Beginner/Intermediate/Advanced), each with all 7 fields including funnel_stage and preferred_format
