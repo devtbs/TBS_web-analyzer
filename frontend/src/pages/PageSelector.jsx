@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 
 import Favicon from '../components/ui/Favicon';
+import { prettyUrl } from '../utils/url';
 
 const PageSelector = () => {
     const [searchParams] = useSearchParams();
@@ -45,7 +46,9 @@ const PageSelector = () => {
         try {
             setLoading(true);
             const token = localStorage.getItem('access_token');
-            const response = await api.get(`/auth/gsc/pages-with-queries/${encodeURIComponent(propertyUrl)}`);
+            const response = await api.get(`/auth/gsc/pages-with-queries/${encodeURIComponent(propertyUrl)}`, {
+                params: { days: 90, include_sitemap: true },
+            });
             setPages(response.data.pages);
             setFilteredPages(response.data.pages);
         } catch (error) {
@@ -58,17 +61,8 @@ const PageSelector = () => {
     const togglePage = (pageUrl) => {
         const newSelected = new Set(selectedPages);
         if (newSelected.has(pageUrl)) {
-            // Allow deselecting
             newSelected.delete(pageUrl);
         } else {
-            // Check if adding this page would exceed the limit
-            const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
-            const totalAfterAdd = existingPages.length + newSelected.size + 1;
-
-            if (totalAfterAdd > 5) {
-                toast.error(`Maximum 5 URLs allowed. You already have ${existingPages.length} pages selected.`);
-                return;
-            }
             newSelected.add(pageUrl);
         }
         setSelectedPages(newSelected);
@@ -78,20 +72,7 @@ const PageSelector = () => {
         if (selectedPages.size === filteredPages.length) {
             setSelectedPages(new Set());
         } else {
-            // Add up to the 5 maximum limit
-            const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
-            const canSelect = Math.max(0, 5 - existingPages.length);
-            
-            if (canSelect === 0) {
-                toast.error(`Maximum 5 URLs allowed. You already have 5 pages selected.`);
-                return;
-            }
-            
-            if (filteredPages.length > canSelect) {
-                toast.success(`Limit reached! Selected the first ${canSelect} pages.`);
-            }
-            
-            setSelectedPages(new Set(filteredPages.slice(0, canSelect).map(p => p.url)));
+            setSelectedPages(new Set(filteredPages.map(p => p.url)));
         }
     };
 
@@ -100,16 +81,6 @@ const PageSelector = () => {
             toast.error('Please select at least one page');
             return;
         }
-
-        // Check total limit before navigating
-        const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
-        const totalAfterAdd = existingPages.length + selectedPages.size;
-
-        if (totalAfterAdd > 5) {
-            toast.error(`Maximum 5 URLs allowed. You already have ${existingPages.length} pages selected. You can only add ${5 - existingPages.length} more.`);
-            return;
-        }
-
         // Navigate to analysis with selected URLs
         const urls = Array.from(selectedPages);
         navigate('/new-analysis', { state: { urls, mode: 'cluster' } });
@@ -143,10 +114,7 @@ const PageSelector = () => {
 
     const sortedPages = sortPages(filteredPages);
 
-    // Calculate remaining slots
     const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
-    const remainingSlots = Math.max(0, 5 - existingPages.length - selectedPages.size);
-    const isAtLimit = remainingSlots === 0;
 
     return (
         <div className="flex flex-col flex-1 h-full w-full py-4 sm:py-8 px-4 sm:px-6 bg-slate-50">
@@ -168,7 +136,7 @@ const PageSelector = () => {
                                         <>
                                             <span className="text-slate-300 text-xs">•</span>
                                             <span className="text-xs font-bold text-emerald-700 bg-emerald-50/50 px-2.5 py-1 rounded-lg border border-emerald-100/50">
-                                                {existingPages.length} Pages Already Selected • {remainingSlots} Slots Remaining
+                                                {existingPages.length} Pages Already Selected
                                             </span>
                                         </>
                                     )}
@@ -176,9 +144,9 @@ const PageSelector = () => {
                             </div>
                             <button
                                 onClick={analyzeSelected}
-                                disabled={selectedPages.size === 0 || isAtLimit}
+                                disabled={selectedPages.size === 0}
                                 className={`px-6 py-3 rounded-2xl font-bold text-[14px] transition-all duration-300 flex items-center justify-center gap-2 border whitespace-nowrap min-w-[160px]
-                                    ${selectedPages.size > 0 && !isAtLimit
+                                    ${selectedPages.size > 0
                                         ? 'text-white bg-emerald-600 border border-emerald-500 shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:bg-emerald-700 hover:-translate-y-0.5'
                                         : 'text-white/50 bg-emerald-600/50 cursor-not-allowed'
                                     }`}
@@ -267,7 +235,7 @@ const PageSelector = () => {
                                                         <Favicon url={page.url} size={16} />
                                                     </div>
                                                     <div className="text-[15px] sm:text-[16px] text-slate-800 font-bold truncate tracking-tight transition-colors group-hover:text-emerald-900" title={page.url}>
-                                                        {page.url.replace('https://', '').replace('http://', '').replace('www.', '')}
+                                                        {prettyUrl(page.url)}
                                                     </div>
                                                 </div>
                                                 

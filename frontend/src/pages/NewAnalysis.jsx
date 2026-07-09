@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
+import { prettyUrl } from '../utils/url';
 
 /* ── Favicon helper ─────────────────────────────────────────── */
 const Favicon = ({ url, size = 20 }) => {
@@ -98,7 +99,8 @@ const NewAnalysis = () => {
             if (selectedProperties.length === 0 && selectedPages.length === 0) {
                 toast.error('Please select at least one property or page'); return;
             }
-            validUrls = selectedProperties.map(p => p.url);
+            // Each selected site expands into all of its connected URLs (loaded on select).
+            validUrls = selectedProperties.flatMap(p => (p.urls?.length ? p.urls : [p.url]));
         } else {
             validUrls = urls.filter(url => url.trim() !== '');
             if (validUrls.length === 0 && selectedPages.length === 0) {
@@ -114,8 +116,9 @@ const NewAnalysis = () => {
                 toast.error('Please enter valid URLs starting with http:// or https://'); return;
             }
         }
-        validUrls = [...validUrls, ...selectedPages];
-        if (validUrls.length > 5) {
+        validUrls = [...new Set([...validUrls, ...selectedPages])];
+        // Manual entry stays capped at 5; selecting a whole site (GSC) is intentionally uncapped.
+        if (!useGSC && validUrls.length > 5) {
             toast.error(`Maximum 5 URLs allowed. You have ${validUrls.length}.`); return;
         }
         setIsAnalyzing(true);
@@ -133,11 +136,22 @@ const NewAnalysis = () => {
         }
     };
 
+    const manualCount = urls.filter(u => u.trim()).length;
     const totalUrls = useGSC
         ? selectedProperties.length + selectedPages.length
-        : urls.filter(u => u.trim()).length + selectedPages.length;
+        : manualCount + selectedPages.length;
 
-    const canAnalyze = totalUrls > 0 && totalUrls <= 5;
+    // GSC: a "site" stands for all its URLs, so no 5-item cap. Manual entry keeps the 5 cap.
+    const canAnalyze = useGSC ? totalUrls > 0 : (totalUrls > 0 && totalUrls <= 5);
+    const tooMany = !useGSC && totalUrls > 5;
+
+    // Badge label: count sites and pages separately in GSC mode.
+    const badgeLabel = useGSC
+        ? [
+            selectedProperties.length && `${selectedProperties.length} site${selectedProperties.length !== 1 ? 's' : ''}`,
+            selectedPages.length && `${selectedPages.length} page${selectedPages.length !== 1 ? 's' : ''}`,
+          ].filter(Boolean).join(' + ')
+        : `${totalUrls} ${totalUrls === 1 ? 'URL' : 'URLs'}`;
 
     return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-full w-full py-12 bg-slate-50">
@@ -281,7 +295,7 @@ const NewAnalysis = () => {
                                                         <Favicon url={pageUrl} size={18} />
                                                     </div>
                                                     <span className="text-[14px] text-slate-700 truncate font-semibold" title={pageUrl}>
-                                                        {pageUrl.replace('https://', '').replace('http://', '').replace('www.', '')}
+                                                        {prettyUrl(pageUrl)}
                                                     </span>
                                                 </div>
                                                 <button
@@ -315,7 +329,7 @@ const NewAnalysis = () => {
                                         <SparklesIcon className="w-5 h-5 animate-spin" />
                                         Analyzing...
                                     </>
-                                ) : totalUrls > 5 ? (
+                                ) : tooMany ? (
                                     <>
                                         Too Many URLs Selected
                                         <div className="inline-flex items-center justify-center bg-white/25 rounded-full px-2.5 py-0.5 text-[14px] font-bold ml-1 ring-1 ring-white/30 backdrop-blur-sm">
@@ -327,7 +341,7 @@ const NewAnalysis = () => {
                                         Start AI Analysis
                                         {totalUrls > 0 && (
                                             <div className="inline-flex items-center justify-center bg-white/25 rounded-full px-2.5 py-0.5 text-[14px] font-bold ml-1 ring-1 ring-white/30 backdrop-blur-sm">
-                                                {totalUrls} {totalUrls === 1 ? 'URL' : 'URLs'}
+                                                {badgeLabel}
                                             </div>
                                         )}
                                     </>

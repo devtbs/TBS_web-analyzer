@@ -305,25 +305,25 @@ async def get_gsc_pages(
 @router.get("/auth/gsc/pages-with-queries/{property_url:path}")
 async def get_gsc_pages_with_queries(
     property_url: str,
-    days: int = 28,
+    days: int = 90,
     filters_json: str = None,
+    include_sitemap: bool = False,
     current_user: UserInfo = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    account_id: Optional[int] = Depends(get_account_id),
 ):
-    """Return pages with their ranking queries for the PageSelector."""
-    from services.gsc_service import GSCService
-    from utils.user_manager import get_user_gsc_token
+    """Return pages with their ranking queries for the PageSelector. With include_sitemap=true
+    the site's sitemap URLs are merged in as zero-stat pages so 0-impression URLs still appear."""
     from urllib.parse import unquote
     property_url = unquote(property_url)
-    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
-    if not gsc_token:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="GSC not connected.")
     try:
-        service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        service = _gsc_service_for(db, current_user.email, account_id)
         pages = await service.get_pages_with_queries(
-            property_url, days, filters_json
+            property_url, days, filters_json, include_sitemap=include_sitemap
         )
         return {"pages": pages, "total": len(pages)}
+    except HTTPException:
+        raise
     except Exception as e:
         error_msg = str(e)
         if "403" in error_msg or "sufficient permission" in error_msg:

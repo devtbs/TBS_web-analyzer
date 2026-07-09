@@ -71,6 +71,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const [properties, setProperties] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+    // Property URLs currently being expanded into their full page list on selection.
+    const [expandingUrls, setExpandingUrls] = useState(new Set());
 
     /* Load Google Identity Services */
     useEffect(() => {
@@ -223,7 +225,7 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
         } catch { toast.error('Failed to disconnect'); }
     };
 
-    const handlePropertyToggle = (property) => {
+    const handlePropertyToggle = async (property) => {
         const selected = selectedProperties.some(p => p.url === property.url);
         if (selected) {
             onPropertySelect(selectedProperties.filter(p => p.url !== property.url));
@@ -235,14 +237,31 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
             toast.error('You can only analyze properties from one Google account at a time. Clear your selection to switch accounts.');
             return;
         }
-        if (selectedProperties.length >= 5) { toast.error('Maximum 5 properties'); return; }
         // Point the API at the account that owns this property.
         switchAccount(property.account_id);
-        onPropertySelect([...selectedProperties, property]);
+        // Selecting a site means "analyse the whole site" — expand it into all of its
+        // connected URLs (GSC 90-day pages + sitemap) so every page is analysed.
+        setExpandingUrls(prev => new Set(prev).add(property.url));
+        try {
+            const res = await api.get(
+                `/auth/gsc/pages-with-queries/${encodeURIComponent(property.url)}`,
+                { params: { days: 90, include_sitemap: true } },
+            );
+            const urls = (res.data.pages || []).map(p => p.url);
+            onPropertySelect([...selectedProperties, { ...property, urls: urls.length ? urls : [property.url] }]);
+        } catch {
+            toast.error(`Couldn't load pages for ${getDomain(property)} — analysing the site root only.`);
+            onPropertySelect([...selectedProperties, { ...property, urls: [property.url] }]);
+        } finally {
+            setExpandingUrls(prev => { const n = new Set(prev); n.delete(property.url); return n; });
+        }
     };
 
     const handleSelectPages = (property, e) => {
         e.stopPropagation();
+        // Point the API at the account that owns this property so PageSelector's fetch
+        // (which sends X-Account-Id) resolves the right Google token.
+        switchAccount(property.account_id);
         navigate(`/select-pages?property=${encodeURIComponent(property.url)}`);
     };
 
@@ -257,7 +276,10 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
     const activeAccountId = selectedProperties.length ? selectedProperties[0].account_id : undefined;
 
     const renderRow = (property, idx) => {
-        const isSelected = selectedProperties.some(p => p.url === property.url);
+        const selectedEntry = selectedProperties.find(p => p.url === property.url);
+        const isSelected = !!selectedEntry;
+        const isExpanding = expandingUrls.has(property.url);
+        const pageCount = selectedEntry?.urls?.length || 0;
         const domain = getDomain(property);
         const faviconUrl = getFaviconUrl(property);
         const permLabel = property.permission_level?.replace(/_/g, ' ');
@@ -307,8 +329,15 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
 
                 {/* Actions */}
                 <div className="flex items-center justify-end gap-4 flex-shrink-0">
+                    {isSelected && pageCount > 0 && (
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+                            {pageCount} page{pageCount !== 1 ? 's' : ''}
+                        </span>
+                    )}
                     <div className="mr-3 h-5 w-5">
-                        {isSelected && <CheckCircleIcon className="w-6 h-6 text-emerald-600" />}
+                        {isExpanding
+                            ? <ArrowPathIcon className="w-5 h-5 text-emerald-500 animate-spin" />
+                            : isSelected && <CheckCircleIcon className="w-6 h-6 text-emerald-600" />}
                     </div>
                     <button
                         onClick={e => handleSelectPages(property, e)}

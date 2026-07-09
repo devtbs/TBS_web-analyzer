@@ -31,6 +31,11 @@ _TTL_PAGES        = 30 * 60   # 30 min  – per-page breakdown is expensive
 # this many days so our numbers match what clients see in Search Console.
 GSC_DATA_LAG_DAYS = 3
 
+# Upper bound on how many URLs a single site expands to when the Select-Pages list is
+# enriched with the sitemap. Each selected URL is later scraped + gets its own topical map,
+# so this keeps an "analyze the whole site" run tractable.
+MAX_SITE_URLS = 50
+
 def _pct_delta(curr, prev):
     """Percentage change vs the previous period; None when there's no prior value to compare
     against. Used for the per-metric change badges on the Queries/Pages tables."""
@@ -236,12 +241,24 @@ class GSCService:
             pass
 
 
+    @staticmethod
+    def _property_base_url(property_url: str) -> str:
+        """Resolve a GSC property identifier to a fetchable https base URL for sitemap lookup.
+        `sc-domain:example.com` → `https://example.com`; URL-prefix properties pass through."""
+        if property_url.startswith('sc-domain:'):
+            return 'https://' + property_url.split(':', 1)[1]
+        return property_url
+
     async def get_pages_with_queries(
-        self, property_url: str, days: int = 90, 
-        filters_json: str = None
+        self, property_url: str, days: int = 90,
+        filters_json: str = None, include_sitemap: bool = False
     ) -> List[Dict]:
-        """Fetch all pages from a property with their ranking queries. Cached for 30 min."""
-        cache_key = (self.user_email, 'pages', property_url, days, filters_json)
+        """Fetch all pages from a property with their ranking queries. Cached for 30 min.
+
+        When `include_sitemap` is set, the site's sitemap.xml URLs are merged in as zero-stat
+        pages so URLs with no search impressions still appear. The merged list is capped at
+        MAX_SITE_URLS."""
+        cache_key = (self.user_email, 'pages', property_url, days, filters_json, include_sitemap)
         cached = _cache_get(cache_key)
         if cached is not None:
             logger.info(f"Cache HIT: pages {property_url}")
@@ -312,6 +329,25 @@ class GSCService:
             pages_list = list(pages_data.values())
             pages_list.sort(key=lambda x: x['total_clicks'], reverse=True)
 
+            # Merge in sitemap URLs (zero-stat) so pages with no search impressions still show.
+            if include_sitemap:
+                try:
+                    from services.sitemap_service import SitemapService
+                    base = self._property_base_url(property_url)
+                    seen = {p['url'].rstrip('/') for p in pages_list}
+                    sitemap_urls = await SitemapService().fetch_sitemap_urls(base, max_urls=MAX_SITE_URLS)
+                    for u in sitemap_urls:
+                        if u.rstrip('/') in seen:
+                            continue
+                        seen.add(u.rstrip('/'))
+                        pages_list.append({
+                            'url': u, 'total_clicks': 0, 'total_impressions': 0,
+                            'avg_position': 0, 'queries': [], 'source': 'sitemap',
+                        })
+                except Exception as e:
+                    logger.warning(f"Sitemap merge failed for {property_url} (non-fatal): {e}")
+
+            pages_list = pages_list[:MAX_SITE_URLS]
             logger.info(f"Fetched {len(pages_list)} pages with queries from {property_url}")
             _cache_set(cache_key, pages_list, _TTL_PAGES)
             return pages_list
