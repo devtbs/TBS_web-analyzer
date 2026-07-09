@@ -31,10 +31,10 @@ _TTL_PAGES        = 30 * 60   # 30 min  – per-page breakdown is expensive
 # this many days so our numbers match what clients see in Search Console.
 GSC_DATA_LAG_DAYS = 3
 
-# Upper bound on how many URLs a single site expands to when the Select-Pages list is
-# enriched with the sitemap. Each selected URL is later scraped + gets its own topical map,
-# so this keeps an "analyze the whole site" run tractable.
-MAX_SITE_URLS = 50
+# Safety bound on how many sitemap URLs we fetch when enriching the Select-Pages list.
+# The Select-Pages list itself is NOT capped — the user picks which pages to analyze — but
+# we still cap the sitemap crawl at a large value so a pathological sitemap can't hang the request.
+MAX_SITEMAP_FETCH = 5000
 
 def _pct_delta(curr, prev):
     """Percentage change vs the previous period; None when there's no prior value to compare
@@ -256,8 +256,7 @@ class GSCService:
         """Fetch all pages from a property with their ranking queries. Cached for 30 min.
 
         When `include_sitemap` is set, the site's sitemap.xml URLs are merged in as zero-stat
-        pages so URLs with no search impressions still appear. The merged list is capped at
-        MAX_SITE_URLS."""
+        pages so URLs with no search impressions still appear. The merged list is not capped."""
         cache_key = (self.user_email, 'pages', property_url, days, filters_json, include_sitemap)
         cached = _cache_get(cache_key)
         if cached is not None:
@@ -335,7 +334,7 @@ class GSCService:
                     from services.sitemap_service import SitemapService
                     base = self._property_base_url(property_url)
                     seen = {p['url'].rstrip('/') for p in pages_list}
-                    sitemap_urls = await SitemapService().fetch_sitemap_urls(base, max_urls=MAX_SITE_URLS)
+                    sitemap_urls = await SitemapService().fetch_sitemap_urls(base, max_urls=MAX_SITEMAP_FETCH)
                     for u in sitemap_urls:
                         if u.rstrip('/') in seen:
                             continue
@@ -347,7 +346,6 @@ class GSCService:
                 except Exception as e:
                     logger.warning(f"Sitemap merge failed for {property_url} (non-fatal): {e}")
 
-            pages_list = pages_list[:MAX_SITE_URLS]
             logger.info(f"Fetched {len(pages_list)} pages with queries from {property_url}")
             _cache_set(cache_key, pages_list, _TTL_PAGES)
             return pages_list

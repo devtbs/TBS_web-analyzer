@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MagnifyingGlassIcon, FunnelIcon, CheckIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, FunnelIcon, CheckIcon, GlobeAltIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
@@ -19,6 +19,9 @@ const PageSelector = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPages, setSelectedPages] = useState(new Set());
     const [sortBy, setSortBy] = useState('clicks'); // clicks, impressions, position
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const PAGE_SIZE = 20;
 
     useEffect(() => {
         if (propertyUrl) {
@@ -41,6 +44,11 @@ const PageSelector = () => {
             setFilteredPages(pages);
         }
     }, [searchTerm, pages]);
+
+    // Reset to the first page whenever the filter or sort changes.
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, sortBy]);
 
     const fetchPages = async () => {
         try {
@@ -113,6 +121,14 @@ const PageSelector = () => {
     }
 
     const sortedPages = sortPages(filteredPages);
+
+    // Paginate: 50 URLs per page with left/right navigation.
+    const totalPages = Math.max(1, Math.ceil(sortedPages.length / PAGE_SIZE));
+    const safePage = Math.min(currentPage, totalPages);
+    const startIdx = (safePage - 1) * PAGE_SIZE;
+    const pagedPages = sortedPages.slice(startIdx, startIdx + PAGE_SIZE);
+    const rangeStart = sortedPages.length === 0 ? 0 : startIdx + 1;
+    const rangeEnd = startIdx + pagedPages.length;
 
     const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
 
@@ -191,7 +207,8 @@ const PageSelector = () => {
                         {/* List Metadata */}
                         <div className="flex items-center justify-between mb-4 px-1">
                             <span className="text-sm font-semibold text-slate-500">
-                                Showing <span className="text-slate-700">{sortedPages.length}</span> of {pages.length} crawled pages
+                                Showing <span className="text-slate-700">{rangeStart}–{rangeEnd}</span> of {sortedPages.length}
+                                {sortedPages.length !== pages.length && <span className="text-slate-400"> ({pages.length} crawled)</span>}
                             </span>
                             <button
                                 onClick={toggleAll}
@@ -206,7 +223,7 @@ const PageSelector = () => {
 
                         {/* Scrolling Data Cards */}
                         <div className="flex-1 overflow-auto pr-2 pb-6 space-y-3" style={{ scrollbarWidth: 'thin' }}>
-                            {sortedPages.map((page, index) => {
+                            {pagedPages.map((page, index) => {
                                 const isSelected = selectedPages.has(page.url);
                                 return (
                                     <motion.div
@@ -281,6 +298,31 @@ const PageSelector = () => {
                                 );
                             })}
                         </div>
+
+                        {/* Pager */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-4 pt-4 mt-2 border-t border-slate-100">
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={safePage <= 1}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all border disabled:opacity-40 disabled:cursor-not-allowed border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50/40"
+                                >
+                                    <ChevronLeftIcon className="w-4 h-4" />
+                                    Prev
+                                </button>
+                                <span className="text-sm font-bold text-slate-500">
+                                    Page <span className="text-slate-800">{safePage}</span> of {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={safePage >= totalPages}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold transition-all border disabled:opacity-40 disabled:cursor-not-allowed border-slate-200 text-slate-600 hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50/40"
+                                >
+                                    Next
+                                    <ChevronRightIcon className="w-4 h-4" />
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

@@ -8,7 +8,6 @@ import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     ClockIcon,
-    ArrowRightEndOnRectangleIcon,
     RocketLaunchIcon,
     Squares2X2Icon,
     DocumentTextIcon,
@@ -35,6 +34,7 @@ import {
     EllipsisHorizontalIcon 
 } from '@heroicons/react/20/solid';
 import Favicon from '../ui/Favicon';
+import SidebarAccountSwitcher from '../auth/SidebarAccountSwitcher';
 import api from '../../api/axios';
 
 /* ── GSC Wizard-style property nav config ────────────────── */
@@ -248,7 +248,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
         localStorage.setItem('sidebar_collapsed', collapsed);
     }, [collapsed]);
 
-    const { user, logout } = useAuth();
+    const { user } = useAuth();
     const location = useLocation();
 
     /* ── Determine if we are in property/analytics mode ── */
@@ -801,66 +801,8 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                         )}
                     </button>
 
-                    {/* User card + Logout */}
-                    {user && (
-                        <div className={`flex items-center gap-2.5 rounded-sm ${ collapsed ? 'justify-center px-0 py-0' : 'px-2 py-2.5' }`}>
-                            <div className="relative flex-shrink-0 group/avatar">
-                                {user.picture ? (
-                                    <img
-                                        src={user.picture}
-                                        alt={user.name}
-                                        className="w-9 h-9 rounded-full object-cover"
-                                         style={{ border: '1.5px solid rgba(255,255,255,0.2)' }}
-                                    />
-                                ) : (
-                                    <div
-                                        className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white"
-                                        style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}
-                                    >
-                                        {user.name?.[0] ?? 'U'}
-                                    </div>
-                                )}
-                                {collapsed && (
-                                    <button
-                                        onClick={logout}
-                                        title="Logout"
-                                        className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-200 outline-none"
-                                        style={{ background: 'rgba(0,0,0,0.55)' }}
-                                    >
-                                        <ArrowRightEndOnRectangleIcon className="text-white" style={{ width: 15, height: 15 }} />
-                                    </button>
-                                )}
-                            </div>
-
-                            {!collapsed && (
-                                <motion.div
-                                    initial={{ opacity: 0, x: -6 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -6 }}
-                                    transition={{ duration: 0.15 }}
-                                    className="flex-1 min-w-0 overflow-hidden"
-                                >
-                                    <p className="text-xs font-bold text-white truncate leading-tight">{user.name}</p>
-                                    <p className="text-[10px] font-medium truncate leading-tight" style={{ color: '#6b7280' }}>
-                                        {user.email}
-                                    </p>
-                                </motion.div>
-                            )}
-
-                            {!collapsed && (
-                                <motion.button
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    onClick={logout}
-                                    title="Logout"
-                                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center outline-none transition-all duration-150 text-slate-400 hover:text-white hover:bg-white/10"
-                                >
-                                    <ArrowRightEndOnRectangleIcon style={{ width: 16, height: 16 }} />
-                                </motion.button>
-                            )}
-                        </div>
-                    )}
+                    {/* User card + account switcher */}
+                    {user && <SidebarAccountSwitcher collapsed={collapsed} />}
                 </div>
             </div>
         </motion.aside>
@@ -941,36 +883,16 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                             )}
                         </nav>
 
-                        {/* Bottom user card */}
+                        {/* Bottom user card + account switcher */}
                         {user && (
                             <div
-                                className="flex-shrink-0 px-3 pt-3 space-y-3"
+                                className="flex-shrink-0 px-2 pt-3"
                                 style={{
                                     borderTop: '1px solid rgba(255,255,255,0.06)',
                                     paddingBottom: 'max(20px, env(safe-area-inset-bottom, 20px))',
                                 }}
                             >
-                                <div className="flex items-center gap-2.5">
-                                    {user.picture ? (
-                                        <img src={user.picture} alt={user.name} className="w-9 h-9 rounded-full object-cover flex-shrink-0" style={{ border: '1.5px solid rgba(255,255,255,0.2)' }} />
-                                    ) : (
-                                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0" style={{ background: 'linear-gradient(135deg, #6366f1, #a855f7)' }}>
-                                            {user.name?.[0] ?? 'U'}
-                                        </div>
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-bold text-white truncate">{user.name}</p>
-                                        <p className="text-[10px] truncate" style={{ color: '#6b7280' }}>{user.email}</p>
-                                    </div>
-                                </div>
-                                {/* Logout button */}
-                                <button
-                                    onClick={logout}
-                                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/20 transition-all touch-manipulation"
-                                >
-                                    <ArrowRightEndOnRectangleIcon style={{ width: 18, height: 18 }} className="flex-shrink-0" />
-                                    <span className="text-[13px] font-semibold">Log out</span>
-                                </button>
+                                <SidebarAccountSwitcher collapsed={false} />
                             </div>
                         )}
                     </div>
