@@ -1,6 +1,6 @@
 """User management utilities"""
 from sqlalchemy.orm import Session
-from database import User, GoogleAccount
+from database import User, GoogleAccount, BingAccount
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -162,6 +162,79 @@ def delete_google_account(db: Session, user_email: str, account_id: int) -> bool
     acct = (
         db.query(GoogleAccount)
         .filter(GoogleAccount.user_email == user_email, GoogleAccount.id == account_id)
+        .first()
+    )
+    if not acct:
+        return False
+    db.delete(acct)
+    db.commit()
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Bing Webmaster account helpers (mirror the Google helpers above)
+# ---------------------------------------------------------------------------
+
+def upsert_bing_account(
+    db: Session,
+    user_email: str,
+    label: str,
+    refresh_token: str,
+) -> BingAccount:
+    """Insert or update a connected Bing Webmaster account for a TBS user."""
+    acct = (
+        db.query(BingAccount)
+        .filter(BingAccount.user_email == user_email, BingAccount.label == label)
+        .first()
+    )
+    if acct:
+        acct.refresh_token = refresh_token
+        acct.connected_at = datetime.utcnow()
+    else:
+        acct = BingAccount(
+            user_email=user_email,
+            label=label,
+            refresh_token=refresh_token,
+        )
+        db.add(acct)
+    db.commit()
+    db.refresh(acct)
+    return acct
+
+
+def get_bing_accounts(db: Session, user_email: str) -> List[Dict]:
+    """Return all connected Bing accounts for a TBS user (tokens excluded)."""
+    rows = (
+        db.query(BingAccount)
+        .filter(BingAccount.user_email == user_email)
+        .order_by(BingAccount.connected_at)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "label": r.label,
+            "connected_at": r.connected_at.isoformat() if r.connected_at else None,
+        }
+        for r in rows
+    ]
+
+
+def get_bing_account_token(db: Session, user_email: str, account_id: int) -> Optional[str]:
+    """Return the refresh token for a specific connected Bing account."""
+    acct = (
+        db.query(BingAccount)
+        .filter(BingAccount.user_email == user_email, BingAccount.id == account_id)
+        .first()
+    )
+    return acct.refresh_token if acct else None
+
+
+def delete_bing_account(db: Session, user_email: str, account_id: int) -> bool:
+    """Disconnect a Bing account. Returns True if deleted, False if not found."""
+    acct = (
+        db.query(BingAccount)
+        .filter(BingAccount.user_email == user_email, BingAccount.id == account_id)
         .first()
     )
     if not acct:

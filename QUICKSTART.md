@@ -1,6 +1,6 @@
 # Quick Start — Local Development
 
-The app is already live at [analysis.phyominthein.com](https://analysis.phyominthein.com). This guide is for running it locally on your machine.
+The app is already live at [tool.tbs-dev.com](https://tool.tbs-dev.com). This guide is for running it locally on your machine.
 
 ---
 

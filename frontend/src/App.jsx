@@ -25,6 +25,8 @@ const PageSelector = lazy(() => import('./pages/PageSelector'));
 const SEOAnalytics = lazy(() => import('./pages/SEOAnalytics'));
 const GA4Analytics = lazy(() => import('./pages/GA4Analytics'));
 const GoogleAdsAnalytics = lazy(() => import('./pages/GoogleAdsAnalytics'));
+const BingAnalytics = lazy(() => import('./pages/BingAnalytics'));
+const BingCallback = lazy(() => import('./pages/BingCallback'));
 const CountriesPage = lazy(() => import('./pages/CountriesPage'));
 const NewLostRankingsPage = lazy(() => import('./pages/NewLostRankingsPage'));
 const PagesPage = lazy(() => import('./pages/PagesPage'));
@@ -176,6 +178,10 @@ function AppContent() {
                 {/* Public pages — top header + footer */}
                 <Route path="/" element={<PublicLayout><ErrorBoundary><Home /></ErrorBoundary></PublicLayout>} />
 
+                {/* Bing OAuth popup redirect target — standalone, no app chrome.
+                    Must NOT be under /auth or /api (Vite proxies those to the backend). */}
+                <Route path="/bing-callback" element={<Suspense fallback={<PageSpinner />}><BingCallback /></Suspense>} />
+
                 {/* All protected pages share the same Layout wrapper */}
                 <Route element={<ProtectedLayout />}>
                     <Route path="/my-sites" element={<MySites />} />
@@ -183,6 +189,7 @@ function AppContent() {
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />
                     <Route path="/ga4-analytics" element={<GA4Analytics />} />
                     <Route path="/google-ads" element={<GoogleAdsAnalytics />} />
+                    <Route path="/bing-analytics" element={<BingAnalytics />} />
                     <Route path="/seo-analytics/countries" element={<CountriesPage />} />
                     <Route path="/seo-analytics/new-lost-rankings" element={<NewLostRankingsPage />} />
                     <Route path="/seo-analytics/pages" element={<PagesPage />} />

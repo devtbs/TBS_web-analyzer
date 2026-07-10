@@ -108,6 +108,7 @@ const NAV_GROUPS = [
             { label: 'History',      path: '/history',      icon: ClockIcon },
             { label: 'GA4 Analytics', path: '/ga4-analytics', icon: ChartPieIcon },
             { label: 'Google Ads', path: '/google-ads', icon: MegaphoneIcon },
+            { label: 'Bing Search', path: '/bing-analytics', icon: MagnifyingGlassIcon },
             { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
         ],
     },

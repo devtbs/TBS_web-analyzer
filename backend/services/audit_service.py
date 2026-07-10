@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Bound concurrent page fetches so a large crawl doesn't exhaust sockets.
 _FETCH_GATE = asyncio.Semaphore(6)
 _HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; TBS-Audit/1.0; +https://analysis.phyominthein.com)"
+    "User-Agent": "Mozilla/5.0 (compatible; TBS-Audit/1.0; +https://tool.tbs-dev.com)"
 }
 _PSI_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
 

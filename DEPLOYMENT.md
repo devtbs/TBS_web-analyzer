@@ -1,6 +1,6 @@
 # Deployment Guide — TBS Web Analysis Platform
 
-Live at **[analysis.phyominthein.com](https://analysis.phyominthein.com)**  
+Live at **[tool.tbs-dev.com](https://tool.tbs-dev.com)**  
 Hosted on **Hostinger VPS** (`clawdbot@72.62.253.53`)  
 Project path: `/home/clawdbot/web_analyzer`
 
@@ -131,11 +131,11 @@ npm run build
 
 ### 7. Nginx Configuration
 
-Your config file is at `/etc/nginx/sites-enabled/analysis.phyominthein.com`:
+Your config file is at `/etc/nginx/sites-enabled/tool.tbs-dev.com`:
 
 ```nginx
 server {
-    server_name analysis.phyominthein.com;
+    server_name tool.tbs-dev.com;
 
     # Serve React frontend static files
     root /home/clawdbot/web_analyzer/frontend/dist;
@@ -164,18 +164,18 @@ server {
     }
 
     listen 443 ssl; # managed by Certbot
-    ssl_certificate /etc/letsencrypt/live/analysis.phyominthein.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/analysis.phyominthein.com/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/tool.tbs-dev.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tool.tbs-dev.com/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 }
 
 server {
-    if ($host = analysis.phyominthein.com) {
+    if ($host = tool.tbs-dev.com) {
         return 301 https://$host$request_uri;
     }
     listen 80;
-    server_name analysis.phyominthein.com;
+    server_name tool.tbs-dev.com;
     return 404;
 }
 ```
@@ -189,7 +189,7 @@ sudo systemctl restart nginx
 ### 8. SSL Certificate
 
 ```bash
-sudo certbot --nginx -d analysis.phyominthein.com
+sudo certbot --nginx -d tool.tbs-dev.com
 ```
 
 ---

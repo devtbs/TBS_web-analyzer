@@ -10,6 +10,15 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
 
+    # Bing Webmaster Tools OAuth (optional). Registered in BWT → Settings → API Access →
+    # OAuth Client. When id/secret are empty the Bing integration reports
+    # "not configured" instead of erroring, so the app still boots and works.
+    BING_CLIENT_ID: str = ""
+    BING_CLIENT_SECRET: str = ""
+    # Default redirect URI (dev). The frontend passes its own origin-based URI at runtime,
+    # so this is only a fallback; the value used must be registered on the BWT OAuth client.
+    BING_REDIRECT_URI: str = "http://localhost:5173/bing-callback"
+
     # Google Ads API (optional — requires a Google-approved developer token).
     # When GOOGLE_ADS_DEVELOPER_TOKEN is empty the Ads integration reports
     # "not configured" instead of erroring, so the app still boots and works.
@@ -54,8 +63,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     ALLOWED_ORIGINS: str = (
         "http://localhost:5173,http://localhost:3000,"
-        "https://analysis.phyominthein.com,https://analysis.phyominthein.com/,"
-        "https://api.phyominthein.com,https://api.phyominthein.com/"
+        "https://tool.tbs-dev.com,https://tool.tbs-dev.com/"
     )
     
     @property

@@ -61,6 +61,24 @@ class GoogleAccount(Base):
     connected_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class BingAccount(Base):
+    """A Bing Webmaster Tools account connected to a TBS app user via OAuth.
+
+    Mirrors GoogleAccount: one app user can connect multiple Bing accounts (each often a
+    Google-based Bing login). Each row stores the OAuth refresh token so the app can query
+    Bing Webmaster data for that account without re-login. `label` is a user-facing name
+    for the account (the sites it owns), since Bing's token response has no email/profile.
+    """
+    __tablename__ = "bing_accounts"
+    __table_args__ = (UniqueConstraint("user_email", "label", name="uq_user_bing"),)
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    user_email    = Column(String, ForeignKey("users.email"), index=True, nullable=False)
+    label         = Column(String, nullable=False)
+    refresh_token = Column(Text, nullable=False)
+    connected_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Analysis(Base):
     """Database model for analysis results"""
     __tablename__ = "analyses"

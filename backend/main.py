@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import (
     auth, gsc, analytics, ads, ranking, reports, decks, analysis, content, alerts, audit, accounts,
-    assistant,
+    assistant, bing,
 )
 from config import settings
 from database import init_db
@@ -67,7 +67,7 @@ app.add_middleware(
 )
 
 # Include routes — one router per domain (paths unchanged, mounted with no prefix)
-for _router in (auth, gsc, analytics, ads, ranking, reports, decks, analysis, content, alerts, audit, accounts, assistant):
+for _router in (auth, gsc, analytics, ads, ranking, reports, decks, analysis, content, alerts, audit, accounts, assistant, bing):
     app.include_router(_router.router)
 
 

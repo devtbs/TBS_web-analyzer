@@ -57,6 +57,62 @@ def exchange_google_code(code: str) -> dict:
     return token_data
 
 
+def exchange_bing_code(code: str, redirect_uri: str) -> dict:
+    """Exchange a Bing Webmaster OAuth authorization code for tokens.
+
+    Bing runs its own OAuth server (not Azure): POST form-encoded to /oauth/token.
+    redirect_uri must exactly match the one used in the authorize request AND registered
+    on the BWT OAuth client. Returns the token JSON (access_token, refresh_token,
+    expires_in). Raises 400 on a Bing `error`.
+    """
+    import requests as http_requests
+    from config import settings
+
+    resp = http_requests.post(
+        "https://www.bing.com/webmasters/oauth/token",
+        data={
+            "code": code,
+            "client_id": settings.BING_CLIENT_ID,
+            "client_secret": settings.BING_CLIENT_SECRET,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        },
+    )
+    token_data = resp.json()
+    if "error" in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bing token exchange failed: {token_data.get('error_description', token_data['error'])}",
+        )
+    return token_data
+
+
+def refresh_bing_token(refresh_token: str) -> str:
+    """Exchange a stored Bing refresh token for a fresh short-lived access token.
+
+    Returns the access_token string. Raises 400 on a Bing `error` (e.g. revoked access).
+    """
+    import requests as http_requests
+    from config import settings
+
+    resp = http_requests.post(
+        "https://www.bing.com/webmasters/oauth/token",
+        data={
+            "client_id": settings.BING_CLIENT_ID,
+            "client_secret": settings.BING_CLIENT_SECRET,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        },
+    )
+    token_data = resp.json()
+    if "error" in token_data or "access_token" not in token_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bing token refresh failed: {token_data.get('error_description', token_data.get('error', 'no access_token'))}",
+        )
+    return token_data["access_token"]
+
+
 def iter_google_accounts(db, email) -> list:
     """Return every connected Google account for `email` as a list of dicts:
     {account_id, google_email, token, is_refresh}.
