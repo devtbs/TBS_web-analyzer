@@ -167,6 +167,52 @@ async def presentation_ai_deck_gsc(
                              headers=_SSE_HEADERS)
 
 
+@router.post("/api/presentation/ai-deck-bing")
+async def presentation_ai_deck_bing(
+    account_id: int,
+    site: str,
+    days: int = 28,
+    provider: str = "deepseek",
+    images: bool = True,
+    label: str = "",
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AI-designed Bing organic-search deck for one verified site under a connected Bing
+    account. Query: ?account_id=<id>&site=<url>&days=N&label=<display name>.
+    Body may carry {notes, ai_performance_csv} — the uploaded AI Performance CSV export
+    (Bing has no AI API yet) adds an AI Search Visibility slide when present."""
+    from services.report_generator import generate_ai_bing_deck
+    from services.ai_deck_service import render_slide_images
+    from services.image_service import images_enabled
+    from services.bing_service import bing_is_configured
+    from api.routers._shared import refresh_bing_token
+    from utils.user_manager import get_bing_account_token
+    _require_llm_key()
+    if not bing_is_configured():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Bing is not configured — an OAuth client is required.")
+    refresh = get_bing_account_token(db, current_user.email, account_id)
+    if not refresh:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connected Bing account not found.")
+    access_token = refresh_bing_token(refresh)
+    notes = (body or {}).get("notes", "")
+    ai_perf_csv = (body or {}).get("ai_performance_csv")
+
+    async def run(on_progress):
+        result = await generate_ai_bing_deck(access_token, site, days, label=label, provider=provider,
+                                             images=images and images_enabled(),
+                                             notes=notes, ai_perf_csv=ai_perf_csv, on_progress=on_progress)
+        slides = await render_slide_images(result["html"], on_progress=on_progress)
+        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="bing",
+                                     label=result["domain"], provider=provider)
+        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+
+    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
+                             headers=_SSE_HEADERS)
+
+
 @router.post("/api/presentation/ai-deck-ga4")
 async def presentation_ai_deck_ga4(
     property_id: str,

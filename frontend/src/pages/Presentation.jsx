@@ -68,6 +68,16 @@ const Presentation = () => {
     const [adsOpen, setAdsOpen] = useState(false);
     const adsBoxRef = useRef(null);
 
+    // Bing site picker (loaded lazily when the Bing tab is first opened)
+    const [bingSites, setBingSites] = useState([]);
+    const [bingLoading, setBingLoading] = useState(false);
+    const [bingLoaded, setBingLoaded] = useState(false);
+    const [bingSite, setBingSite] = useState(null); // { url, account_id, account_label }
+    const [bingQuery, setBingQuery] = useState('');
+    const [bingOpen, setBingOpen] = useState(false);
+    const [bingAiCsv, setBingAiCsv] = useState(null); // { name, text }
+    const bingBoxRef = useRef(null);
+
     // shared period (gsc / ads)
     const [days, setDays] = useState(28);
 
@@ -160,6 +170,24 @@ const Presentation = () => {
         }
     }, [mode, adsLoaded]);
 
+    // Lazily load the Bing verified-site list the first time its tab is opened.
+    useEffect(() => {
+        if (mode === 'bing' && !bingLoaded) {
+            setBingLoaded(true); setBingLoading(true);
+            (async () => {
+                try {
+                    const res = await api.get('/api/bing/sites');
+                    const list = res.data.sites || [];
+                    setBingSites(list);
+                    if (list.length) setBingSite(list[0]);
+                    else if (res.data.configured === false) toast.error('Bing is not configured yet.');
+                    else toast.error('No connected Bing accounts — connect one on the Bing Search page.');
+                } catch { toast.error('Could not load Bing sites.'); }
+                finally { setBingLoading(false); }
+            })();
+        }
+    }, [mode, bingLoaded]);
+
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
         const sel = prettyName(propUrl);
@@ -177,6 +205,15 @@ const Presentation = () => {
     const ga4Label = useMemo(
         () => ga4Props.find((p) => p.property_id === ga4PropId)?.display || '',
         [ga4Props, ga4PropId]);
+
+    const bingPretty = (u) => (u || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const bingFiltered = useMemo(() => {
+        const q = bingQuery.trim().toLowerCase();
+        const sel = bingSite ? bingPretty(bingSite.url) : '';
+        const list = (!q || q === sel.toLowerCase()) ? bingSites
+            : bingSites.filter((s) => bingPretty(s.url).toLowerCase().includes(q));
+        return list.slice(0, 100);
+    }, [bingSites, bingQuery, bingSite]);
 
     // Read a Server-Sent Events stream, invoking handlers per (event, data) frame.
     const readSSE = async (response, { onProgress, onResult, onError }) => {
@@ -207,6 +244,7 @@ const Presentation = () => {
     const canGenerate = mode === 'gsc' ? !!propUrl
         : mode === 'ga4' ? !!ga4PropId
         : mode === 'ads' ? !!adsCustId
+        : mode === 'bing' ? !!bingSite
         : !!pdfFile;
 
     const generate = async () => {
@@ -214,6 +252,7 @@ const Presentation = () => {
             toast.error(mode === 'pdf' ? 'Choose a PDF first.'
                 : mode === 'ads' ? 'Pick a Google Ads account first.'
                 : mode === 'ga4' ? 'Pick a GA4 property first.'
+                : mode === 'bing' ? 'Pick a Bing site first.'
                 : 'Pick a site first.');
             return;
         }
@@ -238,6 +277,10 @@ const Presentation = () => {
                 response = await fetch(
                     `/api/presentation/ai-deck-ads?customer_id=${encodeURIComponent(adsCustId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(adsLabel)}`,
                     { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+            } else if (mode === 'bing') {
+                response = await fetch(
+                    `/api/presentation/ai-deck-bing?account_id=${bingSite.account_id}&site=${encodeURIComponent(bingSite.url)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(bingPretty(bingSite.url))}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, ai_performance_csv: bingAiCsv?.text || null }) });
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
@@ -302,7 +345,7 @@ const Presentation = () => {
                 </div>
                 <div>
                     <h1 className="text-2xl font-black text-slate-900 tracking-tight">AI Presentation</h1>
-                    <p className="text-sm text-slate-500">A premium, uniquely-styled deck from your Search Console, Analytics, Google Ads or an uploaded PDF.</p>
+                    <p className="text-sm text-slate-500">A premium, uniquely-styled deck from your Search Console, Analytics, Google Ads, Bing or an uploaded PDF.</p>
                 </div>
             </div>
 
@@ -310,7 +353,7 @@ const Presentation = () => {
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
                 <div className="grid grid-cols-3 gap-3 mb-6">
-                    {[['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['pdf', 'From a PDF']].map(([m, label]) => (
+                    {[['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['bing', 'Bing'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
                             className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
                                 mode === m ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
@@ -480,6 +523,71 @@ const Presentation = () => {
                                 </div>
                             )}
                         </div>
+                    </>
+                )}
+
+                {mode === 'bing' && (
+                    <>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Bing site</label>
+                        <div className="relative mb-6" ref={bingBoxRef}>
+                            <button
+                                type="button"
+                                disabled={bingLoading || generating}
+                                onClick={() => !bingLoading && !generating && setBingOpen(o => !o)}
+                                className={fieldCls + ' flex items-center justify-between text-left'}
+                            >
+                                <span className={bingSite ? 'text-slate-800' : 'text-slate-400'}>
+                                    {bingLoading ? 'Loading sites…'
+                                        : bingSite ? bingPretty(bingSite.url)
+                                        : bingSites.length === 0 ? 'No connected Bing sites' : 'Select a site…'}
+                                </span>
+                                <svg className={`w-4 h-4 text-slate-400 transition-transform ${bingOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+                            {bingOpen && (
+                                <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                                    <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-100">
+                                        <MagnifyingGlassIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                                        <input
+                                            autoFocus
+                                            type="text"
+                                            placeholder="Search sites…"
+                                            value={bingQuery}
+                                            onChange={e => setBingQuery(e.target.value)}
+                                            className="flex-1 text-sm outline-none bg-transparent text-slate-700 placeholder:text-slate-400"
+                                        />
+                                    </div>
+                                    <ul className="max-h-52 overflow-y-auto">
+                                        {bingFiltered.length === 0
+                                            ? <li className="px-4 py-3 text-sm text-slate-400">No sites match "{bingQuery}"</li>
+                                            : bingFiltered.map(s => (
+                                                <button
+                                                    key={`${s.account_id}-${s.url}`}
+                                                    type="button"
+                                                    onClick={() => { setBingSite(s); setBingOpen(false); setBingQuery(''); }}
+                                                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-slate-50 flex items-center justify-between gap-2 ${bingSite && s.url === bingSite.url && s.account_id === bingSite.account_id ? 'bg-indigo-50 text-[#26397A] font-medium' : 'text-slate-700'}`}
+                                                >
+                                                    <span className="truncate">{bingPretty(s.url)}</span>
+                                                    {bingSite && s.url === bingSite.url && s.account_id === bingSite.account_id && <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                                                </button>
+                                            ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <label className="block text-sm font-bold text-slate-700 mb-2">
+                            AI Performance CSV <span className="font-normal text-slate-400">(optional — adds an AI Search Visibility slide)</span>
+                        </label>
+                        <label className="flex items-center gap-3 border border-dashed border-slate-300 rounded-xl px-4 py-4 mb-6 cursor-pointer hover:border-[#26397A]/50">
+                            <DocumentArrowUpIcon className="w-6 h-6 text-[#26397A]" />
+                            <span className="text-sm text-slate-600">{bingAiCsv ? bingAiCsv.name : 'Export from Bing Webmaster → AI Performance, then upload the CSV…'}</span>
+                            <input type="file" accept=".csv,text/csv" className="hidden" disabled={generating}
+                                onChange={async (e) => {
+                                    const f = e.target.files?.[0];
+                                    if (!f) { setBingAiCsv(null); return; }
+                                    setBingAiCsv({ name: f.name, text: await f.text() });
+                                }} />
+                        </label>
                     </>
                 )}
 

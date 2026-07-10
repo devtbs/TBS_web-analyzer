@@ -255,6 +255,23 @@ GA4_STRUCTURE = (
 )
 
 
+# Structure for the Bing (Microsoft) organic-search deck. Bing gives clicks/impressions +
+# top queries/pages; CTR and period deltas are derived upstream. The AI Search Visibility
+# slide (Copilot citations) is OMITTABLE — only present when the user uploads the AI
+# Performance CSV export (Bing has no AI API yet).
+BING_STRUCTURE = (
+    "1. Cover Slide — site/domain, 'Bing Search Report', and the REPORTING PERIOD date range as the subtitle, on a professional hero visual. NO KPI numbers/metric chips on the cover — keep it clean.\n"
+    "2. Executive Summary — CHART-LED slide: one or two large Plotly charts (clicks/impressions trend) as the focus, with the high-level KPIs as a slim compact strip along the top or bottom (clicks, impressions, CTR — and 'Total AI Citations' too WHEN the AI SEARCH VISIBILITY section is present). NOT large number cards with empty space. Strongest positives, short strategic summary.\n"
+    "3. Bing Search Performance — clicks, impressions, CTR with period-over-period change; highlight key wins visually. Note this is Microsoft Bing organic search (distinct from Google).\n"
+    "4. Performance Over Time — from PERFORMANCE OVER TIME: a Plotly chart of daily clicks & impressions (filled AREA or combo). Include a VISIBLE LEGEND naming each series and clear axis titles.\n"
+    "5. Top Queries (REQUIRED — always include this slide) — a clean, readable TABLE of the top ~10 queries by clicks with columns Query · Clicks · Impressions · CTR · Avg position. This is a real labelled table so the boss can read exactly which keywords drive Bing traffic.\n"
+    "6. Top Pages (REQUIRED — always include this slide) — a readable TABLE of the best-performing landing pages by clicks (Page · Clicks · Impressions · CTR); shorten long URLs to their path. Focus on strengths.\n"
+    "7. AI Search Visibility (OMIT this ENTIRE slide if there is no AI SEARCH VISIBILITY section in the data) — the 'reporting on AI' slide: show Total AI Citations and Average Cited Pages as KPIs, make the CITATIONS OVER TIME daily series the hero chart (a Plotly filled AREA/line of citations), and call out the peak citation day. Frame it as how often this site is cited as a source in Microsoft Copilot / Bing AI-generated answers — a growing AI-search visibility signal.\n"
+    "8. Strategic Insights & Recommendations — actionable Bing-specific recommendations ONLY: grow Bing visibility, target near-page-1 Bing queries, improve CTR on high-impression queries, and (when AI data present) sustain/grow AI-citation momentum by strengthening the most-cited content. Do NOT reference Google.\n"
+    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+)
+
+
 # ---------------------------------------------------------------------------
 # DESIGN SYSTEM — always appended (like HTML_CONTRACT) so EVERY deck, including
 # custom prompts, gets the same template-grade consistency. This is what closes the

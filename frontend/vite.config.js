@@ -16,6 +16,7 @@ export default defineConfig(({ command }) => ({
                     'vendor-react': ['react', 'react-dom', 'react-router-dom'],
                     'vendor-charts': ['recharts'],
                     'vendor-graph': ['react-force-graph-2d', 'd3-force'],
+                    'vendor-d3': ['d3-hierarchy', 'd3-shape', 'd3-zoom'],
                     'vendor-editor': ['@tiptap/react', '@tiptap/starter-kit',
                         '@tiptap/extension-text-align', '@tiptap/extension-underline'],
                     'vendor-export': ['jspdf', 'html2canvas', 'html-to-image', 'xlsx'],

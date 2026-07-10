@@ -740,6 +740,129 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
     return {"customer_id": customer_id, "domain": name, "html": html}
 
 
+async def assemble_bing_context(access_token: str, site: str, days: int = 28,
+                                ai_perf_csv: Optional[str] = None) -> Dict:
+    """Gather Bing Webmaster headline metrics + daily trend + top queries/pages for one site.
+    Bing gives no period deltas, so derive them from the daily series. Optionally fold in the
+    AI Performance CSV export (citations/cited-pages) since that data has no API yet."""
+    from services import bing_service
+
+    traffic = await bing_service.get_rank_and_traffic(access_token, site)  # full daily history, ascending
+    queries = await bing_service.get_query_stats(access_token, site)
+    pages = await bing_service.get_page_stats(access_token, site)
+
+    period = bing_service.split_period_deltas(traffic, days)
+    trend = traffic[-days:] if days else traffic
+    period_start = trend[0]["date"] if trend else ""
+    period_end = trend[-1]["date"] if trend else ""
+
+    ai = bing_service.parse_ai_performance_csv(ai_perf_csv) if ai_perf_csv else None
+
+    return {
+        "site": site,
+        "days": days,
+        "period_label": _human_period(period_start, period_end),
+        "totals": period["current"],
+        "previous": period["previous"],
+        "deltas": period["deltas"],
+        "trend": trend,
+        "queries": sorted(queries, key=lambda q: q.get("clicks", 0), reverse=True)[:15],
+        "pages": sorted(pages, key=lambda p: p.get("clicks", 0), reverse=True)[:15],
+        "ai": ai,
+    }
+
+
+def _bing_data_brief(ctx: Dict, label: str) -> str:
+    t = ctx.get("totals") or {}
+    d = ctx.get("deltas") or {}
+
+    def _delta(v, suffix="%"):
+        return "n/a" if v is None else f"{v:+}{suffix}"
+
+    def _ctr(clicks, impr):
+        return round(clicks / impr * 100, 2) if impr else 0
+
+    trend_lines = "\n".join(
+        f"  - {r.get('date','')}: {r.get('clicks',0)} clicks, {r.get('impressions',0)} impressions"
+        for r in ctx.get("trend", [])
+    ) or "  (none)"
+    query_lines = "\n".join(
+        f"  - {q.get('query','')}: {q.get('clicks',0)} clicks, {q.get('impressions',0)} impressions, "
+        f"{_ctr(q.get('clicks',0), q.get('impressions',0))}% CTR, avg position {q.get('position','n/a')}"
+        for q in ctx.get("queries", [])
+    ) or "  (none)"
+    page_lines = "\n".join(
+        f"  - {p.get('page','')}: {p.get('clicks',0)} clicks, {p.get('impressions',0)} impressions, "
+        f"{_ctr(p.get('clicks',0), p.get('impressions',0))}% CTR"
+        for p in ctx.get("pages", [])
+    ) or "  (none)"
+
+    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    brief = f"""Bing (Microsoft) organic search report for {label}.
+Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+On the COVER slide, show this reporting period ({period_label}) as the subtitle.
+
+BING SEARCH PERFORMANCE (current value, change vs previous period):
+- Clicks: {t.get('clicks', 0)} ({_delta(d.get('clicks'))})
+- Impressions: {t.get('impressions', 0)} ({_delta(d.get('impressions'))})
+- CTR: {t.get('ctr', 0)}% ({_delta(d.get('ctr'), 'pp')})
+
+PERFORMANCE OVER TIME (daily; use for a clicks & impressions trend chart):
+{trend_lines}
+
+TOP QUERIES (by clicks):
+{query_lines}
+
+TOP PAGES (by clicks):
+{page_lines}
+"""
+
+    ai = ctx.get("ai")
+    if ai:
+        ai_lines = "\n".join(
+            f"  - {r.get('date','')}: {r.get('citations',0)} citations, {r.get('cited_pages',0)} cited pages"
+            for r in ai.get("daily", [])
+        ) or "  (none)"
+        peak = ai.get("peak") or {}
+        brief += f"""
+AI SEARCH VISIBILITY (Microsoft Copilot / Bing AI citations — how often this site is cited as a source in AI answers):
+- Total citations: {ai.get('total_citations', 0)} over {ai.get('start','')} to {ai.get('end','')}
+- Average cited pages per active day: {ai.get('avg_cited_pages', 0)}
+- Peak day: {peak.get('date','')} with {peak.get('citations',0)} citations
+CITATIONS OVER TIME (daily; use for an AI-citations area/line chart):
+{ai_lines}
+"""
+
+    brief += "\nUse only these numbers. Positive but honest framing; declines = opportunities."
+    return brief
+
+
+async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
+                                label: str = "", provider: str = "deepseek",
+                                prompt: Optional[str] = None, images: bool = True,
+                                notes: str = "", ai_perf_csv: Optional[str] = None,
+                                on_progress=None) -> Dict:
+    """AI-designed Bing search deck for one verified site. Returns the HTML only —
+    the file is rendered on download. `label` is the site display name (for the cover)."""
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
+                                          _AI_IMG_RE, BING_STRUCTURE, UNIQUE_STYLE_BRAND)
+    from services.highlights import to_brief_block
+    if on_progress:
+        await on_progress("Gathering Bing Webmaster data…")
+    context = await assemble_bing_context(access_token, site, days, ai_perf_csv=ai_perf_csv)
+    name = label or site
+    brief = _bing_data_brief(context, name) + to_brief_block(notes)
+    image_cache = {} if images else None
+    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+                                    structure=BING_STRUCTURE, provider=provider,
+                                    on_progress=on_progress, image_cache=image_cache,
+                                    seed=name)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
+    return {"site": site, "domain": name, "html": html}
+
+
 async def generate_monthly_report(site_id: int, days: int = 30) -> Dict:
     """Assemble the data snapshot and generate the client-facing report markdown."""
     context = await assemble_context(site_id, days)

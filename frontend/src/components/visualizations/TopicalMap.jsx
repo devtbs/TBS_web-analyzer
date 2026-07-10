@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
 import api from '../../api/axios';
+import TaxonomyTree from './TaxonomyTree';
 import {
     ChevronDownIcon,
     ChevronUpIcon,
@@ -923,90 +924,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         icon={Squares2X2Icon}
                         elementId="export-taxonomy-visualization"
                     />
-                    <div className="p-6 bg-slate-50">
-                        <div className="overflow-x-auto">
-                            <div className="inline-block min-w-full">
-                                {/* Build tree structure */}
-                                {(() => {
-                                    // Get level 1 nodes (root nodes)
-                                    const level1Nodes = activeMap.taxonomy.filter(node => node.level === 1);
-
-                                    return (
-                                        <div className="flex flex-col items-center gap-8">
-                                            {level1Nodes.map((l1Node, l1Idx) => (
-                                                <div key={l1Idx} className="flex flex-col items-center">
-                                                    {/* Level 1 Node */}
-                                                    <div
-                                                        className="px-6 py-3 rounded-lg text-sm font-semibold text-white shadow-md border-2 border-white"
-                                                        style={{ backgroundColor: l1Node.color || '#0f172a' }}
-                                                    >
-                                                        {l1Node.name}
-                                                    </div>
-
-                                                    {/* Connector line */}
-                                                    {l1Node.children && l1Node.children.length > 0 && (
-                                                        <div className="w-0.5 h-8 bg-slate-300"></div>
-                                                    )}
-
-                                                    {/* Level 2 Nodes */}
-                                                    {l1Node.children && l1Node.children.length > 0 && (
-                                                        <div className="flex gap-4 relative">
-                                                            {/* Horizontal connector */}
-                                                            <div className="absolute top-0 left-0 right-0 h-0.5 bg-slate-300" style={{ top: '-16px' }}></div>
-
-                                                            {l1Node.children.map((l2Name, l2Idx) => {
-                                                                const l2Node = activeMap.taxonomy.find(n => n.name === l2Name && n.level === 2);
-                                                                if (!l2Node) return null;
-
-                                                                return (
-                                                                    <div key={l2Idx} className="flex flex-col items-center">
-                                                                        {/* Vertical connector to L2 */}
-                                                                        <div className="w-0.5 h-4 bg-slate-300"></div>
-
-                                                                        {/* Level 2 Node */}
-                                                                        <div
-                                                                            className="px-4 py-2 rounded-lg text-xs font-medium text-white shadow-sm"
-                                                                            style={{ backgroundColor: l2Node.color || '#059669' }}
-                                                                        >
-                                                                            {l2Node.name}
-                                                                        </div>
-
-                                                                        {/* Connector to L3 */}
-                                                                        {l2Node.children && l2Node.children.length > 0 && (
-                                                                            <div className="w-0.5 h-6 bg-slate-300"></div>
-                                                                        )}
-
-                                                                        {/* Level 3 Nodes */}
-                                                                        {l2Node.children && l2Node.children.length > 0 && (
-                                                                            <div className="flex flex-col gap-2">
-                                                                                {l2Node.children.map((l3Name, l3Idx) => {
-                                                                                    const l3Node = activeMap.taxonomy.find(n => n.name === l3Name && n.level === 3);
-                                                                                    if (!l3Node) return null;
-
-                                                                                    return (
-                                                                                        <div
-                                                                                            key={l3Idx}
-                                                                                            className="px-3 py-1.5 rounded text-xs font-medium text-white shadow-sm"
-                                                                                            style={{ backgroundColor: l3Node.color || '#64748b' }}
-                                                                                        >
-                                                                                            {l3Node.name}
-                                                                                        </div>
-                                                                                    );
-                                                                                })}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        </div>
+                    <div className="p-4 bg-slate-50">
+                        <TaxonomyTree taxonomy={activeMap.taxonomy} />
                     </div>
                 </div>
             )}

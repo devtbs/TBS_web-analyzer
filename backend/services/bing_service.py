@@ -140,3 +140,104 @@ async def get_page_stats(access_token: str, site_url: str) -> List[Dict]:
     """Top pages for a site (aggregated across days): [{page, clicks, impressions, position}]."""
     rows = await _api_get("GetPageStats", access_token, {"siteUrl": site_url})
     return _aggregate_by(rows, "page")
+
+
+# ---------------------------------------------------------------------------
+# AI Performance (no API yet — parsed from the dashboard's CSV export) + deltas
+# ---------------------------------------------------------------------------
+
+def _norm_csv_date(value: str) -> Optional[str]:
+    """Normalize the AI Performance CSV date ('M/D/YYYY 12:00:00 AM') to ISO YYYY-MM-DD."""
+    if not value:
+        return None
+    head = value.strip().strip('"').split(" ")[0]  # drop the time component
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(head, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def parse_ai_performance_csv(text: str) -> Optional[Dict]:
+    """Parse the Bing AI Performance 'Overview Stats' CSV export.
+
+    Columns: Date, Citations, Cited Pages (daily). Returns aggregated stats + the daily
+    series for charting, or None if the text isn't a recognizable AI Performance export.
+    """
+    import csv
+    import io
+
+    if not text or not text.strip():
+        return None
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        return None
+    # Tolerant header lookup (case/space-insensitive).
+    fields = {(f or "").strip().lower(): f for f in reader.fieldnames}
+    date_f = fields.get("date")
+    cit_f = fields.get("citations")
+    pages_f = fields.get("cited pages")
+    if not (date_f and cit_f):
+        return None
+
+    daily = []
+    for row in reader:
+        d = _norm_csv_date(row.get(date_f, ""))
+        if not d:
+            continue
+        try:
+            citations = int(float(row.get(cit_f, 0) or 0))
+        except (ValueError, TypeError):
+            citations = 0
+        try:
+            cited_pages = int(float(row.get(pages_f, 0) or 0)) if pages_f else 0
+        except (ValueError, TypeError):
+            cited_pages = 0
+        daily.append({"date": d, "citations": citations, "cited_pages": cited_pages})
+
+    if not daily:
+        return None
+    daily.sort(key=lambda r: r["date"])
+    total = sum(r["citations"] for r in daily)
+    active = [r for r in daily if r["cited_pages"] > 0]
+    avg_pages = round(sum(r["cited_pages"] for r in active) / len(active), 1) if active else 0
+    peak = max(daily, key=lambda r: r["citations"])
+    return {
+        "daily": daily,
+        "total_citations": total,
+        "avg_cited_pages": avg_pages,
+        "peak": peak,
+        "start": daily[0]["date"],
+        "end": daily[-1]["date"],
+    }
+
+
+def split_period_deltas(daily: List[Dict], days: int) -> Dict:
+    """Split a daily traffic series (get_rank_and_traffic output, sorted ascending) into the
+    most recent `days` (current) vs the `days` before that (previous), and return totals +
+    period-over-period % change for clicks/impressions plus derived CTR. Bing has no native
+    deltas, so we derive them here to match the depth of the GSC/Ads decks."""
+    def _sum(rows):
+        clicks = sum(r.get("clicks", 0) for r in rows)
+        impr = sum(r.get("impressions", 0) for r in rows)
+        ctr = round(clicks / impr * 100, 2) if impr else 0
+        return {"clicks": clicks, "impressions": impr, "ctr": ctr}
+
+    def _pct(cur, prev):
+        if not prev:
+            return None
+        return round((cur - prev) / prev * 100, 1)
+
+    cur_rows = daily[-days:] if days else daily
+    prev_rows = daily[-2 * days:-days] if days else []
+    cur, prev = _sum(cur_rows), _sum(prev_rows)
+    return {
+        "current": cur,
+        "previous": prev,
+        "deltas": {
+            "clicks": _pct(cur["clicks"], prev["clicks"]),
+            "impressions": _pct(cur["impressions"], prev["impressions"]),
+            "ctr": (round(cur["ctr"] - prev["ctr"], 2) if prev["impressions"] else None),
+        },
+    }
