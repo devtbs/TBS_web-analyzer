@@ -1,11 +1,13 @@
-import * as XLSX from 'xlsx';
-
 /**
  * Shared table-export helpers, lifted from the previously-duplicated
  * `handleDownloadCSV` that lived in 5 page components.
  *
  * `data` is an array of flat row objects; column headers are taken from the
  * keys of the first row.
+ *
+ * NOTE: `xlsx` is heavy (~885KB in the vendor-export chunk). It is loaded
+ * on-demand via dynamic import() inside downloadXLSX so it stays off the
+ * initial page load — only fetched when the user actually exports.
  */
 
 /** Drop nested object/array fields so a row maps cleanly to one CSV/XLSX row. */
@@ -46,9 +48,10 @@ export const downloadCSV = (data, filename) => {
     URL.revokeObjectURL(link.href);
 };
 
-/** Download an array of row objects as a real .xlsx workbook. */
-export const downloadXLSX = (data, filename, sheetName = 'Sheet1') => {
+/** Download an array of row objects as a real .xlsx workbook. Loads xlsx on demand. */
+export const downloadXLSX = async (data, filename, sheetName = 'Sheet1') => {
     if (!data || !data.length) return;
+    const XLSX = await import('xlsx');
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);

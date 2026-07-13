@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import * as XLSX from 'xlsx';
 import {
     ChevronDownIcon,
 } from '@heroicons/react/20/solid';
@@ -869,11 +868,14 @@ const SEOAnalytics = () => {
         position: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', fill: '#d97706', icon: <ArrowTrendingUpIcon className="w-4 h-4" /> }
     };
 
-    const handleDownloadReport = () => {
+    const handleDownloadReport = async () => {
         if (!pages || pages.length === 0) {
             toast.error('No data available to download');
             return;
         }
+
+        // xlsx is heavy — load it on demand so it stays off the dashboard's initial bundle.
+        const XLSX = await import('xlsx');
 
         // 1. Prepare Queries Data
         const queryMap = {};

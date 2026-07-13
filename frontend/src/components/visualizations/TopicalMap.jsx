@@ -24,8 +24,6 @@ import {
     XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Favicon from '../ui/Favicon';
-import { toPng } from 'html-to-image';
-import { jsPDF } from 'jspdf';
 
 const LS_LANGUAGE     = 'writing_language';
 const LS_TONE         = 'writing_tone';
@@ -196,8 +194,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     const exportToPNG = async (elementId, filename) => {
         const element = document.getElementById(elementId);
         if (!element) return;
-        
+
         try {
+            // Load html-to-image on demand (keeps the export chunk off the initial page load).
+            const { toPng } = await import('html-to-image');
             // Filter function to remove the export buttons entirely from the final shot
             const filter = (node) => {
                 // Ignore elements specifically marked
@@ -237,8 +237,13 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     const exportToPDF = async (elementId, filename) => {
         const element = document.getElementById(elementId);
         if (!element) return;
-        
+
         try {
+            // Load the heavy export libs on demand.
+            const [{ toPng }, { jsPDF }] = await Promise.all([
+                import('html-to-image'),
+                import('jspdf'),
+            ]);
             const filter = (node) => {
                 // Ignore elements specifically marked
                 if (node?.hasAttribute && node.hasAttribute('data-html2canvas-ignore')) {

@@ -10,20 +10,18 @@ export default defineConfig(({ command }) => ({
     build: {
         rollupOptions: {
             output: {
-                // Split big shared libraries into their own cached vendor chunks so they
-                // aren't duplicated across page chunks and are reused across navigations.
-                // NOTE: do NOT split d3-hierarchy/shape/zoom into a separate chunk — they
-                // share transitive d3 modules (internmap via d3-scale) with recharts and
-                // react-force-graph, and a separate d3 chunk creates a cross-chunk circular
-                // init ("Cannot access 'InternMap' before initialization") that blanks the
-                // whole app in the production build. Let Rollup co-locate them instead.
+                // Keep ONLY react/router in a stable shared vendor chunk. Everything else
+                // (recharts, tiptap, force-graph, d3, jspdf, xlsx, html-to-image) is reached
+                // through lazy routes / dynamic import()s, so Rollup already splits it into
+                // async chunks that load on demand.
+                //
+                // Do NOT hand-group those heavy libs into manualChunks: it has twice caused
+                // production-only breakage — (1) a d3 chunk created a cross-chunk circular
+                // init ("Cannot access 'InternMap' before initialization") that blanked the
+                // whole app, and (2) the vendor-export chunk trapped Vite's __vitePreload
+                // helper, forcing the entry to eagerly modulepreload ~1MB of export libs.
                 manualChunks: {
                     'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-                    'vendor-charts': ['recharts'],
-                    'vendor-graph': ['react-force-graph-2d', 'd3-force'],
-                    'vendor-editor': ['@tiptap/react', '@tiptap/starter-kit',
-                        '@tiptap/extension-text-align', '@tiptap/extension-underline'],
-                    'vendor-export': ['jspdf', 'html2canvas', 'html-to-image', 'xlsx'],
                 },
             },
         },
