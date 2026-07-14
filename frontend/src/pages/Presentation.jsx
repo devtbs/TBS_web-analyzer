@@ -79,6 +79,7 @@ const Presentation = () => {
     const [bingAiStatus, setBingAiStatus] = useState(null); // { total_citations, days } once auto-pulled
     const [bingAiChecking, setBingAiChecking] = useState(false);
     const [bingBookmarklet, setBingBookmarklet] = useState(''); // javascript: href for the drag link
+    const bingBookmarkletRef = useRef(null); // href set imperatively — React strips javascript: hrefs in JSX
     const bingBoxRef = useRef(null);
 
     // shared period (gsc / ads)
@@ -213,6 +214,13 @@ const Presentation = () => {
             } catch { setBingBookmarklet(''); }
         })();
     }, [mode, bingSite]);
+
+    // Set the bookmarklet href imperatively: React sanitizes javascript: URLs out of JSX href
+    // (replacing them with a "React has blocked…" stub), so we must assign it on the DOM node.
+    useEffect(() => {
+        const el = bingBookmarkletRef.current;
+        if (el && bingBookmarklet) el.setAttribute('href', bingBookmarklet);
+    }, [bingBookmarklet]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -620,7 +628,7 @@ const Presentation = () => {
                                     <ol className="list-decimal list-inside space-y-1 mb-3 text-slate-500">
                                         <li>Drag this button to your bookmarks bar:&nbsp;
                                             {bingBookmarklet
-                                                ? <a href={bingBookmarklet} onClick={(e) => e.preventDefault()}
+                                                ? <a ref={bingBookmarkletRef} onClick={(e) => e.preventDefault()}
                                                     className="inline-block px-2 py-0.5 rounded bg-[#26397A] text-white text-xs font-semibold cursor-grab">Pull Bing AI Perf</a>
                                                 : <span className="text-slate-400">select a site first…</span>}
                                         </li>
