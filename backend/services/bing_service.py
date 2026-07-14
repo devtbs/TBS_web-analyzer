@@ -170,11 +170,13 @@ def parse_ai_performance_csv(text: str) -> Optional[Dict]:
 
     if not text or not text.strip():
         return None
-    reader = csv.DictReader(io.StringIO(text))
+    # Real Bing exports are UTF-8 with a BOM, which would otherwise corrupt the first header
+    # ("﻿Date") and make every column lookup miss. Strip it before parsing.
+    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
     if not reader.fieldnames:
         return None
-    # Tolerant header lookup (case/space-insensitive).
-    fields = {(f or "").strip().lower(): f for f in reader.fieldnames}
+    # Tolerant header lookup (BOM/case/space-insensitive).
+    fields = {(f or "").lstrip("﻿").strip().lower(): f for f in reader.fieldnames}
     date_f = fields.get("date")
     cit_f = fields.get("citations")
     pages_f = fields.get("cited pages")
@@ -196,9 +198,16 @@ def parse_ai_performance_csv(text: str) -> Optional[Dict]:
             cited_pages = 0
         daily.append({"date": d, "citations": citations, "cited_pages": cited_pages})
 
+    return aggregate_ai_daily(daily)
+
+
+def aggregate_ai_daily(daily: List[Dict]) -> Optional[Dict]:
+    """Collapse a list of daily AI-performance rows ({date, citations, cited_pages}) into the
+    headline shape used by the deck. Shared by parse_ai_performance_csv and the auto-pull path
+    (bing_ai_service) so both produce identical structures. Returns None if there are no rows."""
     if not daily:
         return None
-    daily.sort(key=lambda r: r["date"])
+    daily = sorted(daily, key=lambda r: r["date"])
     total = sum(r["citations"] for r in daily)
     active = [r for r in daily if r["cited_pages"] > 0]
     avg_pages = round(sum(r["cited_pages"] for r in active) / len(active), 1) if active else 0

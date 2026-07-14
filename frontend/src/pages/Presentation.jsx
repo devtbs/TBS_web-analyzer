@@ -76,6 +76,9 @@ const Presentation = () => {
     const [bingQuery, setBingQuery] = useState('');
     const [bingOpen, setBingOpen] = useState(false);
     const [bingAiCsv, setBingAiCsv] = useState(null); // { name, text }
+    const [bingAiStatus, setBingAiStatus] = useState(null); // { total_citations, days } once auto-pulled
+    const [bingAiChecking, setBingAiChecking] = useState(false);
+    const [bingBookmarklet, setBingBookmarklet] = useState(''); // javascript: href for the drag link
     const bingBoxRef = useRef(null);
 
     // shared period (gsc / ads)
@@ -187,6 +190,29 @@ const Presentation = () => {
             })();
         }
     }, [mode, bingLoaded]);
+
+    // Check whether AI Performance data has already been auto-pulled for the selected Bing site.
+    const checkBingAi = async (site) => {
+        if (!site) { setBingAiStatus(null); return; }
+        setBingAiChecking(true);
+        try {
+            const res = await api.get('/api/bing/ai-performance', { params: { site: site.url } });
+            setBingAiStatus({ total_citations: res.data.total_citations, days: (res.data.daily || []).length });
+        } catch { setBingAiStatus(null); }
+        finally { setBingAiChecking(false); }
+    };
+
+    // When the selected Bing site changes, refresh its bookmarklet + auto-pull status.
+    useEffect(() => {
+        if (mode !== 'bing' || !bingSite) { setBingBookmarklet(''); setBingAiStatus(null); return; }
+        checkBingAi(bingSite);
+        (async () => {
+            try {
+                const res = await api.get('/api/bing/ai-performance/bookmarklet', { params: { site: bingSite.url } });
+                setBingBookmarklet(res.data.bookmarklet || '');
+            } catch { setBingBookmarklet(''); }
+        })();
+    }, [mode, bingSite]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -576,11 +602,39 @@ const Presentation = () => {
                         </div>
 
                         <label className="block text-sm font-bold text-slate-700 mb-2">
-                            AI Performance CSV <span className="font-normal text-slate-400">(optional — adds an AI Search Visibility slide)</span>
+                            AI Performance <span className="font-normal text-slate-400">(optional — adds an AI Search Visibility slide)</span>
                         </label>
-                        <label className="flex items-center gap-3 border border-dashed border-slate-300 rounded-xl px-4 py-4 mb-6 cursor-pointer hover:border-[#26397A]/50">
-                            <DocumentArrowUpIcon className="w-6 h-6 text-[#26397A]" />
-                            <span className="text-sm text-slate-600">{bingAiCsv ? bingAiCsv.name : 'Export from Bing Webmaster → AI Performance, then upload the CSV…'}</span>
+
+                        {/* Auto-pull: a one-time bookmarklet the user runs on Bing's AI Performance page. */}
+                        <div className="border border-slate-200 rounded-xl px-4 py-4 mb-3 bg-slate-50/60">
+                            {bingAiStatus ? (
+                                <div className="flex items-center gap-2 text-sm text-emerald-700 font-medium">
+                                    <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                    Auto-pulled: {bingAiStatus.total_citations?.toLocaleString()} citations across {bingAiStatus.days} days.
+                                    <button type="button" className="ml-auto text-xs text-slate-500 hover:text-[#26397A] underline"
+                                        onClick={() => checkBingAi(bingSite)} disabled={bingAiChecking}>Re-check</button>
+                                </div>
+                            ) : (
+                                <div className="text-sm text-slate-600">
+                                    <p className="mb-2 font-medium text-slate-700">Pull it automatically — no CSV needed:</p>
+                                    <ol className="list-decimal list-inside space-y-1 mb-3 text-slate-500">
+                                        <li>Drag this button to your bookmarks bar:&nbsp;
+                                            {bingBookmarklet
+                                                ? <a href={bingBookmarklet} onClick={(e) => e.preventDefault()}
+                                                    className="inline-block px-2 py-0.5 rounded bg-[#26397A] text-white text-xs font-semibold cursor-grab">Pull Bing AI Perf</a>
+                                                : <span className="text-slate-400">select a site first…</span>}
+                                        </li>
+                                        <li>Open your site's <span className="font-medium">Bing Webmaster → AI Performance</span> report (logged in).</li>
+                                        <li>Click the bookmark, then <button type="button" className="text-[#26397A] underline" onClick={() => checkBingAi(bingSite)} disabled={bingAiChecking}>{bingAiChecking ? 'checking…' : 're-check here'}</button>.</li>
+                                    </ol>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Fallback: manual CSV upload. */}
+                        <label className="flex items-center gap-3 border border-dashed border-slate-300 rounded-xl px-4 py-3 mb-6 cursor-pointer hover:border-[#26397A]/50">
+                            <DocumentArrowUpIcon className="w-5 h-5 text-slate-400" />
+                            <span className="text-sm text-slate-500">{bingAiCsv ? bingAiCsv.name : 'or upload a CSV manually…'}</span>
                             <input type="file" accept=".csv,text/csv" className="hidden" disabled={generating}
                                 onChange={async (e) => {
                                     const f = e.target.files?.[0];

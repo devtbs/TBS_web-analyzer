@@ -741,7 +741,8 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
 
 
 async def assemble_bing_context(access_token: str, site: str, days: int = 28,
-                                ai_perf_csv: Optional[str] = None) -> Dict:
+                                ai_perf_csv: Optional[str] = None,
+                                ai_perf_data: Optional[Dict] = None) -> Dict:
     """Gather Bing Webmaster headline metrics + daily trend + top queries/pages for one site.
     Bing gives no period deltas, so derive them from the daily series. Optionally fold in the
     AI Performance CSV export (citations/cited-pages) since that data has no API yet."""
@@ -756,7 +757,9 @@ async def assemble_bing_context(access_token: str, site: str, days: int = 28,
     period_start = trend[0]["date"] if trend else ""
     period_end = trend[-1]["date"] if trend else ""
 
-    ai = bing_service.parse_ai_performance_csv(ai_perf_csv) if ai_perf_csv else None
+    # Prefer an already-parsed AI-performance dict (auto-pulled via bookmarklet); otherwise parse
+    # the manually uploaded CSV. Either way `ai` matches parse_ai_performance_csv's shape.
+    ai = ai_perf_data or (bing_service.parse_ai_performance_csv(ai_perf_csv) if ai_perf_csv else None)
 
     return {
         "site": site,
@@ -832,6 +835,19 @@ AI SEARCH VISIBILITY (Microsoft Copilot / Bing AI citations — how often this s
 CITATIONS OVER TIME (daily; use for an AI-citations area/line chart):
 {ai_lines}
 """
+        gq = ai.get("queries") or []
+        if gq:
+            gq_lines = "\n".join(
+                f"  - {q.get('query','')}: {q.get('citations',0)} citations, "
+                f"{q.get('citation_share','n/a')} citation share, intent {q.get('intent','n/a')}, "
+                f"topic {q.get('topic','n/a')}"
+                for q in gq[:15]
+            )
+            brief += f"""
+GROUNDING QUERIES (the search phrases Copilot generated to retrieve this site, ranked by citations —
+use for a table showing which AI queries the site wins, with intent/topic/citation-share):
+{gq_lines}
+"""
 
     brief += "\nUse only these numbers. Positive but honest framing; declines = opportunities."
     return brief
@@ -841,6 +857,7 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
                                 label: str = "", provider: str = "deepseek",
                                 prompt: Optional[str] = None, images: bool = True,
                                 notes: str = "", ai_perf_csv: Optional[str] = None,
+                                ai_perf_data: Optional[Dict] = None,
                                 on_progress=None) -> Dict:
     """AI-designed Bing search deck for one verified site. Returns the HTML only —
     the file is rendered on download. `label` is the site display name (for the cover)."""
@@ -849,7 +866,8 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Bing Webmaster data…")
-    context = await assemble_bing_context(access_token, site, days, ai_perf_csv=ai_perf_csv)
+    context = await assemble_bing_context(access_token, site, days, ai_perf_csv=ai_perf_csv,
+                                          ai_perf_data=ai_perf_data)
     name = label or site
     brief = _bing_data_brief(context, name) + to_brief_block(notes)
     image_cache = {} if images else None

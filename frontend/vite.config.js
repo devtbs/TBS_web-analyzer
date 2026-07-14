@@ -31,12 +31,14 @@ export default defineConfig(({ command }) => ({
         host: true, // Listen on all addresses
         allowedHosts: ['.ngrok-free.dev', '.ngrok.io'], // Allow ngrok domains
         proxy: {
+            // Proxy target is env-overridable so the dev server can run in Docker and reach
+            // the backend by its compose service name (defaults to localhost for host dev).
             '/api': {
-                target: 'http://localhost:8000',
+                target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
                 changeOrigin: true,
             },
             '/auth': {
-                target: 'http://localhost:8000',
+                target: process.env.VITE_PROXY_TARGET || 'http://localhost:8000',
                 changeOrigin: true,
             },
         },

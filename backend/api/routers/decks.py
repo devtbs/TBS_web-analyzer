@@ -199,11 +199,25 @@ async def presentation_ai_deck_bing(
     access_token = refresh_bing_token(refresh)
     notes = (body or {}).get("notes", "")
     ai_perf_csv = (body or {}).get("ai_performance_csv")
+    # A manually uploaded CSV that doesn't parse should fail loudly, not be silently ignored.
+    if ai_perf_csv:
+        from services.bing_service import parse_ai_performance_csv
+        if not parse_ai_performance_csv(ai_perf_csv):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="That file isn't a recognized Bing AI Performance CSV export "
+                       "(expected Date and Citations columns). Re-export from Bing Webmaster → AI Performance.")
+    # When no CSV was uploaded, fall back to AI Performance data auto-pulled via the bookmarklet.
+    ai_perf_data = None
+    if not ai_perf_csv:
+        from services.bing_ai_service import get_ai_performance
+        ai_perf_data = get_ai_performance(current_user.email, site)
 
     async def run(on_progress):
         result = await generate_ai_bing_deck(access_token, site, days, label=label, provider=provider,
                                              images=images and images_enabled(),
-                                             notes=notes, ai_perf_csv=ai_perf_csv, on_progress=on_progress)
+                                             notes=notes, ai_perf_csv=ai_perf_csv,
+                                             ai_perf_data=ai_perf_data, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="bing",
                                      label=result["domain"], provider=provider)
