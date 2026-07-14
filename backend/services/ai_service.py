@@ -22,6 +22,20 @@ DeltaCb = Optional[Callable[[str], Awaitable[None]]]
 AI_PROVIDERS = {
     "deepseek": {"key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com",
                  "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8192},
+    # All of the below are hosted on Alibaba Model Studio, so the single DashScope (Qwen) key
+    # reaches every one — Qwen, GLM, DeepSeek and Kimi alike. They are reasoning models (they emit
+    # hidden reasoning_content that eats into the token budget), so they get a larger per-call
+    # ceiling; the continuation loop (below) still stitches decks that exceed a single response.
+    "qwen3.7-max": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                    "model": "qwen3.7-max", "label": "Qwen3.7 Max", "max_tokens": 16384},
+    "qwen3.7-plus": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                     "model": "qwen3.7-plus", "label": "Qwen3.7 Plus (fast)", "max_tokens": 16384},
+    "glm": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+            "model": "glm-5.2", "label": "GLM-5.2", "max_tokens": 16384},
+    "deepseek-v4": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+                    "model": "deepseek-v4-pro", "label": "DeepSeek V4 Pro", "max_tokens": 16384},
+    "kimi": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+             "model": "kimi-k2.7-code", "label": "Kimi K2.7", "max_tokens": 16384},
 }
 
 # A full HTML deck (8-10 slides + inline Plotly JSON) exceeds any single response's

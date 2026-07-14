@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     PAGESPEED_API_KEY: str = ""
 
     # Additional provider keys (optional)
-    QWEN_API_KEY: str = ""        # Alibaba Qwen
+    QWEN_API_KEY: str = ""        # Alibaba DashScope — powers Qwen AND GLM-5.2 (Model Studio hosts both)
     KIMI_API_KEY: str = ""        # Moonshot Kimi
     BYTEDANCE_API_KEY: str = ""   # ByteDance / Doubao
     REPLICATE_API_KEY: str = ""   # Replicate

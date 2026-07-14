@@ -88,9 +88,7 @@ async def presentation_ai_deck_from_pdf(
     """
     from services.ai_deck_service import generate_deck_from_pdf, render_slide_images
     from services.image_service import images_enabled
-    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
+    _require_llm_key()
     pdf_bytes = await file.read()
     if not pdf_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
@@ -117,9 +115,12 @@ async def presentation_ai_providers(current_user: UserInfo = Depends(get_current
 
 
 def _require_llm_key():
-    if not (settings.DEEPSEEK_API_KEY or settings.GROQ_API_KEY):
+    # Any configured deck provider (DeepSeek, Qwen, GLM, …) is enough — not just DeepSeek/Groq.
+    from services.ai_service import AIService
+    if not AIService.configured_providers():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No LLM key configured — add DEEPSEEK_API_KEY (cheap) or GROQ_API_KEY (free).")
+                            detail="No LLM key configured — set at least one provider key "
+                                   "(e.g. DEEPSEEK_API_KEY, QWEN_API_KEY, GLM_API_KEY).")
 
 
 def _require_google_token(db, email):
