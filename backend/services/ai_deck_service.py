@@ -93,16 +93,7 @@ slide blueprints, "Slide X:" headings, "VISUAL LAYOUT COMPOSITION", or chart-con
 content — translate all of that directly into the HTML/CSS and the hidden chart script. The reader must
 see a finished slide, never the instructions or data behind it.
 
-SLIDE SEQUENCE — produce ONE slide for EACH numbered item in the structure below, IN ORDER. This is
-the authoritative outline for this specific report; follow it faithfully:
-
-{structure}
-
-SLIDE-COUNT DISCIPLINE (critical): generate a SEPARATE slide for every applicable item above — do NOT
-merge several items onto one slide, do NOT shorten the deck to a generic 8-10 slide summary, and NEVER
-skip an item marked REQUIRED (especially the keyword-opportunity bubble slide). The ONLY items you may
-omit are those explicitly marked "OMIT … if …" whose data is absent/(none). Expect a rich deck of
-roughly 12-19 slides depending on which optional data is present.
+{structure_directive}
 
 =======================================================
 INPUT DATA TO PROCESS:
@@ -416,27 +407,60 @@ def _seed_directive(seed: str) -> str:
     )
 
 
+def _structure_directive(creativity: str, structure: str) -> str:
+    """How strictly the model must follow the structure. The `structure` string is the same
+    set of topics/data at every level — only the freedom to reshape it into slides changes.
+    All levels still keep the HTML contract, chart mechanism and validation guardrails."""
+    themes = structure or DEFAULT_STRUCTURE
+    if creativity == "structured":
+        return (
+            "SLIDE SEQUENCE — produce ONE slide for EACH numbered item below, IN ORDER. This is the "
+            "authoritative outline; follow it faithfully:\n\n" + themes + "\n\n"
+            "SLIDE-COUNT DISCIPLINE (critical): a SEPARATE slide for every applicable item — do NOT "
+            "merge items onto one slide, do NOT shorten to a generic 8-10 slide summary, and NEVER "
+            "skip an item marked REQUIRED (especially the keyword-opportunity bubble). The ONLY items "
+            "you may omit are those explicitly marked \"OMIT … if …\" whose data is absent. Expect a "
+            "rich deck of ~12-19 slides depending on which optional data is present.")
+    if creativity == "creative":
+        return (
+            "DESIGN THIS DECK YOUR OWN WAY. The list below is a CHECKLIST OF WHAT TO COVER, not a slide "
+            "list. YOU decide the number of slides and their order, and invent a DISTINCT layout and "
+            "visual treatment for each slide — be bold and editorial so no two slides look alike. You "
+            "may split, merge, reorder, or add connective/insight slides for the strongest narrative. "
+            "Cover every REQUIRED item and use ONLY the real data. Prioritise sharp takeaways and "
+            "concrete recommendations over restating numbers.\n\nCOVER:\n" + themes)
+    # balanced (default)
+    return (
+        "The list below is the set of THEMES to cover. Cover every REQUIRED item and all key data, but "
+        "CHOOSE YOUR OWN slide count and order and give each slide a distinct layout — you may split, "
+        "merge, or resequence for the best narrative flow (aim ~8-14 slides). Favour clear insights and "
+        "recommendations, not just restating numbers.\n\nTHEMES TO COVER:\n" + themes)
+
+
 def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
                  brand: Optional[str] = None, structure: Optional[str] = None,
-                 seed: Optional[str] = None) -> str:
+                 seed: Optional[str] = None, creativity: str = "balanced") -> str:
     """Fill the (possibly user-customised) prompt template with brand/structure/data,
     then append the rendering contract + design system + theme presets + exemplar so
     every deck — default or custom — gets the same template-grade quality bar.
 
-    If `seed` (e.g. the site domain) is given, a deterministic preset is pinned so the
-    same client always gets the same typographic identity and clients look distinct."""
+    `creativity` (structured|balanced|creative) sets how freely the model may reshape the
+    structure into slides. If `seed` (e.g. the site domain) is given, a deterministic preset
+    is pinned so the same client always gets the same typographic identity."""
     template = prompt or DEFAULT_DECK_PROMPT
+    directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
     # Use replace (not str.format): prompts contain literal CSS braces.
     filled = (
         template
         .replace("{brand}", brand or DEFAULT_BRAND)
-        .replace("{structure}", structure or DEFAULT_STRUCTURE)
+        .replace("{structure_directive}", directive)
+        .replace("{structure}", structure or DEFAULT_STRUCTURE)  # back-compat for custom prompts
         .replace("{data}", data_brief)
     )
-    # If a custom prompt forgot a placeholder, append it anyway so the model still gets the
-    # authoritative slide outline and the data (otherwise they're silently dropped).
-    if "{structure}" not in template:
-        filled = filled + "\n\nSLIDE SEQUENCE — produce one slide per item, in order:\n" + (structure or DEFAULT_STRUCTURE)
+    # If a custom prompt forgot the placeholders, append them anyway so the model still gets the
+    # structure directive and the data (otherwise they're silently dropped).
+    if "{structure_directive}" not in template and "{structure}" not in template:
+        filled = filled + "\n\n" + directive
     if "{data}" not in template:
         filled = filled + "\n\nDATA (use ONLY this):\n" + data_brief
     parts = [filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
@@ -575,7 +599,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
                              provider: str = "deepseek", on_progress: ProgressCb = None,
                              image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
-                             seed: Optional[str] = None) -> str:
+                             seed: Optional[str] = None, creativity: str = "balanced") -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
 
     Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
@@ -590,7 +614,10 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
     # prompt is normally resolved by the route (from the chosen prompt id); fall back
     # to the built-in default if none was passed.
-    full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure, seed=seed)
+    full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure,
+                               seed=seed, creativity=creativity)
+    # More creative freedom → a bit more sampling variety.
+    temperature = {"structured": 0.7, "balanced": 0.85, "creative": 1.0}.get(creativity, 0.85)
     if on_progress:
         await on_progress("Writing slides…")
     # Stream + prewarm images only when a cache is supplied and images are enabled.
@@ -603,6 +630,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
             provider=provider,
             on_progress=on_progress,
             on_delta=on_delta,
+            temperature=temperature,
         )
     except Exception:
         if on_delta is None:
@@ -611,11 +639,11 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
         logger.exception("streamed deck generation failed — retrying without streaming")
         raw = await ai_service.analyze_with_provider(
             full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=provider,
-            on_progress=on_progress,
+            on_progress=on_progress, temperature=temperature,
         )
     html = _clean_html(raw)
 
-    result = validate_deck_html(html, data_brief)
+    result = validate_deck_html(html, data_brief, creativity=creativity)
     if result.ok:
         return _strip_leaked_specs(html)
 
@@ -1335,6 +1363,7 @@ async def generate_deck_from_pdf(
     notes: str = "",
     seed: Optional[str] = None,
     on_progress: ProgressCb = None,
+    creativity: str = "balanced",
 ) -> Dict:
     """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
     chosen prompt + provider. Renders to the file unless render=False (deferred to download).
@@ -1360,6 +1389,7 @@ async def generate_deck_from_pdf(
         on_progress=on_progress,
         image_cache=image_cache,
         seed=seed,
+        creativity=creativity,
     )
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))

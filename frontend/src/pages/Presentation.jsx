@@ -91,6 +91,7 @@ const Presentation = () => {
     // shared
     const [providers, setProviders] = useState([]);
     const [provider, setProvider] = useState('deepseek');
+    const [creativity, setCreativity] = useState('balanced');
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
     const [generating, setGenerating] = useState(false);
@@ -341,25 +342,26 @@ const Presentation = () => {
             if (mode === 'gsc') {
                 response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&images=${useImages}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity }) });
             } else if (mode === 'ga4') {
                 response = await fetch(
                     `/api/presentation/ai-deck-ga4?property_id=${encodeURIComponent(ga4PropId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(ga4Label)}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity }) });
             } else if (mode === 'ads') {
                 response = await fetch(
                     `/api/presentation/ai-deck-ads?customer_id=${encodeURIComponent(adsCustId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(adsLabel)}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes }) });
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity }) });
             } else if (mode === 'bing') {
                 response = await fetch(
                     `/api/presentation/ai-deck-bing?account_id=${bingSite.account_id}&site=${encodeURIComponent(bingSite.url)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(bingPretty(bingSite.url))}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, ai_performance_csv: bingAiCsv?.text || null }) });
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity, ai_performance_csv: bingAiCsv?.text || null }) });
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
                 fd.append('provider', provider);
                 fd.append('images', useImages);
                 fd.append('notes', notes);
+                fd.append('creativity', creativity);
                 response = await fetch('/api/presentation/ai-deck-from-pdf', { method: 'POST', headers, body: fd });
             }
             if (!response.ok || !response.body) {
@@ -726,6 +728,18 @@ const Presentation = () => {
                     {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
                     {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
+
+                <label className="block text-sm font-bold text-slate-700 mb-2">Design freedom</label>
+                <select value={creativity} onChange={(e) => setCreativity(e.target.value)} disabled={generating} className={fieldCls}>
+                    <option value="structured">Structured — consistent, predictable template</option>
+                    <option value="balanced">Balanced — varied layouts, safe on any model</option>
+                    <option value="creative">Creative — model designs freely (best with GLM)</option>
+                </select>
+                <p className="text-xs text-slate-400 mt-1 mb-6">
+                    {creativity === 'creative' ? 'Maximum design freedom — pair with a strong model like GLM-5.2.'
+                        : creativity === 'structured' ? 'The classic fixed template — most predictable.'
+                        : 'The model chooses slide count & layouts, with guardrails kept on.'}
+                </p>
 
                 <button type="button" onClick={() => setUseImages((v) => !v)} disabled={generating}
                     className="w-full flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-8 text-left hover:border-[#26397A]/50 disabled:opacity-60">

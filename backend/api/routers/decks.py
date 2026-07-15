@@ -78,6 +78,7 @@ async def presentation_ai_deck_from_pdf(
     provider: str = Form("deepseek"),
     images: bool = Form(True),
     notes: str = Form(""),
+    creativity: str = Form("balanced"),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -97,7 +98,8 @@ async def presentation_ai_deck_from_pdf(
     async def run(on_progress):
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider, render=False,
                                               images=images and images_enabled(),
-                                              notes=notes, seed=label, on_progress=on_progress)
+                                              notes=notes, seed=label, creativity=creativity,
+                                              on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(current_user.email, html=result["html"], source="pdf",
                                      label=label, provider=provider)
@@ -165,11 +167,12 @@ async def presentation_ai_deck_gsc(
     gsc_token, is_refresh = _require_google_token(db, current_user.email)
     service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
     notes = (body or {}).get("notes", "")
+    creativity = (body or {}).get("creativity", "balanced")
 
     async def run(on_progress):
         result = await generate_ai_gsc_deck(service, property, days, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, on_progress=on_progress)
+                                            notes=notes, creativity=creativity, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(current_user.email, html=result["html"], source="gsc",
                                      label=result["domain"], provider=provider)
@@ -210,6 +213,7 @@ async def presentation_ai_deck_bing(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connected Bing account not found.")
     access_token = refresh_bing_token(refresh)
     notes = (body or {}).get("notes", "")
+    creativity = (body or {}).get("creativity", "balanced")
     ai_perf_csv = (body or {}).get("ai_performance_csv")
     # A manually uploaded CSV that doesn't parse should fail loudly, not be silently ignored.
     if ai_perf_csv:
@@ -229,7 +233,8 @@ async def presentation_ai_deck_bing(
         result = await generate_ai_bing_deck(access_token, site, days, label=label, provider=provider,
                                              images=images and images_enabled(),
                                              notes=notes, ai_perf_csv=ai_perf_csv,
-                                             ai_perf_data=ai_perf_data, on_progress=on_progress)
+                                             ai_perf_data=ai_perf_data, creativity=creativity,
+                                             on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(current_user.email, html=result["html"], source="bing",
                                      label=result["domain"], provider=provider)
@@ -260,11 +265,12 @@ async def presentation_ai_deck_ga4(
     token, is_refresh = _require_google_token(db, current_user.email)
     service = AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
     notes = (body or {}).get("notes", "")
+    creativity = (body or {}).get("creativity", "balanced")
 
     async def run(on_progress):
         result = await generate_ai_ga4_deck(service, property_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, on_progress=on_progress)
+                                            notes=notes, creativity=creativity, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(current_user.email, html=result["html"], source="ga4",
                                      label=result["domain"], provider=provider)
@@ -301,11 +307,12 @@ async def presentation_ai_deck_ads(
                             detail="Google Ads requires a stored refresh token — reconnect your Google account.")
     service = AdsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
     notes = (body or {}).get("notes", "")
+    creativity = (body or {}).get("creativity", "balanced")
 
     async def run(on_progress):
         result = await generate_ai_ads_deck(service, customer_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, on_progress=on_progress)
+                                            notes=notes, creativity=creativity, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
         doc_id = _save_deck_document(current_user.email, html=result["html"], source="ads",
                                      label=result["domain"], provider=provider)

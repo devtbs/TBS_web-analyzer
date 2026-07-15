@@ -86,7 +86,7 @@ def _visible_text(html: str) -> str:
     return _TAG_RE.sub(" ", stripped)
 
 
-def validate_deck_html(html: str, data_brief: str) -> ValidationResult:
+def validate_deck_html(html: str, data_brief: str, creativity: str = "balanced") -> ValidationResult:
     res = ValidationResult()
 
     # 1. Structural
@@ -124,7 +124,7 @@ def validate_deck_html(html: str, data_brief: str) -> ValidationResult:
         res.ungrounded_numbers.append(tok)
 
     # 4. Design quality — conservative heuristics so good decks aren't flagged.
-    _check_design(html, res)
+    _check_design(html, res, creativity)
 
     # 5. Required keyword-opportunity bubble slide present when its data exists.
     _check_bubble(html, data_brief, res)
@@ -158,7 +158,7 @@ def _check_bubble(html: str, data_brief: str, res: "ValidationResult") -> None:
             'the query strings. Do not omit this slide.')
 
 
-def _check_design(html: str, res: "ValidationResult") -> None:
+def _check_design(html: str, res: "ValidationResult", creativity: str = "balanced") -> None:
     """Cheap, conservative design-quality checks. Only flags clear template violations
     (no design tokens, archetypes barely used, overcrowded slides, few visuals) so the
     repair pass nudges the deck toward the design system without churning on good decks."""
@@ -172,12 +172,14 @@ def _check_design(html: str, res: "ValidationResult") -> None:
                           "--font-display etc. once and reference them with var(...) on every "
                           "slide for one cohesive theme.")
 
-    # b. layout archetypes actually used
-    with_layout = sum(1 for s in slides if _LAYOUT_RE.search(s))
-    if with_layout < max(1, len(slides) // 2):
-        res.design.append(f"Only {with_layout}/{len(slides)} slides use a layout archetype "
-                          "class (layout-cover/-kpi-strip/-split/-list/…). Give EVERY slide an "
-                          "archetype and follow its structure so the deck looks templated.")
+    # b. layout archetypes actually used — only enforced in Structured mode. Balanced/Creative
+    #    intentionally let the model invent its own layouts, so this templated-look check is skipped.
+    if creativity == "structured":
+        with_layout = sum(1 for s in slides if _LAYOUT_RE.search(s))
+        if with_layout < max(1, len(slides) // 2):
+            res.design.append(f"Only {with_layout}/{len(slides)} slides use a layout archetype "
+                              "class (layout-cover/-kpi-strip/-split/-list/…). Give EVERY slide an "
+                              "archetype and follow its structure so the deck looks templated.")
 
     # c. overcrowded slides
     crowded = [i for i, s in enumerate(slides, 1)

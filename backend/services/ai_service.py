@@ -106,7 +106,7 @@ class AIService:
 
     async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
                                     provider: str = "deepseek", on_progress: ProgressCb = None,
-                                    on_delta: DeltaCb = None) -> str:
+                                    on_delta: DeltaCb = None, temperature: float = 0.8) -> str:
         """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
         OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations.
 
@@ -142,7 +142,7 @@ class AIService:
         parts: List[str] = []
         for attempt in range(_MAX_CONTINUATIONS + 1):
             content, finish_reason = await self._complete_once(
-                client, cfg["model"], messages, max_tokens, on_delta, extra_body)
+                client, cfg["model"], messages, max_tokens, on_delta, extra_body, temperature)
             parts.append(content)
             logger.info("provider=%s call %d finish_reason=%s (chars so far=%d)",
                         provider, attempt + 1, finish_reason, sum(len(p) for p in parts))
@@ -162,13 +162,13 @@ class AIService:
         return "".join(parts)
 
     async def _complete_once(self, client, model, messages, max_tokens, on_delta: DeltaCb,
-                             extra_body: Optional[dict] = None):
+                             extra_body: Optional[dict] = None, temperature: float = 0.8):
         """One chat-completion. Streams (feeding on_delta) when a delta callback is given,
         otherwise a single awaited call. Returns (content, finish_reason). `extra_body` carries
         provider-specific params (e.g. {"enable_thinking": False} to disable reasoning)."""
         if on_delta is None:
             response = await client.chat.completions.create(
-                model=model, messages=messages, temperature=0.8, max_tokens=max_tokens,
+                model=model, messages=messages, temperature=temperature, max_tokens=max_tokens,
                 extra_body=extra_body,
             )
             choice = response.choices[0]

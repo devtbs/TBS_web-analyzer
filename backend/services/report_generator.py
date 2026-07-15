@@ -499,7 +499,7 @@ Use only these numbers. Positive but honest framing; declines = opportunities.""
 async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
                                provider: str = "deepseek", prompt: Optional[str] = None,
                                images: bool = True, notes: str = "", on_progress=None,
-                               ga4_service=None) -> Dict:
+                               ga4_service=None, creativity: str = "balanced") -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
     chosen prompt + provider. Returns the HTML only — the file is rendered on download.
 
@@ -526,7 +526,7 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GSC_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
-                                    seed=context["domain"])
+                                    seed=context["domain"], creativity=creativity)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
@@ -606,7 +606,8 @@ Use only these numbers. Positive but honest framing; declines = opportunities.""
 async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
                                label: str = "", provider: str = "deepseek",
                                prompt: Optional[str] = None, images: bool = True,
-                               notes: str = "", on_progress=None) -> Dict:
+                               notes: str = "", on_progress=None,
+                               creativity: str = "balanced") -> Dict:
     """AI-designed website-analytics deck for a GA4 property. Returns the HTML only —
     the file is rendered on download. `label` is the property display name (for the cover)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
@@ -621,7 +622,7 @@ async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=GA4_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
-                                    seed=name)
+                                    seed=name, creativity=creativity)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
@@ -718,7 +719,8 @@ Use only these numbers. Positive but honest framing; declines = opportunities.""
 async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
                                label: str = "", provider: str = "deepseek",
                                prompt: Optional[str] = None, images: bool = True,
-                               notes: str = "", on_progress=None) -> Dict:
+                               notes: str = "", on_progress=None,
+                               creativity: str = "balanced") -> Dict:
     """AI-designed paid-search deck for a Google Ads account. Returns the HTML only —
     the file is rendered on download. `label` is the account display name (for the cover)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
@@ -733,7 +735,7 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=GOOGLE_ADS_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
-                                    seed=name)
+                                    seed=name, creativity=creativity)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
@@ -858,7 +860,7 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
                                 prompt: Optional[str] = None, images: bool = True,
                                 notes: str = "", ai_perf_csv: Optional[str] = None,
                                 ai_perf_data: Optional[Dict] = None,
-                                on_progress=None) -> Dict:
+                                on_progress=None, creativity: str = "balanced") -> Dict:
     """AI-designed Bing search deck for one verified site. Returns the HTML only —
     the file is rendered on download. `label` is the site display name (for the cover)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
@@ -874,7 +876,7 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
     html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
                                     structure=BING_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
-                                    seed=name)
+                                    seed=name, creativity=creativity)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
