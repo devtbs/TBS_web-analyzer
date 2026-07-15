@@ -245,7 +245,15 @@ async def _stream_deck_generation(run):
     task = asyncio.create_task(worker())
     try:
         while True:
-            item = await queue.get()
+            # Heartbeat while idle: reasoning models (GLM, DeepSeek-V4, Kimi) can "think" for
+            # 30-60s+ emitting no output, during which no progress event is queued. Without a
+            # keepalive the proxy/browser drops the idle SSE stream ("bad connection"). A
+            # heartbeat every 15s keeps bytes flowing; the frontend ignores unknown event types.
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=15)
+            except asyncio.TimeoutError:
+                yield _sse("heartbeat", {})
+                continue
             if item is _DONE:
                 break
             yield item

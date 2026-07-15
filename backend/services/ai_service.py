@@ -133,10 +133,16 @@ class AIService:
         messages.append({"role": "user", "content": prompt})
 
         max_tokens = cfg.get("max_tokens", 8000)
+        # DashScope-hosted models (Qwen, GLM, DeepSeek-V4, Kimi) are reasoning models: left on,
+        # they spend the ENTIRE token budget on hidden reasoning and emit no deck HTML (GLM-5.2
+        # measured 410s / 53K reasoning chars / 0 content). enable_thinking=False makes them
+        # output the deck directly. The direct DeepSeek endpoint doesn't take this param, so only
+        # send it to DashScope.
+        extra_body = {"enable_thinking": False} if "dashscope" in (cfg.get("base_url") or "") else None
         parts: List[str] = []
         for attempt in range(_MAX_CONTINUATIONS + 1):
             content, finish_reason = await self._complete_once(
-                client, cfg["model"], messages, max_tokens, on_delta)
+                client, cfg["model"], messages, max_tokens, on_delta, extra_body)
             parts.append(content)
             logger.info("provider=%s call %d finish_reason=%s (chars so far=%d)",
                         provider, attempt + 1, finish_reason, sum(len(p) for p in parts))
@@ -155,12 +161,15 @@ class AIService:
                 "output only the continuation so the two parts concatenate seamlessly."})
         return "".join(parts)
 
-    async def _complete_once(self, client, model, messages, max_tokens, on_delta: DeltaCb):
+    async def _complete_once(self, client, model, messages, max_tokens, on_delta: DeltaCb,
+                             extra_body: Optional[dict] = None):
         """One chat-completion. Streams (feeding on_delta) when a delta callback is given,
-        otherwise a single awaited call. Returns (content, finish_reason)."""
+        otherwise a single awaited call. Returns (content, finish_reason). `extra_body` carries
+        provider-specific params (e.g. {"enable_thinking": False} to disable reasoning)."""
         if on_delta is None:
             response = await client.chat.completions.create(
                 model=model, messages=messages, temperature=0.8, max_tokens=max_tokens,
+                extra_body=extra_body,
             )
             choice = response.choices[0]
             return (choice.message.content or ""), choice.finish_reason
@@ -169,6 +178,7 @@ class AIService:
         finish_reason = None
         stream = await client.chat.completions.create(
             model=model, messages=messages, temperature=0.8, max_tokens=max_tokens, stream=True,
+            extra_body=extra_body,
         )
         async for chunk in stream:
             if not chunk.choices:
