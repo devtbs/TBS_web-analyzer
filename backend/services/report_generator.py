@@ -127,6 +127,34 @@ def _domain_from_property(property_url: str) -> str:
         return property_url
 
 
+def _brand_core(domain: str) -> str:
+    """The domain's second-level label, alnum-lowercased, for brand-query matching
+    (e.g. 'jesseandson.com' -> 'jesseandson'). Returns '' when < 4 chars (too short to
+    match safely — disables brand filtering)."""
+    import re
+    label = (domain or "").strip().lower()
+    label = label.replace("sc-domain:", "").replace("https://", "").replace("http://", "").lstrip("www.")
+    label = label.split("/")[0].split(".")[0]           # second-level label
+    core = re.sub(r"[^a-z0-9]", "", label)
+    return core if len(core) >= 4 else ""
+
+
+def _is_brand_query(query: str, core: str) -> bool:
+    """True when a query is branded/navigational for `core` (from _brand_core). Matches the
+    '&' / 'and' / concatenated-domain variants that dominate branded searches, e.g. for core
+    'jesseandson': 'jesse and sons', 'jesse & son', 'jesse & son custom tailors' -> True;
+    'custom tailors bangkok' -> False."""
+    if not core:
+        return False
+    import re
+    qn = re.sub(r"[^a-z0-9]", "", (query or "").lower())
+    if not qn:
+        return False
+    core2 = core.replace("and", "")
+    qn2 = qn.replace("and", "")
+    return (core in qn) or (bool(core2) and core2 in qn2)
+
+
 def _keyword_mix(queries: List[Dict]) -> Dict:
     """Grounded 'Unique Keywords' summary from the queries GSC actually returned: the
     distinct-query count plus how those keywords' average rank is distributed across
@@ -209,6 +237,12 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         except Exception as e:
             logger.warning("GA4 property match failed (non-fatal): %s", e)
 
+    # Top Queries TABLE only: drop branded/navigational queries (auto-detected from the domain)
+    # so the table surfaces actionable non-branded terms. bubble_queries / keyword_mix / movers
+    # deliberately keep every query.
+    core = _brand_core(domain)
+    nonbrand = [q for q in queries if not _is_brand_query(q.get("query", ""), core)]
+
     return {
         "property_url": property_url,
         "domain": domain,
@@ -217,7 +251,8 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "analytics": analytics,
         "trend": (analytics or {}).get("chart_data") or [],
         "monthly_trend": (monthly or {}).get("chart_data") or [],
-        "top_queries": queries[:15],
+        "top_queries": (nonbrand or queries)[:15],
+        "brand_excluded": bool(core and len(nonbrand) < len(queries)),
         "bubble_queries": sorted(queries, key=lambda q: q.get("impressions", 0), reverse=True)[:30],
         "keyword_mix": _keyword_mix(queries),
         "query_insights": insights or {},
@@ -286,6 +321,12 @@ def _gsc_data_brief(ctx: Dict) -> str:
         f"{q.get('impressions',0)} impressions, {q.get('ctr',0)}% CTR, pos {q.get('position','?')}"
         for q in ctx.get("top_queries", [])
     ) or "  (none)"
+    top_queries_header = (
+        "TOP QUERIES (by clicks — NON-BRANDED only; branded/navigational queries are intentionally "
+        "excluded as they aren't a priority for this client. Do NOT say brand queries dominate):"
+        if ctx.get("brand_excluded")
+        else "TOP QUERIES (by clicks):"
+    )
     p_lines = "\n".join(
         f"  - {p.get('url','')}: {p.get('clicks',0)} clicks, "
         f"{p.get('impressions',0)} impressions, {p.get('ctr',0)}% CTR, pos {p.get('position','?')}"
@@ -440,7 +481,7 @@ PERFORMANCE OVER TIME (daily; use for the daily impressions & URL-clicks area ch
 MONTHLY PERFORMANCE (last 12 months; use for the clicks+impressions bar + avg-position line combo chart):
 {monthly_lines}
 
-TOP QUERIES (by clicks):
+{top_queries_header}
 {q_lines}
 
 KEYWORD POSITION vs IMPRESSIONS (top queries; use for a bubble/scatter chart — x = avg position, y = impressions, bubble size ∝ impressions):
