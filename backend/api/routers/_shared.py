@@ -202,13 +202,16 @@ def _create_deck_placeholder(user_email: str, *, source: str, label: str,
     as a detached background job that can outlive the request (client reloaded/left), by which
     point the request's DB session is already closed."""
     from database import SessionLocal
+    from services.ai_service import AI_PROVIDERS
     doc_id = str(uuid.uuid4())
     date_label = datetime.now().strftime("%Y-%m-%d")
+    # Include the model in the title so compare-model runs (same site, same day) are distinguishable.
+    model_label = (AI_PROVIDERS.get(provider) or {}).get("label", provider)
     with SessionLocal() as db:
         db.add(Document(
             id=doc_id,
             user_email=user_email,
-            title=f"AI Deck — {label} ({date_label})",
+            title=f"AI Deck — {label} · {model_label} ({date_label})",
             content_type="AI Deck",
             content={"status": "generating", "html": None, "source": source,
                      "label": label, "provider": provider},
