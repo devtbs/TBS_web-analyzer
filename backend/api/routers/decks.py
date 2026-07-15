@@ -99,12 +99,12 @@ async def presentation_ai_deck_from_pdf(
                                               images=images and images_enabled(),
                                               notes=notes, seed=label, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="pdf",
+        doc_id = _save_deck_document(current_user.email, html=result["html"], source="pdf",
                                      label=label, provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": label}
 
-    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
-                             headers=_SSE_HEADERS)
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.get("/api/presentation/ai-providers")
@@ -112,6 +112,17 @@ async def presentation_ai_providers(current_user: UserInfo = Depends(get_current
     """Which AI providers are configured (have a key) — for the UI picker."""
     from services.ai_service import AIService
     return {"providers": AIService.configured_providers()}
+
+
+@router.get("/api/presentation/deck-job/{job_id}")
+async def presentation_deck_job(job_id: str, current_user: UserInfo = Depends(get_current_user)):
+    """Poll a background deck job — lets a client that reloaded/returned re-attach to a
+    generation that keeps running server-side. Returns status + (when done) document_id+slides."""
+    from api.routers._shared import _DECK_JOBS, _deck_job_public
+    job = _DECK_JOBS.get(job_id)
+    if not job or job.get("user_email") != current_user.email:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck job not found.")
+    return _deck_job_public(job)
 
 
 def _require_llm_key():
@@ -160,12 +171,12 @@ async def presentation_ai_deck_gsc(
                                             images=images and images_enabled(),
                                             notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="gsc",
+        doc_id = _save_deck_document(current_user.email, html=result["html"], source="gsc",
                                      label=result["domain"], provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 
-    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
-                             headers=_SSE_HEADERS)
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.post("/api/presentation/ai-deck-bing")
@@ -220,12 +231,12 @@ async def presentation_ai_deck_bing(
                                              notes=notes, ai_perf_csv=ai_perf_csv,
                                              ai_perf_data=ai_perf_data, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="bing",
+        doc_id = _save_deck_document(current_user.email, html=result["html"], source="bing",
                                      label=result["domain"], provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 
-    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
-                             headers=_SSE_HEADERS)
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.post("/api/presentation/ai-deck-ga4")
@@ -255,12 +266,12 @@ async def presentation_ai_deck_ga4(
                                             images=images and images_enabled(),
                                             notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="ga4",
+        doc_id = _save_deck_document(current_user.email, html=result["html"], source="ga4",
                                      label=result["domain"], provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 
-    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
-                             headers=_SSE_HEADERS)
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
 @router.post("/api/presentation/ai-deck-ads")
@@ -296,9 +307,9 @@ async def presentation_ai_deck_ads(
                                             images=images and images_enabled(),
                                             notes=notes, on_progress=on_progress)
         slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(db, current_user.email, html=result["html"], source="ads",
+        doc_id = _save_deck_document(current_user.email, html=result["html"], source="ads",
                                      label=result["domain"], provider=provider)
         return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
 
-    return StreamingResponse(_stream_deck_generation(run), media_type="text/event-stream",
-                             headers=_SSE_HEADERS)
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)

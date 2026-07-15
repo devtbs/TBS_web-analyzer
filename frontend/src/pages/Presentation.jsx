@@ -250,7 +250,7 @@ const Presentation = () => {
     }, [bingSites, bingQuery, bingSite]);
 
     // Read a Server-Sent Events stream, invoking handlers per (event, data) frame.
-    const readSSE = async (response, { onProgress, onResult, onError }) => {
+    const readSSE = async (response, { onJob, onProgress, onResult, onError }) => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buf = '';
@@ -268,7 +268,8 @@ const Presentation = () => {
                 }
                 let parsed = {};
                 try { parsed = data ? JSON.parse(data) : {}; } catch {}
-                if (event === 'progress') onProgress?.(parsed);
+                if (event === 'job') onJob?.(parsed);
+                else if (event === 'progress') onProgress?.(parsed);
                 else if (event === 'result') onResult?.(parsed);
                 else if (event === 'error') onError?.(parsed);
             }
@@ -280,6 +281,44 @@ const Presentation = () => {
         : mode === 'ads' ? !!adsCustId
         : mode === 'bing' ? !!bingSite
         : !!pdfFile;
+
+    // Background deck jobs: generation runs server-side and survives reload/navigation.
+    // We stash the job id so a returning client can re-attach by polling.
+    const ACTIVE_JOB_KEY = 'active_deck_job';
+
+    const applyDeckResult = (d) => {
+        setDeckSlides(d.slides || []);
+        setSlideIdx(0);
+        setDeckDocId(d.document_id || '');
+        setDeckLabel(d.label || '');
+    };
+
+    // Poll a background deck job to completion (used on reload/return, or if the live stream drops).
+    const pollJobToEnd = async (jobId, toastId) => {
+        const tid = toastId || toast.loading('Finishing your presentation…');
+        setGenerating(true);
+        try {
+            while (true) {
+                let d;
+                try { d = (await api.get(`/api/presentation/deck-job/${jobId}`)).data; }
+                catch { localStorage.removeItem(ACTIVE_JOB_KEY); toast.error('Lost track of the generation.', { id: tid }); return; }
+                if (d.message) setProgressMsg(d.message);
+                if (d.status === 'done') { applyDeckResult(d); localStorage.removeItem(ACTIVE_JOB_KEY); toast.success('Deck ready — preview below.', { id: tid }); return; }
+                if (d.status === 'error') { localStorage.removeItem(ACTIVE_JOB_KEY); toast.error(d.error || 'Generation failed.', { id: tid }); return; }
+                await new Promise(r => setTimeout(r, 3000));
+            }
+        } finally { setGenerating(false); setProgressMsg(''); }
+    };
+
+    // On mount / reload: resume a background deck job that was left running.
+    useEffect(() => {
+        const raw = localStorage.getItem(ACTIVE_JOB_KEY);
+        if (!raw) return;
+        let stored; try { stored = JSON.parse(raw); } catch { localStorage.removeItem(ACTIVE_JOB_KEY); return; }
+        if (!stored?.job_id || Date.now() - (stored.ts || 0) > 2 * 60 * 60 * 1000) { localStorage.removeItem(ACTIVE_JOB_KEY); return; }
+        pollJobToEnd(stored.job_id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const generate = async () => {
         if (!canGenerate) {
@@ -328,21 +367,27 @@ const Presentation = () => {
                 try { msg = (await response.json())?.detail || msg; } catch {}
                 throw new Error(msg);
             }
-            let streamErr = null, gotResult = false;
+            let streamErr = null, gotResult = false, jobId = null;
             await readSSE(response, {
+                onJob: (d) => {
+                    jobId = d.job_id || null;
+                    if (jobId) localStorage.setItem(ACTIVE_JOB_KEY,
+                        JSON.stringify({ job_id: jobId, ts: Date.now() }));
+                },
                 onProgress: (d) => { if (d.message) setProgressMsg(d.message); },
                 onResult: (d) => {
                     gotResult = true;
-                    setDeckSlides(d.slides || []);
-                    setSlideIdx(0);
-                    setDeckDocId(d.document_id || '');
-                    setDeckLabel(d.label || '');
+                    applyDeckResult(d);
+                    localStorage.removeItem(ACTIVE_JOB_KEY);
                 },
-                onError: (d) => { streamErr = d.detail || 'Generation failed.'; },
+                onError: (d) => { streamErr = d.detail || 'Generation failed.'; localStorage.removeItem(ACTIVE_JOB_KEY); },
             });
             if (streamErr) throw new Error(streamErr);
-            if (!gotResult) throw new Error('Generation ended unexpectedly.');
-            toast.success('Deck ready — preview below.', { id: t });
+            if (gotResult) { toast.success('Deck ready — preview below.', { id: t }); return; }
+            // Live stream ended without a terminal event (e.g. connection dropped) — the job keeps
+            // running server-side, so re-attach by polling instead of failing.
+            if (jobId) { await pollJobToEnd(jobId, t); return; }
+            throw new Error('Generation ended unexpectedly.');
         } catch (e) {
             toast.error(e.message || 'Generation failed.', { id: t });
         } finally { setGenerating(false); setProgressMsg(''); }
@@ -703,7 +748,10 @@ const Presentation = () => {
                     {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {progressMsg || 'Generating…'}</>
                         : <><SparklesIcon className="w-5 h-5" /> Generate presentation</>}
                 </button>
-                <p className="text-xs text-slate-400 mt-3 text-center">The AI uses only your real data — no fabricated numbers.</p>
+                <p className="text-xs text-slate-400 mt-3 text-center">
+                    {generating
+                        ? 'Generating in the background — you can leave or reload this page; it will keep going and appear in Documents.'
+                        : 'The AI uses only your real data — no fabricated numbers.'}</p>
             </motion.div>
 
             {/* Preview carousel + download */}

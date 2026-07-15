@@ -4,6 +4,7 @@ These were previously module-level helpers inside the monolithic routes.py.
 """
 import base64
 import json
+import time
 import uuid
 import asyncio
 from datetime import datetime
@@ -191,22 +192,26 @@ def _ga4_service_for(db, email, account_id=None):
     return AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)
 
 
-def _save_deck_document(db, user_email: str, *, html: str, source: str, label: str,
+def _save_deck_document(user_email: str, *, html: str, source: str, label: str,
                         provider: str) -> str:
     """Persist a generated AI deck as a Document so it shows in the Documents history
-    and can be re-downloaded. Stores the HTML only; the file is re-rendered on download."""
+    and can be re-downloaded. Stores the HTML only; the file is re-rendered on download.
+
+    Opens its OWN short-lived session rather than a request-scoped one: deck generation runs
+    as a detached background job that can outlive the request (client reloaded/left), by which
+    point the request's DB session is already closed."""
+    from database import SessionLocal
     doc_id = str(uuid.uuid4())
     date_label = datetime.now().strftime("%Y-%m-%d")
-    doc = Document(
-        id=doc_id,
-        user_email=user_email,
-        title=f"AI Deck — {label} ({date_label})",
-        content_type="AI Deck",
-        content={"html": html, "source": source, "label": label,
-                 "provider": provider},
-    )
-    db.add(doc)
-    db.commit()
+    with SessionLocal() as db:
+        db.add(Document(
+            id=doc_id,
+            user_email=user_email,
+            title=f"AI Deck — {label} ({date_label})",
+            content_type="AI Deck",
+            content={"html": html, "source": source, "label": label, "provider": provider},
+        ))
+        db.commit()
     return doc_id
 
 
@@ -220,43 +225,73 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-async def _stream_deck_generation(run):
-    """Run a deck-building coroutine while streaming its progress as SSE.
+# ── Background deck-job registry ──────────────────────────────────────────────
+# Deck generation runs detached from the request so it survives a reload / tab close
+# (single uvicorn process on prod ⇒ in-memory is fine; move to Redis/DB if scaled out).
+# Each entry: {status: running|done|error, message, document_id, slides, label, error,
+#              user_email, task, ts}.
+_DECK_JOBS: dict = {}
+_DECK_JOB_TTL = 60 * 60  # keep finished jobs 1h so a returning client can still read them
 
-    `run` is an async callable that takes an `on_progress(message)` callback and returns
-    the final result dict (document_id, slides, label). Emits `progress` events as the
-    pipeline reports phases, then a final `result` event — or an `error` event on failure.
+
+def _evict_stale_jobs():
+    now = time.time()
+    for jid in [j for j, v in _DECK_JOBS.items()
+                if v.get("status") != "running" and now - v.get("ts", now) > _DECK_JOB_TTL]:
+        _DECK_JOBS.pop(jid, None)
+
+
+def _deck_job_public(job: dict) -> dict:
+    """The client-safe view of a job (no task handle / internal fields)."""
+    return {k: job.get(k) for k in
+            ("status", "message", "document_id", "slides", "label", "error")}
+
+
+async def _stream_deck_generation(run, user_email: str = ""):
+    """Run a deck-building coroutine detached from the request, streaming its progress as SSE.
+
+    `run` is an async callable taking an `on_progress(message)` callback and returning the
+    final result dict (document_id, slides, label). The work runs as a background task that
+    is registered in `_DECK_JOBS` and is NOT cancelled when the client disconnects — so a
+    reload/close no longer kills the deck; the finished deck is saved either way. The stream
+    emits a `job` event (job_id) first, then `progress`/`heartbeat`, then `result` or `error`.
+    A returning client re-attaches via GET /api/presentation/deck-job/{job_id}.
     """
-    queue: asyncio.Queue = asyncio.Queue()
-    _DONE = object()
+    _evict_stale_jobs()
+    job_id = uuid.uuid4().hex
+    job = _DECK_JOBS[job_id] = {
+        "status": "running", "message": "Starting…", "document_id": None,
+        "slides": None, "label": None, "error": None,
+        "user_email": user_email, "task": None, "ts": time.time(),
+    }
 
     async def on_progress(message: str):
-        await queue.put(_sse("progress", {"message": message}))
+        job["message"] = message
 
     async def worker():
         try:
-            result = await run(on_progress)
-            await queue.put(_sse("result", result))
+            result = await run(on_progress)  # {document_id, slides, label}
+            job.update(status="done", ts=time.time(), **{
+                k: result.get(k) for k in ("document_id", "slides", "label")})
         except Exception as e:
-            await queue.put(_sse("error", {"detail": str(e)}))
-        finally:
-            await queue.put(_DONE)
+            job.update(status="error", error=str(e), ts=time.time())
 
-    task = asyncio.create_task(worker())
-    try:
-        while True:
-            # Heartbeat while idle: reasoning models (GLM, DeepSeek-V4, Kimi) can "think" for
-            # 30-60s+ emitting no output, during which no progress event is queued. Without a
-            # keepalive the proxy/browser drops the idle SSE stream ("bad connection"). A
-            # heartbeat every 15s keeps bytes flowing; the frontend ignores unknown event types.
-            try:
-                item = await asyncio.wait_for(queue.get(), timeout=15)
-            except asyncio.TimeoutError:
-                yield _sse("heartbeat", {})
-                continue
-            if item is _DONE:
-                break
-            yield item
-    finally:
-        if not task.done():
-            task.cancel()
+    job["task"] = asyncio.create_task(worker())
+
+    yield _sse("job", {"job_id": job_id})
+    last_msg = None
+    while job["status"] == "running":
+        if job["message"] != last_msg:
+            last_msg = job["message"]
+            yield _sse("progress", {"message": last_msg})
+        # Heartbeat: reasoning models (GLM, DeepSeek-V4, Kimi) "think" silently for 30-60s+; a
+        # keepalive stops the proxy/browser dropping the idle SSE stream ("bad connection").
+        yield _sse("heartbeat", {})
+        await asyncio.sleep(2)
+    # Flush any final progress message, then the terminal event.
+    if job["message"] != last_msg:
+        yield _sse("progress", {"message": job["message"]})
+    if job["status"] == "done":
+        yield _sse("result", {k: job[k] for k in ("document_id", "slides", "label")})
+    else:
+        yield _sse("error", {"detail": job.get("error") or "Generation failed."})
