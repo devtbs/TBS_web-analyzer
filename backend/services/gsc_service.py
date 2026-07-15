@@ -483,7 +483,13 @@ class GSCService:
             return result
         except Exception as e:
             logger.error(f"Error fetching analytics chart data: {str(e)}")
-            raise Exception(f"Failed to fetch analytics: {str(e)}")
+            msg = str(e)
+            if "403" in msg or "sufficient permission" in msg.lower():
+                raise Exception(
+                    f"No Search Console access to {property_url}. The connected Google account isn't a "
+                    "verified user on this property — pick a site you own, or ask its owner to add you "
+                    "under Search Console → Settings → Users and permissions.")
+            raise Exception(f"Failed to fetch analytics: {msg}")
 
 
     async def get_countries(

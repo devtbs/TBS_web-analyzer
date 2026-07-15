@@ -8,10 +8,12 @@ from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db, Document
 from config import settings
+from typing import Optional
 from api.routers._shared import (
     PPTX_MEDIA_TYPE, PDF_MEDIA_TYPE, _SSE_HEADERS,
     _create_deck_placeholder, _finalize_deck_document,
     _slides_payload, _stream_deck_generation,
+    get_account_id, _gsc_service_for, _ga4_service_for, _resolve_token,
 )
 
 router = APIRouter()
@@ -206,19 +208,19 @@ async def presentation_ai_deck_gsc(
     provider: str = "deepseek",
     images: bool = True,
     body: dict = Body(default={}),
+    account_id: Optional[int] = Depends(get_account_id),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """AI-designed organic-search deck for a GSC property (from 'My Sites'), built from
     the logged-in user's Search Console data. Returns the deck HTML for preview and saves
-    it to Documents; download via the deck-download route. Query: ?property=<url>&days=N"""
+    it to Documents; download via the deck-download route. Query: ?property=<url>&days=N.
+    Uses the connected account that owns the property (X-Account-Id header), not just the primary."""
     from services.report_generator import generate_ai_gsc_deck
     from services.ai_deck_service import render_slide_images
     from services.image_service import images_enabled
-    from services.gsc_service import GSCService
     _require_llm_key()
-    gsc_token, is_refresh = _require_google_token(db, current_user.email)
-    service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+    service = _gsc_service_for(db, current_user.email, account_id)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
@@ -313,18 +315,18 @@ async def presentation_ai_deck_ga4(
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),
+    account_id: Optional[int] = Depends(get_account_id),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """AI-designed website-analytics deck for a GA4 property, built from the logged-in
-    user's Google Analytics data. Query: ?property_id=<id>&days=N&label=<display name>"""
+    user's Google Analytics data. Query: ?property_id=<id>&days=N&label=<display name>.
+    Uses the connected account that owns the property (X-Account-Id header)."""
     from services.report_generator import generate_ai_ga4_deck
     from services.ai_deck_service import render_slide_images
     from services.image_service import images_enabled
-    from services.analytics_service import AnalyticsService
     _require_llm_key()
-    token, is_refresh = _require_google_token(db, current_user.email)
-    service = AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
+    service = _ga4_service_for(db, current_user.email, account_id)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
@@ -353,11 +355,13 @@ async def presentation_ai_deck_ads(
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),
+    account_id: Optional[int] = Depends(get_account_id),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """AI-designed paid-search deck for a Google Ads account, built from the logged-in
-    user's Google Ads data. Query: ?customer_id=<id>&days=N&label=<display name>"""
+    user's Google Ads data. Query: ?customer_id=<id>&days=N&label=<display name>.
+    Uses the connected account that owns the customer (X-Account-Id header)."""
     from services.report_generator import generate_ai_ads_deck
     from services.ai_deck_service import render_slide_images
     from services.image_service import images_enabled
@@ -366,7 +370,10 @@ async def presentation_ai_deck_ads(
     if not ads_is_configured():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Google Ads is not configured — a developer token is required.")
-    token, is_refresh = _require_google_token(db, current_user.email)
+    token, is_refresh = _resolve_token(db, current_user.email, account_id)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Google account not connected for this account.")
     if not is_refresh:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
                             detail="Google Ads requires a stored refresh token — reconnect your Google account.")

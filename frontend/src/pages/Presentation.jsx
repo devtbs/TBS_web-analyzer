@@ -358,7 +358,14 @@ const Presentation = () => {
         const label = jobLabelFor();
         setActiveJobs(js => [...js, { localId, job_id: null, provider: prov, label, status: 'running', message: 'Starting…', result: null, ts: Date.now() }]);
         const token = localStorage.getItem('access_token');
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        // Raw fetch bypasses the axios interceptor, so attach the selected Google account
+        // (X-Account-Id) ourselves — otherwise the deck is built with the PRIMARY account's
+        // token and a site owned by another connected account returns a 403.
+        const acctId = localStorage.getItem('selected_account_id');
+        const headers = {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(acctId ? { 'X-Account-Id': acctId } : {}),
+        };
         const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
         const models = pipeline === 'layered' ? resolvedLayerModels(prov) : undefined;
         const body = { notes, creativity, pipeline, ...(models ? { models } : {}) };
