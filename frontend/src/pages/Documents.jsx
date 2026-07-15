@@ -85,6 +85,14 @@ export default function Documents() {
         return () => window.removeEventListener('documents-updated', fetchDocuments);
     }, []);
 
+    // While any AI-Deck row is still generating, poll so it flips to done/failed live.
+    useEffect(() => {
+        const anyGenerating = documents.some(d => d.status === 'generating');
+        if (!anyGenerating) return;
+        const id = setInterval(fetchDocuments, 4000);
+        return () => clearInterval(id);
+    }, [documents]);
+
     useEffect(() => {
         const handleClickOutside = () => {
             setActiveDeadlinePopover(null);
@@ -463,6 +471,17 @@ export default function Documents() {
                                     <div className="text-sm font-medium text-slate-800 group-hover:text-emerald-600 transition-colors line-clamp-2 leading-tight">
                                         {doc.title}
                                     </div>
+                                    {doc.status === 'generating' && (
+                                        <span className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                            Generating…
+                                        </span>
+                                    )}
+                                    {doc.status === 'error' && (
+                                        <span className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 border border-red-200">
+                                            Failed
+                                        </span>
+                                    )}
                                     {/* Show "edited" inline on xs only */}
                                     <div className="md:hidden text-[11px] text-slate-400 font-medium mt-0.5">
                                         {formatTimeAgo(doc.updated_at)}

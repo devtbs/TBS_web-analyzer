@@ -250,6 +250,9 @@ class DocumentResponse(BaseModel):
     deadline: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # For AI-Deck docs generated in the background: "generating" | "done" | "error".
+    # Absent/None for all other document types (and legacy decks) → render normally.
+    status: Optional[str] = None
 
     class Config:
         from_attributes = True

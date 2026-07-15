@@ -80,6 +80,8 @@ export default function DocumentDetail() {
     // Render saved AI-deck slides to preview images when this is a deck document
     useEffect(() => {
         if (documentData?.content_type !== "AI Deck") return;
+        // Still generating in the background — no HTML yet, so the slides endpoint would 404.
+        if (documentData?.content?.status === 'generating') return;
         let active = true;
         setDeckLoading(true);
         api.get(`/api/presentation/deck/${documentId}/slides`)
@@ -87,6 +89,14 @@ export default function DocumentDetail() {
             .catch(() => toast.error('Could not render deck preview.'))
             .finally(() => { if (active) setDeckLoading(false); });
         return () => { active = false; };
+    }, [documentData, documentId]);
+
+    // If the deck is still generating, re-fetch the document until it finishes.
+    useEffect(() => {
+        if (documentData?.content_type !== "AI Deck") return;
+        if (documentData?.content?.status !== 'generating') return;
+        const id = setInterval(fetchDocument, 4000);
+        return () => clearInterval(id);
     }, [documentData, documentId]);
     
     const fetchDocument = async () => {
@@ -250,7 +260,18 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
                         <button onClick={() => dl('pptx')} className="px-4 py-2 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-sm hover:bg-[#26397A]/5">Download PPTX</button>
                     </div>
                 </div>
-                {deckLoading ? (
+                {briefData.status === 'generating' ? (
+                    <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+                        <div className="w-9 h-9 border-4 border-slate-200 border-t-amber-500 rounded-full animate-spin" />
+                        <p className="mt-4 text-sm font-medium">Still generating this deck in the background…</p>
+                        <p className="mt-1 text-xs text-slate-400">This page updates automatically when it's ready.</p>
+                    </div>
+                ) : briefData.status === 'error' ? (
+                    <div className="flex flex-col items-center justify-center py-24 text-red-500">
+                        <p className="text-sm font-semibold">Generation failed</p>
+                        {briefData.error && <p className="mt-1 text-xs text-red-400 max-w-md text-center">{briefData.error}</p>}
+                    </div>
+                ) : deckLoading ? (
                     <div className="flex flex-col items-center justify-center py-24 text-slate-500">
                         <div className="w-9 h-9 border-4 border-slate-200 border-t-[#26397A] rounded-full animate-spin" />
                         <p className="mt-4 text-sm font-medium">Rendering preview…</p>

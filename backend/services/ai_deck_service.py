@@ -595,11 +595,153 @@ def _make_image_prewarmer(image_cache: Dict[str, "asyncio.Task"]):
     return on_delta
 
 
+# ---------------------------------------------------------------------------
+# 3-LAYER PIPELINE (opt-in): plan → per-slide insights → HTML. Each layer can use
+# a different model, so the same deck can be A/B'd across models per stage. The final
+# (HTML) layer still emits the same ai-img/plotly-spec contract, so image prewarming,
+# keyword-bubble enforcement and leaked-spec stripping are unchanged.
+# ---------------------------------------------------------------------------
+_PLAN_SYSTEM = "You are a presentation strategist. You output ONLY strict JSON — no markdown, no prose."
+
+_PLAN_PROMPT = """You are planning an executive data-presentation deck. From the coverage list and DATA
+below, produce a deck PLAN as STRICT JSON ONLY (no markdown fences, no commentary).
+
+{structure_directive}
+
+Output JSON of EXACTLY this shape:
+{"slides":[{"n":1,"archetype":"layout-cover","title":"…","purpose":"the single idea of this slide in one line","data_refs":["which figures/sections of the data this slide uses"],"chart":"none|bar|line|combo|donut|scatter|choropleth|table"}]}
+
+Rules:
+- Cover every item marked REQUIRED; use ONLY the provided data; never invent numbers.
+- "archetype" MUST be one of: layout-cover, layout-section, layout-kpi-strip, layout-split,
+  layout-list, layout-comparison, layout-roadmap, layout-quote, layout-closing.
+- Choose a sensible slide count per the directive above; order the slides for the strongest narrative.
+- First slide is the cover; last slide is the closing.
+
+DATA (use ONLY this):
+{data}"""
+
+_INSIGHTS_SYSTEM = "You are a senior data analyst who writes concise, grounded slide copy."
+
+_INSIGHTS_PROMPT = """Write the on-slide COPY for every slide in the deck PLAN below, grounded ONLY in the DATA.
+For EACH slide, under a heading '## Slide {n}: {title}', give:
+- a punchy headline,
+- 2–4 short bullet insights, each citing the REAL number(s) from the data,
+- ONE strategic takeaway/recommendation.
+Frame any decline positively (an optimization opportunity, not a failure). Use ONLY real numbers from
+the DATA — never invent. Output plain markdown only (NO HTML, NO chart JSON).
+
+DECK PLAN:
+{plan}
+
+DATA (use ONLY this):
+{data}"""
+
+
+def _extract_json(text: str) -> Optional[dict]:
+    """Pull the first balanced JSON object out of an LLM reply (tolerates code fences and
+    surrounding prose). Returns the parsed dict, or None if nothing valid is found."""
+    import json
+    t = text.strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t
+        if t.endswith("```"):
+            t = t[: t.rfind("```")]
+    start = t.find("{")
+    if start == -1:
+        return None
+    end = _match_brace(t, start)
+    if end == -1:
+        return None
+    try:
+        obj = json.loads(t[start:end + 1])
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
+                    on_progress: ProgressCb, temperature: float,
+                    on_delta=None) -> str:
+    """One provider call with the same streaming→non-streaming fallback the single-pass
+    path uses, so a dropped stream still yields output."""
+    try:
+        return await ai_service.analyze_with_provider(
+            full_prompt, system_prompt=system_prompt, provider=provider,
+            on_progress=on_progress, on_delta=on_delta, temperature=temperature)
+    except Exception:
+        if on_delta is None:
+            raise
+        logger.exception("streamed LLM call failed — retrying without streaming")
+        return await ai_service.analyze_with_provider(
+            full_prompt, system_prompt=system_prompt, provider=provider,
+            on_progress=on_progress, temperature=temperature)
+
+
+def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str, *,
+                               brand: Optional[str], seed: Optional[str]) -> str:
+    """Stage-C prompt: render the finalized PLAN + COPY into HTML. Shares the exact rendering
+    contract / design system / theme / seed / exemplar tail as build_prompt so a layered deck
+    meets the same quality bar as a single-pass one."""
+    head = (
+        "You are an elite editorial presentation designer. Render the deck defined by the PLAN and "
+        "COPY below into ONE complete, self-contained HTML document: ONE <section class=\"slide\"> per "
+        "planned slide, IN ORDER, each carrying its planned archetype class and expressing its copy. "
+        "Design it like a high-end magazine/poster system (see DESIGN SYSTEM), not a generic template.\n"
+        + (brand or UNIQUE_STYLE_BRAND) + "\n\n"
+        "CRITICAL OUTPUT RULE: emit each slide as FINAL RENDERED HTML only — never print the plan, "
+        "\"Slide X:\" headings, layout notes or chart JSON as visible text; translate all of it into "
+        "the HTML/CSS and the hidden chart script. Use ONLY the real numbers from the DATA.\n\n"
+        "DECK PLAN (authoritative slide list + archetypes):\n" + plan_json + "\n\n"
+        "SLIDE COPY (headlines, grounded insights, takeaways — use these, refine lightly):\n" + insights_md + "\n\n"
+        "DATA (authoritative source of every number):\n" + data_brief
+    )
+    parts = [head, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
+    if seed and seed.strip():
+        parts.append(_seed_directive(seed))
+    parts.append(DESIGN_EXEMPLARS)
+    return "\n\n".join(parts)
+
+
+async def _generate_layered(data_brief: str, *, brand: Optional[str], structure: Optional[str],
+                            seed: Optional[str], creativity: str,
+                            planner: str, insights_provider: str, html_provider: str,
+                            temperature: float, on_progress: ProgressCb, on_delta) -> str:
+    """Run plan → insights → HTML and return the raw HTML string (pre-validation). Each stage
+    uses its own provider. Raises on plan-parse failure so the caller can fall back to single-pass."""
+    directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
+    if on_progress:
+        await on_progress("Planning slides…")
+    plan_raw = await _call_llm(
+        _PLAN_PROMPT.replace("{structure_directive}", directive).replace("{data}", data_brief),
+        system_prompt=_PLAN_SYSTEM, provider=planner, on_progress=on_progress, temperature=0.5)
+    plan = _extract_json(plan_raw)
+    if not plan or not isinstance(plan.get("slides"), list) or not plan["slides"]:
+        raise ValueError("planner did not return a usable slide plan")
+    import json
+    plan_json = json.dumps(plan, ensure_ascii=False, indent=1)
+
+    if on_progress:
+        await on_progress("Writing insights…")
+    insights_md = await _call_llm(
+        _INSIGHTS_PROMPT.replace("{plan}", plan_json).replace("{data}", data_brief),
+        system_prompt=_INSIGHTS_SYSTEM, provider=insights_provider,
+        on_progress=on_progress, temperature=0.6)
+
+    if on_progress:
+        await on_progress("Designing the deck…")
+    full_prompt = _build_layered_html_prompt(plan_json, insights_md, data_brief,
+                                             brand=brand, seed=seed)
+    return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=html_provider,
+                           on_progress=on_progress, temperature=temperature, on_delta=on_delta)
+
+
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
                              provider: str = "deepseek", on_progress: ProgressCb = None,
                              image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
-                             seed: Optional[str] = None, creativity: str = "balanced") -> str:
+                             seed: Optional[str] = None, creativity: str = "balanced",
+                             pipeline: str = "single", models: Optional[Dict[str, str]] = None) -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
 
     Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
@@ -612,35 +754,38 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
     from services.deck_validation import validate_deck_html
     from services.image_service import images_enabled
 
-    # prompt is normally resolved by the route (from the chosen prompt id); fall back
-    # to the built-in default if none was passed.
-    full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure,
-                               seed=seed, creativity=creativity)
     # More creative freedom → a bit more sampling variety.
     temperature = {"structured": 0.7, "balanced": 0.85, "creative": 1.0}.get(creativity, 0.85)
-    if on_progress:
-        await on_progress("Writing slides…")
     # Stream + prewarm images only when a cache is supplied and images are enabled.
     on_delta = (_make_image_prewarmer(image_cache)
                 if image_cache is not None and images_enabled() else None)
-    try:
-        raw = await ai_service.analyze_with_provider(
-            full_prompt,
-            system_prompt=_DECK_SYSTEM_PROMPT,
-            provider=provider,
-            on_progress=on_progress,
-            on_delta=on_delta,
-            temperature=temperature,
-        )
-    except Exception:
-        if on_delta is None:
-            raise
-        # Streaming path failed — retry once without it so a deck still generates.
-        logger.exception("streamed deck generation failed — retrying without streaming")
-        raw = await ai_service.analyze_with_provider(
-            full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=provider,
-            on_progress=on_progress, temperature=temperature,
-        )
+    # Per-layer model overrides (3-layer pipeline); each defaults to `provider`.
+    models = models or {}
+    html_provider = models.get("html") or provider
+
+    async def _single_pass() -> str:
+        # prompt is normally resolved by the route (from the chosen prompt id); fall back
+        # to the built-in default if none was passed.
+        full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure,
+                                   seed=seed, creativity=creativity)
+        if on_progress:
+            await on_progress("Writing slides…")
+        return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=provider,
+                               on_progress=on_progress, temperature=temperature, on_delta=on_delta)
+
+    if pipeline == "layered":
+        try:
+            raw = await _generate_layered(
+                data_brief, brand=brand, structure=structure, seed=seed, creativity=creativity,
+                planner=models.get("planner") or provider,
+                insights_provider=models.get("insights") or provider,
+                html_provider=html_provider, temperature=temperature,
+                on_progress=on_progress, on_delta=on_delta)
+        except Exception:
+            logger.exception("layered pipeline failed — falling back to single-pass")
+            raw = await _single_pass()
+    else:
+        raw = await _single_pass()
     html = _clean_html(raw)
 
     result = validate_deck_html(html, data_brief, creativity=creativity)
@@ -657,7 +802,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
         repair_raw = await ai_service.analyze_with_provider(
             _build_repair_prompt(html, result.repair_instructions()),
             system_prompt=_DECK_SYSTEM_PROMPT,
-            provider=provider,
+            provider=html_provider,
             on_progress=on_progress,
         )
         repaired = _clean_html(repair_raw)
@@ -1364,6 +1509,8 @@ async def generate_deck_from_pdf(
     seed: Optional[str] = None,
     on_progress: ProgressCb = None,
     creativity: str = "balanced",
+    pipeline: str = "single",
+    models: Optional[Dict[str, str]] = None,
 ) -> Dict:
     """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
     chosen prompt + provider. Renders to the file unless render=False (deferred to download).
@@ -1390,6 +1537,8 @@ async def generate_deck_from_pdf(
         image_cache=image_cache,
         seed=seed,
         creativity=creativity,
+        pipeline=pipeline,
+        models=models,
     )
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))

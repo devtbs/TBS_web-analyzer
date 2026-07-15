@@ -91,12 +91,16 @@ const Presentation = () => {
     // shared
     const [providers, setProviders] = useState([]);
     const [provider, setProvider] = useState('deepseek');
+    const [compareModels, setCompareModels] = useState([]);   // extra models to run the SAME deck on
+    const [pipeline, setPipeline] = useState('single');       // 'single' | 'layered'
+    const [layerModels, setLayerModels] = useState({ planner: '', insights: '', html: '' });
     const [creativity, setCreativity] = useState('balanced');
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
-    const [generating, setGenerating] = useState(false);
-    const [progressMsg, setProgressMsg] = useState('');
+    const [generating, setGenerating] = useState(false);      // transient: only while dispatching requests
     const [downloading, setDownloading] = useState('');
+    // Concurrent background jobs — each entry: {localId, job_id, provider, label, status, message, result}
+    const [activeJobs, setActiveJobs] = useState([]);
 
     // generated deck (preview carousel + download)
     const [deckSlides, setDeckSlides] = useState([]);
@@ -283,9 +287,9 @@ const Presentation = () => {
         : mode === 'bing' ? !!bingSite
         : !!pdfFile;
 
-    // Background deck jobs: generation runs server-side and survives reload/navigation.
-    // We stash the job id so a returning client can re-attach by polling.
-    const ACTIVE_JOB_KEY = 'active_deck_job';
+    // Background deck jobs: generation runs server-side and survives reload/navigation. Several can
+    // run at once (incl. the same deck across models), each tracked as an entry in activeJobs.
+    const ACTIVE_JOBS_KEY = 'active_deck_jobs';
 
     const applyDeckResult = (d) => {
         setDeckSlides(d.slides || []);
@@ -294,74 +298,97 @@ const Presentation = () => {
         setDeckLabel(d.label || '');
     };
 
-    // Poll a background deck job to completion (used on reload/return, or if the live stream drops).
-    const pollJobToEnd = async (jobId, toastId) => {
-        const tid = toastId || toast.loading('Finishing your presentation…');
-        setGenerating(true);
-        try {
-            while (true) {
-                let d;
-                try { d = (await api.get(`/api/presentation/deck-job/${jobId}`)).data; }
-                catch { localStorage.removeItem(ACTIVE_JOB_KEY); toast.error('Lost track of the generation.', { id: tid }); return; }
-                if (d.message) setProgressMsg(d.message);
-                if (d.status === 'done') { applyDeckResult(d); localStorage.removeItem(ACTIVE_JOB_KEY); toast.success('Deck ready — preview below.', { id: tid }); return; }
-                if (d.status === 'error') { localStorage.removeItem(ACTIVE_JOB_KEY); toast.error(d.error || 'Generation failed.', { id: tid }); return; }
-                await new Promise(r => setTimeout(r, 3000));
-            }
-        } finally { setGenerating(false); setProgressMsg(''); }
+    const patchJob = (localId, patch) =>
+        setActiveJobs(js => js.map(j => (j.localId === localId ? { ...j, ...patch } : j)));
+
+    const providerLabel = (id) => providers.find(p => p.id === id)?.label || id;
+
+    const jobLabelFor = () => {
+        if (mode === 'gsc') return (propUrl || '').replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/\/$/, '') || 'site';
+        if (mode === 'ga4') return ga4Label || ga4PropId || 'GA4';
+        if (mode === 'ads') return adsLabel || adsCustId || 'Ads';
+        if (mode === 'bing') return bingPretty(bingSite?.url || '') || 'Bing';
+        return pdfFile?.name || 'report';
     };
 
-    // On mount / reload: resume a background deck job that was left running.
+    const resolvedLayerModels = (prov) => ({
+        planner: layerModels.planner || prov,
+        insights: layerModels.insights || prov,
+        html: layerModels.html || prov,
+    });
+
+    // Persist running jobs (with a server job_id) so a reload can re-attach.
     useEffect(() => {
-        const raw = localStorage.getItem(ACTIVE_JOB_KEY);
+        const persistable = activeJobs
+            .filter(j => j.job_id && j.status === 'running')
+            .map(j => ({ job_id: j.job_id, provider: j.provider, label: j.label, ts: j.ts }));
+        if (persistable.length) localStorage.setItem(ACTIVE_JOBS_KEY, JSON.stringify(persistable));
+        else localStorage.removeItem(ACTIVE_JOBS_KEY);
+    }, [activeJobs]);
+
+    // Poll a background deck job to completion (reload/return, or if the live stream drops).
+    const pollJobToEnd = async (jobId, localId) => {
+        while (true) {
+            let d;
+            try { d = (await api.get(`/api/presentation/deck-job/${jobId}`)).data; }
+            catch { patchJob(localId, { status: 'error', message: 'Lost track of the generation.' }); return; }
+            if (d.message) patchJob(localId, { message: d.message });
+            if (d.status === 'done') { patchJob(localId, { status: 'done', message: 'Ready', result: d }); applyDeckResult(d); toast.success('Deck ready — preview below.'); return; }
+            if (d.status === 'error') { patchJob(localId, { status: 'error', message: d.error || 'Generation failed.' }); toast.error(d.error || 'Generation failed.'); return; }
+            await new Promise(r => setTimeout(r, 3000));
+        }
+    };
+
+    // On mount / reload: resume any background jobs that were left running.
+    useEffect(() => {
+        const raw = localStorage.getItem(ACTIVE_JOBS_KEY);
         if (!raw) return;
-        let stored; try { stored = JSON.parse(raw); } catch { localStorage.removeItem(ACTIVE_JOB_KEY); return; }
-        if (!stored?.job_id || Date.now() - (stored.ts || 0) > 2 * 60 * 60 * 1000) { localStorage.removeItem(ACTIVE_JOB_KEY); return; }
-        pollJobToEnd(stored.job_id);
+        let stored; try { stored = JSON.parse(raw); } catch { localStorage.removeItem(ACTIVE_JOBS_KEY); return; }
+        const fresh = (Array.isArray(stored) ? stored : []).filter(s => s.job_id && Date.now() - (s.ts || 0) < 2 * 60 * 60 * 1000);
+        if (!fresh.length) { localStorage.removeItem(ACTIVE_JOBS_KEY); return; }
+        const resumed = fresh.map(s => ({ localId: `resume-${s.job_id}`, job_id: s.job_id, provider: s.provider, label: s.label, status: 'running', message: 'Resuming…', result: null, ts: s.ts }));
+        setActiveJobs(js => [...js, ...resumed]);
+        resumed.forEach(j => pollJobToEnd(j.job_id, j.localId));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const generate = async () => {
-        if (!canGenerate) {
-            toast.error(mode === 'pdf' ? 'Choose a PDF first.'
-                : mode === 'ads' ? 'Pick a Google Ads account first.'
-                : mode === 'ga4' ? 'Pick a GA4 property first.'
-                : mode === 'bing' ? 'Pick a Bing site first.'
-                : 'Pick a site first.');
-            return;
-        }
-        setGenerating(true);
-        setProgressMsg('Starting…');
-        setDeckSlides([]); setDeckDocId('');
-        const t = toast.loading('AI is designing your presentation…');
+    // Fire ONE background job for the given provider, streaming its progress into its activeJobs entry.
+    const startOne = async (prov) => {
+        const localId = `${prov}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const label = jobLabelFor();
+        setActiveJobs(js => [...js, { localId, job_id: null, provider: prov, label, status: 'running', message: 'Starting…', result: null, ts: Date.now() }]);
         const token = localStorage.getItem('access_token');
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+        const models = pipeline === 'layered' ? resolvedLayerModels(prov) : undefined;
+        const body = { notes, creativity, pipeline, ...(models ? { models } : {}) };
         try {
             let response;
             if (mode === 'gsc') {
                 response = await fetch(
-                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${provider}&images=${useImages}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity }) });
+                    `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${prov}&images=${useImages}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
             } else if (mode === 'ga4') {
                 response = await fetch(
-                    `/api/presentation/ai-deck-ga4?property_id=${encodeURIComponent(ga4PropId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(ga4Label)}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity }) });
+                    `/api/presentation/ai-deck-ga4?property_id=${encodeURIComponent(ga4PropId)}&days=${days}&provider=${prov}&images=${useImages}&label=${encodeURIComponent(ga4Label)}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
             } else if (mode === 'ads') {
                 response = await fetch(
-                    `/api/presentation/ai-deck-ads?customer_id=${encodeURIComponent(adsCustId)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(adsLabel)}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity }) });
+                    `/api/presentation/ai-deck-ads?customer_id=${encodeURIComponent(adsCustId)}&days=${days}&provider=${prov}&images=${useImages}&label=${encodeURIComponent(adsLabel)}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
             } else if (mode === 'bing') {
                 response = await fetch(
-                    `/api/presentation/ai-deck-bing?account_id=${bingSite.account_id}&site=${encodeURIComponent(bingSite.url)}&days=${days}&provider=${provider}&images=${useImages}&label=${encodeURIComponent(bingPretty(bingSite.url))}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ notes, creativity, ai_performance_csv: bingAiCsv?.text || null }) });
+                    `/api/presentation/ai-deck-bing?account_id=${bingSite.account_id}&site=${encodeURIComponent(bingSite.url)}&days=${days}&provider=${prov}&images=${useImages}&label=${encodeURIComponent(bingPretty(bingSite.url))}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...body, ai_performance_csv: bingAiCsv?.text || null }) });
             } else {
                 const fd = new FormData();
                 fd.append('file', pdfFile);
-                fd.append('provider', provider);
+                fd.append('provider', prov);
                 fd.append('images', useImages);
                 fd.append('notes', notes);
                 fd.append('creativity', creativity);
+                fd.append('pipeline', pipeline);
+                if (models) fd.append('models', JSON.stringify(models));
                 response = await fetch('/api/presentation/ai-deck-from-pdf', { method: 'POST', headers, body: fd });
             }
             if (!response.ok || !response.body) {
@@ -371,29 +398,42 @@ const Presentation = () => {
             }
             let streamErr = null, gotResult = false, jobId = null;
             await readSSE(response, {
-                onJob: (d) => {
-                    jobId = d.job_id || null;
-                    if (jobId) localStorage.setItem(ACTIVE_JOB_KEY,
-                        JSON.stringify({ job_id: jobId, ts: Date.now() }));
-                },
-                onProgress: (d) => { if (d.message) setProgressMsg(d.message); },
-                onResult: (d) => {
-                    gotResult = true;
-                    applyDeckResult(d);
-                    localStorage.removeItem(ACTIVE_JOB_KEY);
-                },
-                onError: (d) => { streamErr = d.detail || 'Generation failed.'; localStorage.removeItem(ACTIVE_JOB_KEY); },
+                onJob: (d) => { jobId = d.job_id || null; if (jobId) patchJob(localId, { job_id: jobId }); },
+                onProgress: (d) => { if (d.message) patchJob(localId, { message: d.message }); },
+                onResult: (d) => { gotResult = true; patchJob(localId, { status: 'done', message: 'Ready', result: d }); applyDeckResult(d); },
+                onError: (d) => { streamErr = d.detail || 'Generation failed.'; patchJob(localId, { status: 'error', message: streamErr }); },
             });
-            if (streamErr) throw new Error(streamErr);
-            if (gotResult) { toast.success('Deck ready — preview below.', { id: t }); return; }
-            // Live stream ended without a terminal event (e.g. connection dropped) — the job keeps
-            // running server-side, so re-attach by polling instead of failing.
-            if (jobId) { await pollJobToEnd(jobId, t); return; }
-            throw new Error('Generation ended unexpectedly.');
+            if (streamErr) { toast.error(streamErr); return; }
+            if (gotResult) { toast.success('Deck ready — preview below.'); return; }
+            // Live stream ended without a terminal event — the job keeps running server-side, re-attach.
+            if (jobId) { await pollJobToEnd(jobId, localId); return; }
+            patchJob(localId, { status: 'error', message: 'Generation ended unexpectedly.' });
         } catch (e) {
-            toast.error(e.message || 'Generation failed.', { id: t });
-        } finally { setGenerating(false); setProgressMsg(''); }
+            patchJob(localId, { status: 'error', message: e.message || 'Generation failed.' });
+            toast.error(e.message || 'Generation failed.');
+        }
     };
+
+    const generate = () => {
+        if (!canGenerate) {
+            toast.error(mode === 'pdf' ? 'Choose a PDF first.'
+                : mode === 'ads' ? 'Pick a Google Ads account first.'
+                : mode === 'ga4' ? 'Pick a GA4 property first.'
+                : mode === 'bing' ? 'Pick a Bing site first.'
+                : 'Pick a site first.');
+            return;
+        }
+        setGenerating(true);
+        setDeckSlides([]); setDeckDocId('');
+        // Run the same deck across the primary model plus any "compare" models (deduped).
+        const provs = Array.from(new Set([provider, ...compareModels]));
+        provs.forEach(p => startOne(p));
+        toast.success(provs.length > 1 ? `Started ${provs.length} decks — tracking below.` : 'Generation started — tracking below.');
+        // Release the button quickly; the jobs run in the background and stay usable to start more.
+        setTimeout(() => setGenerating(false), 700);
+    };
+
+    const dismissJob = (localId) => setActiveJobs(js => js.filter(j => j.localId !== localId));
 
     const downloadDeck = async (fmt) => {
         if (!deckDocId) return;
@@ -724,10 +764,51 @@ const Presentation = () => {
                 )}
 
                 <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
-                <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={generating} className={fieldCls + ' mb-6'}>
+                <select value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls + ' mb-3'}>
                     {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
                     {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </select>
+
+                {/* Compare models: run the SAME deck across extra models at once */}
+                {providers.length > 1 && (
+                    <div className="mb-6">
+                        <label className="block text-xs font-bold text-slate-500 mb-2">Also generate with (compare) <span className="font-normal text-slate-400">— runs the same deck on each, in parallel</span></label>
+                        <div className="flex flex-wrap gap-2">
+                            {providers.filter(p => p.id !== provider).map((p) => {
+                                const on = compareModels.includes(p.id);
+                                return (
+                                    <button key={p.id} type="button"
+                                        onClick={() => setCompareModels(cm => on ? cm.filter(x => x !== p.id) : [...cm, p.id])}
+                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${on ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
+                                        {on ? '✓ ' : '+ '}{p.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Generation pipeline: single-pass vs 3-layer (per-layer model choice) */}
+                <label className="block text-sm font-bold text-slate-700 mb-2">Pipeline</label>
+                <select value={pipeline} onChange={(e) => setPipeline(e.target.value)} className={fieldCls + ' mb-2'}>
+                    <option value="single">Single-pass — one model writes the whole deck (fast)</option>
+                    <option value="layered">3-layer — plan → insights → design (slower, higher quality)</option>
+                </select>
+                {pipeline === 'layered' ? (
+                    <div className="mb-6 mt-2 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                        <p className="text-xs text-slate-400">Pick a model per layer (blank = the AI model above). 3× the calls, so notably slower.</p>
+                        {[['planner', 'Planner (deck outline)'], ['insights', 'Insights (slide copy)'], ['html', 'Design (HTML)']].map(([key, lbl]) => (
+                            <div key={key} className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-500 w-40 flex-shrink-0">{lbl}</span>
+                                <select value={layerModels[key]} onChange={(e) => setLayerModels(m => ({ ...m, [key]: e.target.value }))}
+                                    className="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                    <option value="">Same as AI model ({providerLabel(provider)})</option>
+                                    {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+                ) : <div className="mb-6" />}
 
                 <label className="block text-sm font-bold text-slate-700 mb-2">Design freedom</label>
                 <select value={creativity} onChange={(e) => setCreativity(e.target.value)} disabled={generating} className={fieldCls}>
@@ -759,14 +840,39 @@ const Presentation = () => {
 
                 <button onClick={generate} disabled={generating || !canGenerate}
                     className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
-                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {progressMsg || 'Generating…'}</>
-                        : <><SparklesIcon className="w-5 h-5" /> Generate presentation</>}
+                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Starting…</>
+                        : <><SparklesIcon className="w-5 h-5" /> {compareModels.length ? `Generate ${1 + compareModels.length} decks` : 'Generate presentation'}</>}
                 </button>
                 <p className="text-xs text-slate-400 mt-3 text-center">
-                    {generating
-                        ? 'Generating in the background — you can leave or reload this page; it will keep going and appear in Documents.'
-                        : 'The AI uses only your real data — no fabricated numbers.'}</p>
+                    Decks generate in the background — you can start more, leave, or reload this page; each appears in Documents.</p>
             </motion.div>
+
+            {/* Active-job tracker: one row per in-flight/finished deck */}
+            {activeJobs.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                    className="mt-6 bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                    <h2 className="font-black text-slate-900 text-sm mb-3">Generating</h2>
+                    <div className="space-y-2">
+                        {activeJobs.map((j) => (
+                            <div key={j.localId}
+                                onClick={() => j.status === 'done' && j.result && applyDeckResult(j.result)}
+                                className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${j.status === 'error' ? 'border-red-200 bg-red-50/50' : j.status === 'done' ? 'border-emerald-200 bg-emerald-50/40 cursor-pointer hover:bg-emerald-50' : 'border-slate-200 bg-slate-50/60'}`}>
+                                {j.status === 'running' && <span className="w-4 h-4 border-2 border-slate-300 border-t-[#26397A] rounded-full animate-spin flex-shrink-0" />}
+                                {j.status === 'done' && <span className="w-4 h-4 rounded-full bg-emerald-500 flex-shrink-0" />}
+                                {j.status === 'error' && <span className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0" />}
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{j.label} <span className="text-slate-400 font-medium">· {providerLabel(j.provider)}</span></p>
+                                    <p className="text-xs text-slate-400 truncate">{j.status === 'done' ? 'Ready — click to preview' : j.status === 'error' ? j.message : j.message}</p>
+                                </div>
+                                {j.status !== 'running' && (
+                                    <button onClick={(e) => { e.stopPropagation(); dismissJob(j.localId); }}
+                                        className="text-xs text-slate-400 hover:text-slate-700 font-semibold flex-shrink-0">Dismiss</button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
 
             {/* Preview carousel + download */}
             {deckSlides.length > 0 && (

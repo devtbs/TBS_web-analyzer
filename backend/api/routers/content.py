@@ -152,9 +152,19 @@ async def list_documents(
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all saved documents (content briefs) for the current user"""
+    """List all saved documents (content briefs) for the current user.
+
+    For AI-Deck docs we surface content.status (generating|done|error) so the Documents
+    list can show a live status chip; the nested JSON field isn't reachable via ORM
+    attribute mapping, so build the response objects explicitly."""
     documents = db.query(Document).filter(Document.user_email == current_user.email).order_by(Document.updated_at.desc()).all()
-    return documents
+    out = []
+    for doc in documents:
+        item = DocumentResponse.model_validate(doc)
+        if doc.content_type == "AI Deck":
+            item.status = (doc.content or {}).get("status")
+        out.append(item)
+    return out
 
 
 @router.get("/api/documents/{document_id}", response_model=DocumentDetailResponse)

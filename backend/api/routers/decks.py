@@ -10,7 +10,8 @@ from database import get_db, Document
 from config import settings
 from api.routers._shared import (
     PPTX_MEDIA_TYPE, PDF_MEDIA_TYPE, _SSE_HEADERS,
-    _save_deck_document, _slides_payload, _stream_deck_generation,
+    _create_deck_placeholder, _finalize_deck_document,
+    _slides_payload, _stream_deck_generation,
 )
 
 router = APIRouter()
@@ -79,13 +80,15 @@ async def presentation_ai_deck_from_pdf(
     images: bool = Form(True),
     notes: str = Form(""),
     creativity: str = Form("balanced"),
+    pipeline: str = Form("single"),
+    models: str = Form(""),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Upload a report PDF → AI extracts its data and designs a deck. Returns the
     deck HTML for preview and saves it to Documents; download via the deck-download route.
 
-    Form fields: file (the PDF), provider, images, notes.
+    Form fields: file (the PDF), provider, images, notes, pipeline, models (JSON string).
     """
     from services.ai_deck_service import generate_deck_from_pdf, render_slide_images
     from services.image_service import images_enabled
@@ -94,16 +97,18 @@ async def presentation_ai_deck_from_pdf(
     if not pdf_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
     label = (file.filename or "report").rsplit(".", 1)[0][:60] or "report"
+    models_dict = _parse_models(models)
 
-    async def run(on_progress):
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="pdf", label=label, provider=provider)
+        set_doc_id(doc_id)
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider, render=False,
                                               images=images and images_enabled(),
                                               notes=notes, seed=label, creativity=creativity,
+                                              pipeline=pipeline, models=models_dict,
                                               on_progress=on_progress)
-        slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(current_user.email, html=result["html"], source="pdf",
-                                     label=label, provider=provider)
-        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": label}
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        return {"document_id": doc_id, "slides": slides, "label": label}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
@@ -125,6 +130,54 @@ async def presentation_deck_job(job_id: str, current_user: UserInfo = Depends(ge
     if not job or job.get("user_email") != current_user.email:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck job not found.")
     return _deck_job_public(job)
+
+
+async def _finalize_and_preview(doc_id: str, html: str, on_progress) -> list:
+    """Save the finished deck HTML to its Document row first (so it's valid/downloadable even
+    if preview rendering hiccups), then render preview images. A preview-render failure is
+    non-fatal: the deck is already saved, so return an empty carousel rather than failing the job."""
+    from services.ai_deck_service import render_slide_images
+    _finalize_deck_document(doc_id, html=html)
+    try:
+        imgs = await render_slide_images(html, on_progress=on_progress)
+        return _slides_payload(imgs)
+    except Exception:
+        return []
+
+
+def _domain_of(url: str) -> str:
+    """Best-effort display label from a property URL/domain for the placeholder row title
+    (the final row title uses the generator's resolved domain)."""
+    s = (url or "report").strip()
+    s = s.replace("sc-domain:", "").replace("https://", "").replace("http://", "")
+    return s.strip("/").split("/")[0] or "report"
+
+
+def _parse_models(models):
+    """Normalize the per-layer model override into a {planner,insights,html} dict or None.
+    Accepts a dict (JSON body) or a JSON string (multipart form). Bad input → None (the
+    engine then uses the single `provider` for every layer)."""
+    import json
+    if isinstance(models, dict):
+        return models or None
+    if isinstance(models, str) and models.strip():
+        try:
+            d = json.loads(models)
+            return d if isinstance(d, dict) and d else None
+        except Exception:
+            return None
+    return None
+
+
+@router.get("/api/presentation/deck-jobs")
+async def presentation_deck_jobs(current_user: UserInfo = Depends(get_current_user)):
+    """List the current user's in-flight/recent background deck jobs (for the in-page
+    multi-job tracker). Persistent status also lives on each deck's Document row."""
+    from api.routers._shared import _DECK_JOBS, _deck_job_public, _evict_stale_jobs
+    _evict_stale_jobs()
+    jobs = [{"job_id": jid, **_deck_job_public(v)}
+            for jid, v in _DECK_JOBS.items() if v.get("user_email") == current_user.email]
+    return {"jobs": jobs}
 
 
 def _require_llm_key():
@@ -168,15 +221,19 @@ async def presentation_ai_deck_gsc(
     service = GSCService.from_stored_token(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
+    pipeline = (body or {}).get("pipeline", "single")
+    models = _parse_models((body or {}).get("models"))
+    place_label = _domain_of(property)
 
-    async def run(on_progress):
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="gsc", label=place_label, provider=provider)
+        set_doc_id(doc_id)
         result = await generate_ai_gsc_deck(service, property, days, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, creativity=creativity, on_progress=on_progress)
-        slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(current_user.email, html=result["html"], source="gsc",
-                                     label=result["domain"], provider=provider)
-        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+                                            notes=notes, creativity=creativity,
+                                            pipeline=pipeline, models=models, on_progress=on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
@@ -214,6 +271,8 @@ async def presentation_ai_deck_bing(
     access_token = refresh_bing_token(refresh)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
+    pipeline = (body or {}).get("pipeline", "single")
+    models = _parse_models((body or {}).get("models"))
     ai_perf_csv = (body or {}).get("ai_performance_csv")
     # A manually uploaded CSV that doesn't parse should fail loudly, not be silently ignored.
     if ai_perf_csv:
@@ -229,16 +288,18 @@ async def presentation_ai_deck_bing(
         from services.bing_ai_service import get_ai_performance
         ai_perf_data = get_ai_performance(current_user.email, site)
 
-    async def run(on_progress):
+    place_label = label or _domain_of(site)
+
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="bing", label=place_label, provider=provider)
+        set_doc_id(doc_id)
         result = await generate_ai_bing_deck(access_token, site, days, label=label, provider=provider,
                                              images=images and images_enabled(),
                                              notes=notes, ai_perf_csv=ai_perf_csv,
                                              ai_perf_data=ai_perf_data, creativity=creativity,
-                                             on_progress=on_progress)
-        slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(current_user.email, html=result["html"], source="bing",
-                                     label=result["domain"], provider=provider)
-        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+                                             pipeline=pipeline, models=models, on_progress=on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
@@ -266,15 +327,19 @@ async def presentation_ai_deck_ga4(
     service = AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
+    pipeline = (body or {}).get("pipeline", "single")
+    models = _parse_models((body or {}).get("models"))
+    place_label = label or _domain_of(property_id)
 
-    async def run(on_progress):
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="ga4", label=place_label, provider=provider)
+        set_doc_id(doc_id)
         result = await generate_ai_ga4_deck(service, property_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, creativity=creativity, on_progress=on_progress)
-        slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(current_user.email, html=result["html"], source="ga4",
-                                     label=result["domain"], provider=provider)
-        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+                                            notes=notes, creativity=creativity,
+                                            pipeline=pipeline, models=models, on_progress=on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
@@ -308,15 +373,19 @@ async def presentation_ai_deck_ads(
     service = AdsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
+    pipeline = (body or {}).get("pipeline", "single")
+    models = _parse_models((body or {}).get("models"))
+    place_label = label or _domain_of(customer_id)
 
-    async def run(on_progress):
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="ads", label=place_label, provider=provider)
+        set_doc_id(doc_id)
         result = await generate_ai_ads_deck(service, customer_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
-                                            notes=notes, creativity=creativity, on_progress=on_progress)
-        slides = await render_slide_images(result["html"], on_progress=on_progress)
-        doc_id = _save_deck_document(current_user.email, html=result["html"], source="ads",
-                                     label=result["domain"], provider=provider)
-        return {"document_id": doc_id, "slides": _slides_payload(slides), "label": result["domain"]}
+                                            notes=notes, creativity=creativity,
+                                            pipeline=pipeline, models=models, on_progress=on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)

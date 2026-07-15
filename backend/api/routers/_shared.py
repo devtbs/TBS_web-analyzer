@@ -192,10 +192,11 @@ def _ga4_service_for(db, email, account_id=None):
     return AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)
 
 
-def _save_deck_document(user_email: str, *, html: str, source: str, label: str,
-                        provider: str) -> str:
-    """Persist a generated AI deck as a Document so it shows in the Documents history
-    and can be re-downloaded. Stores the HTML only; the file is re-rendered on download.
+def _create_deck_placeholder(user_email: str, *, source: str, label: str,
+                             provider: str) -> str:
+    """Insert an AI-Deck Document row up-front, marked status=generating, so the deck shows
+    in the Documents list the moment generation starts (with a live status). Returns its id;
+    the row is filled in by _finalize_deck_document / _fail_deck_document when the job ends.
 
     Opens its OWN short-lived session rather than a request-scoped one: deck generation runs
     as a detached background job that can outlive the request (client reloaded/left), by which
@@ -209,9 +210,42 @@ def _save_deck_document(user_email: str, *, html: str, source: str, label: str,
             user_email=user_email,
             title=f"AI Deck — {label} ({date_label})",
             content_type="AI Deck",
-            content={"html": html, "source": source, "label": label, "provider": provider},
+            content={"status": "generating", "html": None, "source": source,
+                     "label": label, "provider": provider},
         ))
         db.commit()
+    return doc_id
+
+
+def _update_deck_content(doc_id: str, **fields) -> None:
+    """Merge `fields` into an AI-Deck Document's content JSON and bump updated_at.
+    Reassigns the whole dict so SQLAlchemy detects the JSON change."""
+    from database import SessionLocal
+    with SessionLocal() as db:
+        doc = db.query(Document).filter(Document.id == doc_id).first()
+        if not doc:
+            return
+        doc.content = {**(doc.content or {}), **fields}
+        doc.updated_at = datetime.utcnow()
+        db.commit()
+
+
+def _finalize_deck_document(doc_id: str, *, html: str) -> None:
+    """Mark a placeholder deck row done and store its final HTML."""
+    _update_deck_content(doc_id, status="done", html=html, error=None)
+
+
+def _fail_deck_document(doc_id: str, *, error: str) -> None:
+    """Mark a placeholder deck row as failed so the Documents list shows it errored."""
+    _update_deck_content(doc_id, status="error", error=str(error)[:500])
+
+
+def _save_deck_document(user_email: str, *, html: str, source: str, label: str,
+                        provider: str) -> str:
+    """Persist a finished AI deck in one shot (placeholder + finalize). Kept for any
+    non-streaming caller; streaming routes create the placeholder early and finalize later."""
+    doc_id = _create_deck_placeholder(user_email, source=source, label=label, provider=provider)
+    _finalize_deck_document(doc_id, html=html)
     return doc_id
 
 
@@ -232,6 +266,7 @@ def _sse(event: str, data: dict) -> str:
 #              user_email, task, ts}.
 _DECK_JOBS: dict = {}
 _DECK_JOB_TTL = 60 * 60  # keep finished jobs 1h so a returning client can still read them
+_MAX_JOBS_PER_USER = 3   # max concurrent detached deck jobs per user (shared event loop)
 
 
 def _evict_stale_jobs():
@@ -258,6 +293,15 @@ async def _stream_deck_generation(run, user_email: str = ""):
     A returning client re-attaches via GET /api/presentation/deck-job/{job_id}.
     """
     _evict_stale_jobs()
+    # Per-user concurrency cap: several detached jobs share the one uvicorn event loop, so
+    # cap how many a single user can have in flight to avoid runaway parallel generations
+    # (e.g. repeated clicks or a big compare-models fan-out) starving the loop.
+    running = sum(1 for v in _DECK_JOBS.values()
+                  if v.get("status") == "running" and v.get("user_email") == user_email)
+    if running >= _MAX_JOBS_PER_USER:
+        yield _sse("error", {"detail": f"You already have {running} decks generating — "
+                             "wait for one to finish before starting more."})
+        return
     job_id = uuid.uuid4().hex
     job = _DECK_JOBS[job_id] = {
         "status": "running", "message": "Starting…", "document_id": None,
@@ -268,13 +312,20 @@ async def _stream_deck_generation(run, user_email: str = ""):
     async def on_progress(message: str):
         job["message"] = message
 
+    def set_doc_id(doc_id: str):
+        # Recorded as soon as the route creates its placeholder Document, so a later
+        # failure can mark that row errored (not just the in-memory job).
+        job["document_id"] = doc_id
+
     async def worker():
         try:
-            result = await run(on_progress)  # {document_id, slides, label}
+            result = await run(on_progress, set_doc_id)  # {document_id, slides, label}
             job.update(status="done", ts=time.time(), **{
                 k: result.get(k) for k in ("document_id", "slides", "label")})
         except Exception as e:
             job.update(status="error", error=str(e), ts=time.time())
+            if job.get("document_id"):
+                _fail_deck_document(job["document_id"], error=str(e))
 
     job["task"] = asyncio.create_task(worker())
 
