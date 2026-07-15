@@ -147,6 +147,12 @@ class GSCService:
                 site_url = site.get('siteUrl')
                 if not site_url:
                     continue
+                # Skip sites the account can SEE but can't QUERY. Google's sites.list returns every
+                # associated site, including 'siteUnverifiedUser' (added but not a verified user) —
+                # those show in the dropdown yet 403 on searchanalytics.query, so exclude them here
+                # rather than let the user pick a site whose deck will always fail.
+                if site.get('permissionLevel') == 'siteUnverifiedUser':
+                    continue
                 # Include BOTH URL-prefix and Domain (sc-domain:) properties. Domain
                 # properties were previously dropped, which hid traffic for any client
                 # set up that way in GSC. Keep the raw `url` (required for API calls) and
