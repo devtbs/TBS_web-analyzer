@@ -391,22 +391,29 @@ TBS_PALETTE = {
     "accent": "#3C8DD9",    # TBS blue (primary pop)
     "accent2": "#79B84B",   # TBS green (secondary series / fills)
     "accent3": "#F4B740",   # TBS amber (highlight)
-    "ink": "#2B2B2E",
+    "ink": "#1F2024",
     "muted": "#6E7075",
-    "bg": "#F7F9FB",
+    "bg": "#FAF9F6",       # warm off-white paper ground (editorial warmth, not clinical grey)
     "surface": "#FFFFFF",
 }
-TBS_FONTS = {"display": "Poppins", "body": "Inter"}
+# Display MUST be an expressive face — an oversized headline in a geometric UI sans (e.g. Poppins)
+# reads as a generic corporate template, which is what made TBS-styled decks look flat.
+TBS_FONTS = {"display": "Fraunces", "body": "Inter"}
 
 _TBS_STYLE_DIRECTIVE = (
     "=== ASSIGNED HOUSE STYLE — TBS MARKETING (use THIS exactly) ===\n"
-    f"Use a clean, confident agency house style on a light ground: --bg {TBS_PALETTE['bg']}, "
-    f"--surface {TBS_PALETTE['surface']}, --ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}. "
-    f"Load and use '{TBS_FONTS['display']}' as the DISPLAY font (headlines) and '{TBS_FONTS['body']}' "
-    "as the BODY font from fonts.googleapis.com. Keep the look modern, friendly and professional with "
-    "generous whitespace and crisp hierarchy. (The --accent / --accent-2 are set automatically to the "
-    "TBS brand colours, so don't worry about picking accents — just use this ground, these fonts and "
-    "this feel.) Do not substitute a different preset or background."
+    "Art-direct this like a premium EDITORIAL DESIGN STUDIO in the TBS house identity — never a generic "
+    "corporate slide template.\n"
+    f"- GROUND: a warm off-white paper ground --bg {TBS_PALETTE['bg']}, cards/panels --surface "
+    f"{TBS_PALETTE['surface']}, --ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}. Cover, section "
+    "dividers and closing may instead use ONE saturated full-bleed field in the TBS accent.\n"
+    f"- TYPE: load '{TBS_FONTS['display']}' as --font-display and '{TBS_FONTS['body']}' as --font-body from "
+    "fonts.googleapis.com. Headlines are OVERSIZED and confident (clamp ~56-104px) with tight line-height and "
+    "ONE italic accent word inside the headline; tiny ALL-CAPS letter-spaced kickers above headings.\n"
+    "- Keep 60-30-10 discipline (ground / ink / ONE accent pop), ONE restrained repeating motif, and confident "
+    "ASYMMETRIC magazine-grade composition with generous negative space.\n"
+    "(The --accent / --accent-2 are set automatically to the TBS brand colours, so don't pick accents — just "
+    "use this ground, these fonts and this art direction.) Do not substitute a different preset or background."
 )
 
 

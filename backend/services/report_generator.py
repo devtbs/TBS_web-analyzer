@@ -552,14 +552,24 @@ Use only these numbers. Positive but honest framing; declines = opportunities.""
 
 
 def _brand_accent_directive(accent: str, accent2: str) -> str:
-    """Neutral brand directive built from the resolved palette. The ground/surface/fonts come from
-    the assigned STYLE directive, so this only fixes the accent colours (and _apply_theme enforces
-    them deterministically afterward) — no cream/navy assumptions that would fight the chosen look."""
+    """The editorial art direction + the resolved accent colours. Keeps UNIQUE_STYLE_BRAND's
+    art-direction (that's what makes decks look designed rather than templated) but drops its colour
+    prescriptions (cream ground / "don't default to navy"), which would fight the chosen palette.
+    The ground/fonts come from the assigned STYLE directive; _apply_theme enforces the accents."""
     return (
-        "Design a clean, modern, professional agency-grade presentation. Build the palette around "
-        f"{accent} as --accent (the primary pop — emphasis, KPIs, the main chart series) and {accent2} "
-        "as --accent-2 (secondary series / subtle fills). Take the ground, surface and fonts from the "
-        "assigned HOUSE STYLE / THEME. Keep it confident and uncluttered; vary layouts slide to slide."
+        "Design like a high-end EDITORIAL DESIGN STUDIO — art-direction-led, poster/magazine grade — NOT a "
+        "generic corporate slide template. Use OVERSIZED confident headlines in the assigned display face "
+        "(mix ONE italic accent word into a headline), tiny ALL-CAPS letter-spaced kicker/eyebrow labels and a "
+        "small corner 'system' tag or slide index, and ONE repeating editorial motif used with restraint (a "
+        "dot/ruled grid, a slightly rotated outlined frame, a star/circle, pill/tape labels) carried across "
+        "slides — never over charts/tables. Layouts must be confident and ASYMMETRIC with generous negative "
+        "space and a clear focal point; vary them slide to slide. Treat the cover, section dividers and closing "
+        "as poster pages: huge expressive type on a bold saturated or dark colour field. Avoid AI-slop: no thin "
+        "accent lines under titles, no full-width decorative colour bars unless they serve the layout, no "
+        "centred evenly-stacked default layouts.\n\n"
+        f"REQUIRED BRAND ACCENT: build the palette around {accent} as --accent (the ONE vivid pop — emphasis, "
+        f"KPIs, the primary chart series) and {accent2} as --accent-2 (secondary series / subtle fills). Take "
+        "the ground, surface and fonts from the assigned HOUSE STYLE / THEME."
     )
 
 
