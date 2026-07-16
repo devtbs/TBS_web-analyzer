@@ -952,8 +952,8 @@ Rules:
   narrative around any that apply to it.
 - Cover ONLY this slide's purpose; the other planned slides cover the rest — do not duplicate them.
 
-DECK PLAN (context only):
-{plan}
+THE OTHER SLIDES (titles only — so you don't repeat them; do NOT write their content):
+{other_slides}
 
 DATA (use ONLY this):
 {data}"""
@@ -1341,12 +1341,17 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
     # ── Stage 3: per-slide markdown ──
     written = {"n": 0}
 
+    # A one-line index of the other slides is all a copy call needs to avoid duplicating them —
+    # sending the whole plan JSON to every slide was ~23% of the deck's entire token cost.
+    titles = [f"{s.get('n', i + 1)}. {s.get('title', '')}" for i, s in enumerate(slides)]
+
     async def _md(slide: dict) -> str:
+        others = "; ".join(t for t in titles if not t.startswith(f"{slide.get('n')}. ")) or "(none)"
         async with sem:
             try:
                 out = await _call_llm(
                     _SLIDE_MD_PROMPT.replace("{slide_json}", json.dumps(slide, ensure_ascii=False))
-                    .replace("{plan}", plan_json).replace("{data}", data_brief),
+                    .replace("{other_slides}", others).replace("{data}", data_brief),
                     system_prompt=_INSIGHTS_SYSTEM, provider=insights_provider,
                     on_progress=None, temperature=0.6)
             except Exception:
