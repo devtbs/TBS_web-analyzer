@@ -348,9 +348,11 @@ Load the chosen fonts from fonts.googleapis.com. You MAY tune the accent toward 
 
 # One complete worked example anchors the model far more than instructions alone. Generic
 # placeholder content only (no numbers that could be mistaken for real data).
-DESIGN_EXEMPLARS = """=== EXEMPLAR (match THIS polish AND the full-height skeleton; do NOT copy its words/theme) ===
-Note how the slide is a full-height column and the chart region (flex:1) fills ALL space below
-the KPI row so there is no empty band at the bottom:
+DESIGN_EXEMPLARS = """=== EXEMPLAR (ONE possible treatment — a QUALITY + full-height reference, NOT a layout to copy) ===
+This shows the polish bar and the full-height skeleton to match; do NOT replicate its composition,
+cover style, words or theme — follow the ART DIRECTION above for THIS deck's actual look. Note how the
+slide is a full-height column and the chart region (flex:1) fills ALL space below the KPI row so there
+is no empty band at the bottom:
 <section class="slide layout-kpi-strip" style="display:flex;flex-direction:column;height:720px;padding:56px 72px">
   <span class="eyebrow">Performance Overview</span>
   <h2>The quarter in <em>focus</em>.</h2>
@@ -407,6 +409,57 @@ def _seed_directive(seed: str) -> str:
     )
 
 
+# Art-direction axes rotated per-seed so different clients get visibly different decks — the single
+# worked EXEMPLAR otherwise anchors every deck to the same cover + kpi-strip rhythm.
+_COVER_STYLES = [
+    "a FULL-BLEED photographic cover (ai-img) with a dark gradient and an oversized title",
+    "a BOLD single saturated colour-field poster cover — huge type, NO photo, generous negative space",
+    "a TYPOGRAPHIC cover: a giant display headline on the ground with a thin ruled/dot grid and a small photo inset",
+    "a SPLIT cover — a full-height photo on one side, a colour field carrying the title on the other",
+]
+_LEAD_LAYOUTS = [
+    "a kpi-strip (a slim KPI row above ONE hero chart)",
+    "a split 40/60 (text + KPIs on one side, a large chart on the other)",
+    "a comparison of 2-3 cards",
+    "a two-chart data spread side by side",
+]
+_MOTIFS = [
+    "a thin dot-grid",
+    "a slightly rotated outlined frame",
+    "pill / tape-style labels",
+    "a hairline rule paired with index numbers",
+    "a single small filled star or circle accent",
+]
+_HEADLINE_STYLES = [
+    "oversized high-contrast SERIF headlines with ONE italic accent word",
+    "a bold grotesque with tiny ALL-CAPS letter-spaced kickers over large sans headlines",
+    "editorial serif headlines with wide letter-spaced eyebrows and lots of air",
+]
+
+
+def _variant_directive(seed: str) -> str:
+    """Deterministically pick an art-direction 'recipe' from the seed so two different sites produce
+    visibly different decks (cover treatment, opening layout rhythm, motif, headline style) instead of
+    every deck copying the single EXEMPLAR's cover+kpi-strip look. Per-seed ⇒ a given client stays
+    consistent while clients spread across the axes."""
+    import hashlib
+    h = int(hashlib.sha1(("v:" + (seed or "").strip().lower()).encode()).hexdigest(), 16)
+    cover = _COVER_STYLES[h % len(_COVER_STYLES)]
+    lead = _LEAD_LAYOUTS[(h // 7) % len(_LEAD_LAYOUTS)]
+    motif = _MOTIFS[(h // 13) % len(_MOTIFS)]
+    head = _HEADLINE_STYLES[(h // 17) % len(_HEADLINE_STYLES)]
+    return (
+        "=== ART DIRECTION FOR THIS DECK (make it visibly DIFFERENT from other decks) ===\n"
+        f"- COVER: use {cover}.\n"
+        f"- OPENING RHYTHM: lead your first data slide with {lead} (do NOT default to the exemplar's "
+        "cover→kpi-strip order).\n"
+        f"- SIGNATURE MOTIF: carry {motif} across slides (never over charts/tables).\n"
+        f"- HEADLINES: {head}.\n"
+        "Treat these as the deck's identity and vary layouts slide to slide — the EXEMPLAR below is a "
+        "quality/height reference ONLY, not a layout to copy."
+    )
+
+
 def _structure_directive(creativity: str, structure: str) -> str:
     """How strictly the model must follow the structure. The `structure` string is the same
     set of topics/data at every level — only the freedom to reshape it into slides changes.
@@ -439,7 +492,8 @@ def _structure_directive(creativity: str, structure: str) -> str:
 
 def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
                  brand: Optional[str] = None, structure: Optional[str] = None,
-                 seed: Optional[str] = None, creativity: str = "balanced") -> str:
+                 seed: Optional[str] = None, creativity: str = "balanced",
+                 variant_seed: Optional[str] = None) -> str:
     """Fill the (possibly user-customised) prompt template with brand/structure/data,
     then append the rendering contract + design system + theme presets + exemplar so
     every deck — default or custom — gets the same template-grade quality bar.
@@ -465,7 +519,10 @@ def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
         filled = filled + "\n\nDATA (use ONLY this):\n" + data_brief
     parts = [filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
     if seed and seed.strip():
-        parts.append(_seed_directive(seed))
+        parts.append(_seed_directive(seed))          # theme/fonts pinned to the site (brand identity)
+    # Art direction varies per GENERATION (variant_seed), so two models / re-runs of the SAME site
+    # get different compositions — pinning it to the domain made every deck for a site look identical.
+    parts.append(_variant_directive(variant_seed or seed or ""))
     parts.append(DESIGN_EXEMPLARS)
     return "\n\n".join(parts)
 
@@ -679,7 +736,8 @@ async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
 
 
 def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str, *,
-                               brand: Optional[str], seed: Optional[str]) -> str:
+                               brand: Optional[str], seed: Optional[str],
+                               variant_seed: Optional[str] = None) -> str:
     """Stage-C prompt: render the finalized PLAN + COPY into HTML. Shares the exact rendering
     contract / design system / theme / seed / exemplar tail as build_prompt so a layered deck
     meets the same quality bar as a single-pass one."""
@@ -699,6 +757,7 @@ def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str
     parts = [head, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
     if seed and seed.strip():
         parts.append(_seed_directive(seed))
+    parts.append(_variant_directive(variant_seed or seed or ""))
     parts.append(DESIGN_EXEMPLARS)
     return "\n\n".join(parts)
 
@@ -706,7 +765,8 @@ def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str
 async def _generate_layered(data_brief: str, *, brand: Optional[str], structure: Optional[str],
                             seed: Optional[str], creativity: str,
                             planner: str, insights_provider: str, html_provider: str,
-                            temperature: float, on_progress: ProgressCb, on_delta) -> str:
+                            temperature: float, on_progress: ProgressCb, on_delta,
+                            variant_seed: Optional[str] = None) -> str:
     """Run plan → insights → HTML and return the raw HTML string (pre-validation). Each stage
     uses its own provider. Raises on plan-parse failure so the caller can fall back to single-pass."""
     directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
@@ -731,7 +791,7 @@ async def _generate_layered(data_brief: str, *, brand: Optional[str], structure:
     if on_progress:
         await on_progress("Designing the deck…")
     full_prompt = _build_layered_html_prompt(plan_json, insights_md, data_brief,
-                                             brand=brand, seed=seed)
+                                             brand=brand, seed=seed, variant_seed=variant_seed)
     return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=html_provider,
                            on_progress=on_progress, temperature=temperature, on_delta=on_delta)
 
@@ -762,12 +822,16 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
     # Per-layer model overrides (3-layer pipeline); each defaults to `provider`.
     models = models or {}
     html_provider = models.get("html") or provider
+    # Art-direction seed is per-GENERATION (+ the html model), so two models — or two runs — of the
+    # SAME site produce different compositions. Theme/fonts/brand still pin to `seed` (the domain).
+    import uuid
+    variant_seed = f"{html_provider}:{uuid.uuid4().hex}"
 
     async def _single_pass() -> str:
         # prompt is normally resolved by the route (from the chosen prompt id); fall back
         # to the built-in default if none was passed.
         full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure,
-                                   seed=seed, creativity=creativity)
+                                   seed=seed, creativity=creativity, variant_seed=variant_seed)
         if on_progress:
             await on_progress("Writing slides…")
         return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=provider,
@@ -780,7 +844,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                 planner=models.get("planner") or provider,
                 insights_provider=models.get("insights") or provider,
                 html_provider=html_provider, temperature=temperature,
-                on_progress=on_progress, on_delta=on_delta)
+                on_progress=on_progress, on_delta=on_delta, variant_seed=variant_seed)
         except Exception:
             logger.exception("layered pipeline failed — falling back to single-pass")
             raw = await _single_pass()
