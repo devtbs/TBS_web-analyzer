@@ -17,24 +17,30 @@ ProgressCb = Optional[Callable[[str], Awaitable[None]]]
 DeltaCb = Optional[Callable[[str], Awaitable[None]]]
 
 
+# The Alibaba TOKEN PLAN (prepaid subscription) endpoint. This is a DEDICATED base URL that comes
+# with the purchased package and only accepts the plan's own `sk-sp-…` seat key — the public
+# pay-as-you-go DashScope endpoints reject it with invalid_api_key (and billed per-token, which is
+# what we're moving off). One key + this base URL reaches every model in the plan.
+_TOKEN_PLAN_BASE = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+
 # OpenAI-compatible providers the user can choose from. Each deck-writing model
 # is reached through the same chat-completions API, just a different base_url/model.
 AI_PROVIDERS = {
     "deepseek": {"key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com",
                  "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8192},
-    # All of the below are hosted on Alibaba Model Studio, so the single DashScope (Qwen) key
-    # reaches every one — Qwen, GLM, DeepSeek and Kimi alike. They are reasoning models (they emit
-    # hidden reasoning_content that eats into the token budget), so they get a larger per-call
-    # ceiling; the continuation loop (below) still stitches decks that exceed a single response.
-    "qwen3.7-max": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    # All of the below are served by the Alibaba Token Plan, so the single QWEN_API_KEY (the plan's
+    # sk-sp seat key) reaches every one — Qwen, GLM, DeepSeek and Kimi alike. They are reasoning
+    # models (they emit hidden reasoning_content that eats into the token budget), so they get a
+    # larger per-call ceiling; the continuation loop (below) still stitches long single responses.
+    "qwen3.7-max": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
                     "model": "qwen3.7-max", "label": "Qwen3.7 Max", "max_tokens": 16384},
-    "qwen3.7-plus": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "qwen3.7-plus": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
                      "model": "qwen3.7-plus", "label": "Qwen3.7 Plus (fast)", "max_tokens": 16384},
-    "glm": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "glm": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
             "model": "glm-5.2", "label": "GLM-5.2", "max_tokens": 16384},
-    "deepseek-v4": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "deepseek-v4": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
                     "model": "deepseek-v4-pro", "label": "DeepSeek V4 Pro", "max_tokens": 16384},
-    "kimi": {"key": "QWEN_API_KEY", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "kimi": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
              "model": "kimi-k2.7-code", "label": "Kimi K2.7", "max_tokens": 16384},
 }
 

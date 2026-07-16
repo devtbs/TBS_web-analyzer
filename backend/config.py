@@ -46,7 +46,9 @@ class Settings(BaseSettings):
     PAGESPEED_API_KEY: str = ""
 
     # Additional provider keys (optional)
-    QWEN_API_KEY: str = ""        # Alibaba DashScope — powers Qwen AND GLM-5.2 (Model Studio hosts both)
+    QWEN_API_KEY: str = ""        # Alibaba Token Plan seat key (sk-sp-…) — powers Qwen, GLM-5.2,
+                                  # DeepSeek V4 Pro and Kimi via the plan's dedicated base URL.
+                                  # NOT a public DashScope pay-as-you-go key (those bill per token).
     KIMI_API_KEY: str = ""        # Moonshot Kimi
     BYTEDANCE_API_KEY: str = ""   # ByteDance / Doubao
     REPLICATE_API_KEY: str = ""   # Replicate
