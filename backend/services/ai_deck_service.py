@@ -24,12 +24,12 @@ from services.ai_service import ai_service, ProgressCb
 
 logger = logging.getLogger(__name__)
 
-# Slide geometry — 16:9 at 1280x720 CSS px == 13.333x7.5in for PPTX.
-SLIDE_W_PX, SLIDE_H_PX = 1280, 720
+# Slide geometry — 16:9 at 1920x1080 CSS px, mapped to a 13.333x7.5in PPTX/PDF page.
+SLIDE_W_PX, SLIDE_H_PX = 1920, 1080
 # Render at this device-pixel-ratio so the screenshots are high-res (sharp in the
-# PDF/PPTX). The deck is still AUTHORED in 1280x720 CSS px — only the raster doubles
+# PDF/PPTX). The deck is AUTHORED in 1920x1080 CSS px — only the raster scales
 # (2x -> 2560x1440). PDF DPI scales with it so the physical page size stays 13.33x7.5in.
-_RENDER_SCALE = 2
+_RENDER_SCALE = 1.5
 
 # AI photos per deck. Bounds both the early (streamed) prewarm and the final resolve,
 # and the concurrency cap keeps us under Supermachine's 10 req/min rate limit.
@@ -63,7 +63,7 @@ CRITICAL RULES FOR DATA ACCURACY & TONE:
 DYNAMIC BRANDING & STYLE ENGINE — EDITORIAL / DESIGN-STUDIO GRADE:
 Design this like a high-end editorial design studio "frame system" — think art-direction-led poster design and a premium print magazine, NOT a generic corporate slide template. Every deck must feel like a confident, hand-crafted design object with its own identity. Analyze the domain and data context to establish that identity:
 - INDUSTRY VIBE: Deduce the company's core focus (e.g., Trust/Security for Insurance; Precision for Manufacturing) and let it drive a DISTINCTIVE art direction — two decks must look visibly different.
-- EXPRESSIVE DISPLAY TYPOGRAPHY (the #1 driver of the look): Pair a characterful display face (an elegant high-contrast SERIF, or a bold grotesque) for headlines with a clean sans for body — load real fonts from fonts.googleapis.com (e.g. Fraunces, Playfair Display, Libre Caslon, Archivo, Space Grotesk, Instrument Serif, Bricolage Grotesque, Syne). Headlines are OVERSIZED and confident (clamp ~56–104px), tight line-height, with deliberate mixing of an italic serif accent word inside a sans headline (e.g. big sans + one *italic serif* word). Use real typographic hierarchy: tiny ALL-CAPS letter-spaced kickers/eyebrows, large display headline, restrained body.
+- EXPRESSIVE DISPLAY TYPOGRAPHY (the #1 driver of the look): Pair a characterful display face (an elegant high-contrast SERIF, or a bold grotesque) for headlines with a clean sans for body — load real fonts from fonts.googleapis.com (e.g. Fraunces, Playfair Display, Libre Caslon, Archivo, Space Grotesk, Instrument Serif, Bricolage Grotesque, Syne). Headlines are OVERSIZED and confident (clamp ~84–156px), tight line-height, with deliberate mixing of an italic serif accent word inside a sans headline (e.g. big sans + one *italic serif* word). Use real typographic hierarchy: tiny ALL-CAPS letter-spaced kickers/eyebrows, large display headline, restrained body.
 - KICKER / SYSTEM LABEL MOTIF: Put a small uppercase, letter-spaced label in a corner of each slide (e.g. "PERFORMANCE SYSTEM · VOL. 01", "ORGANIC SEARCH — 2026", or a slide index "03 / 09"). This "frame system" tagging is a signature of the look.
 - THE 60-30-10 COLOR RULE:
   * 60% Dominant: a premium CREAM / off-white / ivory paper ground (not stark white) for editorial warmth and readability — or, for cover/section/closing slides, ONE saturated full-bleed colour field.
@@ -107,20 +107,20 @@ HTML_CONTRACT = """=== HTML OUTPUT CONTRACT (required — this OVERRIDES any con
 Output ONE complete, self-contained HTML document and NOTHING ELSE: no markdown, no commentary, and do NOT print slide specifications, "SLIDE NUMBER & TITLE", "VISUAL LAYOUT COMPOSITION", or standalone code blocks as text — translate ALL of that directly into the final rendered HTML.
 - NEVER show raw chart JSON or any {"data":...,"layout":...} config as visible text. A chart's JSON belongs ONLY inside its hidden <script type="application/json" class="plotly-spec"> — if a reader can see JSON on a slide, that is a bug. Each chart spec must appear EXACTLY ONCE, inside that one hidden script; do NOT also place a copy in a visible <pre>/<code>/<div> or as a text node, and do NOT HTML-escape a copy onto the slide.
 - KPI DISCIPLINE — do NOT repeat the same headline metric row on every slide. Show the clicks / impressions / CTR / avg-position (or sessions/cost) KPI strip on the EXECUTIVE SUMMARY slide ONLY; every other slide focuses on its own chart/insight with at most one or two metrics relevant to THAT slide. The cover and closing carry NO KPI chips.
-- EVERY slide must fill the entire 1280x720 page edge to edge (a real full-bleed page): no letterboxing, no large empty margins or blank bands — size the hero chart/visual to consume the slide's main area.
+- EVERY slide must fill the entire 1920x1080 page edge to edge (a real full-bleed page): no letterboxing, no large empty margins or blank bands — size the hero chart/visual to consume the slide's main area.
 - Start with <!DOCTYPE html>.
 - All CSS inline in a single <style> tag. Fonts may load from fonts.googleapis.com.
-- Each slide is exactly: <section class="slide"> ... </section>. Every .slide is 1280px wide and 720px tall, overflow hidden.
-- FILL THE CANVAS — this is critical. Every slide MUST use the full 1280x720 height; NO slide may leave a large empty band (no more than ~12% blank vertical space). Make each .slide a vertical flex container (display:flex; flex-direction:column; justify-content:center; gap:28px; padding:60px 72px) so content is balanced over the whole height — never dump everything in the top third. To fill space meaningfully: pair every data TABLE or KPI-card row with a relevant Plotly chart beside or below it (two-column or stacked grid), enlarge cards, and use generous spacing. A data slide that is only a small table at the top is NOT acceptable — add a chart or distribute the layout to fill the slide.
+- Each slide is exactly: <section class="slide"> ... </section>. Every .slide is 1920px wide and 1080px tall, overflow hidden.
+- FILL THE CANVAS — this is critical. Every slide MUST use the full 1920x1080 height; NO slide may leave a large empty band (no more than ~12% blank vertical space). Make each .slide a vertical flex container (display:flex; flex-direction:column; justify-content:center; gap:40px; padding:88px 108px) so content is balanced over the whole height — never dump everything in the top third. To fill space meaningfully: pair every data TABLE or KPI-card row with a relevant Plotly chart beside or below it (two-column or stacked grid), enlarge cards, and use generous spacing. A data slide that is only a small table at the top is NOT acceptable — add a chart or distribute the layout to fill the slide.
 - Include this CSS so it paginates when printed:
-    @page { size: 1280px 720px; margin: 0; }
+    @page { size: 1920px 1080px; margin: 0; }
     * { box-sizing: border-box; }
     html,body { margin:0; padding:0; }
-    .slide { width:1280px; height:720px; position:relative; overflow:hidden; page-break-after:always; }
+    .slide { width:1920px; height:1080px; position:relative; overflow:hidden; page-break-after:always; }
 - CHARTS via Plotly.js (use them generously where the data suits a chart). The Plotly library is provided for you — do NOT add any Plotly <script src>, and do NOT call Plotly.newPlot yourself. For each chart output exactly two elements:
-    (a) a sized container in its slide: <div id="chartN" style="width:600px;height:380px"></div>  (unique id per chart)
+    (a) a sized container in its slide: <div id="chartN" style="width:900px;height:570px"></div>  (unique id per chart)
     (b) immediately AFTER it, its spec: <script type="application/json" class="plotly-spec" data-target="chartN">{"data":[...],"layout":{...}}</script>
-  The system reads every plotly-spec and renders it. The JSON must be strictly valid (double-quoted keys/strings, no trailing commas, no JS expressions). Never print chart config as visible text. Charts MUST fit fully within the 1280x720 slide.
+  The system reads every plotly-spec and renders it. The JSON must be strictly valid (double-quoted keys/strings, no trailing commas, no JS expressions). Never print chart config as visible text. Charts MUST fit fully within the 1920x1080 slide.
   Every chart's "layout" MUST be styled consistently for a premium look: "paper_bgcolor":"rgba(0,0,0,0)","plot_bgcolor":"rgba(0,0,0,0)", "font":{"family":"<your body font>","color":"<--muted>","size":13}, "margin":{"t":10,"l":48,"r":16,"b":36}, "showlegend":false (or a single clean legend), x/y axes with "gridcolor":"<--line>","zeroline":false and no chartjunk. Use the ACCENT colour for the primary series and --accent-2 for a secondary series — never default Plotly colours. Keep it clean: few gridlines, sharp modern fonts, rounded bar feel.
 - PHOTOS: to add a photo, output <img class="ai-img" data-prompt="<a vivid, specific photographic description on-theme to this site's industry — e.g. 'close-up of embroidered military patches on dark fabric, studio lighting, premium'>" style="...">. Do NOT put a src — the system fills it in. Size/position it with CSS (object-fit:cover) so it fits inside its slide.
   Use photos on MOST slides as full-bleed backgrounds or side panels to make the deck visually rich. When text or numbers sit on top of a photo, place a dark gradient overlay (e.g. linear-gradient(rgba(15,23,42,.65), rgba(15,23,42,.35))) over the image for legibility. Keep chart and table areas on a clean solid background, not over a photo. Use at most 8 photos total.
@@ -289,8 +289,9 @@ per-slide colours, fonts or spacing — everything references the tokens below.
      --font-display: '<display font>', serif;   /* headlines */
      --font-body: '<body font>', sans-serif;    /* everything else */
    }
-   Type scale (use consistently): display 64-96px, h2 34-44px, kpi-number 40-56px,
-   body 18-20px, caption 13-14px. Spacing in multiples of 8px. Border-radius consistent.
+   Type scale (use consistently — this is a 1920x1080 canvas, so type is LARGE):
+   display 96-144px, h2 52-64px, kpi-number 64-84px, body 26-30px, caption 18-20px.
+   Spacing in multiples of 12px. Border-radius consistent.
 
 2. SHARED COMPONENTS — define and reuse these classes (consistent on every slide):
    - .eyebrow  : tiny ALL-CAPS letter-spaced kicker in --accent above a heading.
@@ -300,11 +301,11 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    - .pageno   : small corner index "03 / 09".
 
 3. FILL THE WHOLE SLIDE (critical — slides must NOT end half-empty):
-   Make every .slide a full-height column: display:flex; flex-direction:column; height:720px;
-   padding:56px 72px. Give it a header (eyebrow+title), then a MAIN content region that GROWS
+   Make every .slide a full-height column: display:flex; flex-direction:column; height:1080px;
+   padding:84px 108px. Give it a header (eyebrow+title), then a MAIN content region that GROWS
    to fill all remaining height (flex:1; min-height:0; display:flex), then the .pageno pinned at
    the bottom. The main region's chart/cards/table MUST stretch to consume that space — size
-   charts large (e.g. height:100% of the main region, ~420-520px), enlarge cards and spacing.
+   charts large (e.g. height:100% of the main region, ~640-780px), enlarge cards and spacing.
    No slide may leave more than ~10% empty vertical space (no big empty band at the bottom).
 
 4. LAYOUT ARCHETYPES — EVERY <section class="slide"> must ALSO carry one archetype class,
@@ -357,7 +358,7 @@ This shows the polish bar and the full-height skeleton to match; do NOT replicat
 cover style, words or theme — follow the ART DIRECTION above for THIS deck's actual look. Note how the
 slide is a full-height column and the chart region (flex:1) fills ALL space below the KPI row so there
 is no empty band at the bottom:
-<section class="slide layout-kpi-strip" style="display:flex;flex-direction:column;height:720px;padding:56px 72px">
+<section class="slide layout-kpi-strip" style="display:flex;flex-direction:column;height:1080px;padding:84px 108px">
   <span class="eyebrow">Performance Overview</span>
   <h2>The quarter in <em>focus</em>.</h2>
   <div class="kpi-row" style="display:flex;gap:20px">
@@ -371,7 +372,7 @@ is no empty band at the bottom:
 </section>
 And a clean cover — a FULL-BLEED hero photo with a dark overlay, then title + report label +
 reporting PERIOD only (NO metric chips):
-<section class="slide layout-cover" style="position:relative;display:flex;flex-direction:column;justify-content:center;height:720px;padding:64px 72px;color:#fff">
+<section class="slide layout-cover" style="position:relative;display:flex;flex-direction:column;justify-content:center;height:1080px;padding:96px 108px;color:#fff">
   <img class="ai-img" data-prompt="modern luxury bathroom showroom, marble vanity, soft warm lighting, premium, photographic" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0">
   <div style="position:absolute;inset:0;background:linear-gradient(rgba(20,12,8,.72),rgba(20,12,8,.42));z-index:1"></div>
   <div style="position:relative;z-index:2">
@@ -381,7 +382,7 @@ reporting PERIOD only (NO metric chips):
   </div>
   <div class="pageno" style="position:relative;z-index:2">01 / 09</div>
 </section>
-Every real slide must fill all 1280x720 (no bottom band), use the tokens/components above, put a
+Every real slide must fill all 1920x1080 (no bottom band), use the tokens/components above, put a
 relevant icon on every KPI and list bullet, and use ai-img photos liberally — ALWAYS a full-bleed
 hero photo on the cover, and photo backgrounds/side-panels on most content slides."""
 
@@ -412,7 +413,7 @@ _TBS_STYLE_DIRECTIVE = (
     f"{TBS_PALETTE['surface']}, --ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}. Cover, section "
     "dividers and closing may instead use ONE saturated full-bleed field in the TBS accent.\n"
     f"- TYPE: load '{TBS_FONTS['display']}' as --font-display and '{TBS_FONTS['body']}' as --font-body from "
-    "fonts.googleapis.com. Headlines are OVERSIZED and confident (clamp ~56-104px) with tight line-height and "
+    "fonts.googleapis.com. Headlines are OVERSIZED and confident (clamp ~84-156px) with tight line-height and "
     "ONE italic accent word inside the headline; tiny ALL-CAPS letter-spaced kickers above headings.\n"
     "- Keep 60-30-10 discipline (ground / ink / ONE accent pop), ONE restrained repeating motif, and confident "
     "ASYMMETRIC magazine-grade composition with generous negative space.\n"
@@ -720,6 +721,60 @@ def _make_image_prewarmer(image_cache: Dict[str, "asyncio.Task"]):
 # (HTML) layer still emits the same ai-img/plotly-spec contract, so image prewarming,
 # keyword-bubble enforcement and leaked-spec stripping are unchanged.
 # ---------------------------------------------------------------------------
+_GUIDELINES_SYSTEM = ("You are a design director. You output a concise, concrete design brief in markdown "
+                      "— no preamble, no code fences.")
+
+_GUIDELINES_PROMPT = """Write the COMMON DESIGN GUIDELINES for ONE client presentation, derived from the
+DATA below. Every slide of this deck is designed by a SEPARATE agent from this brief alone, so it must be
+concrete, prescriptive and unambiguous. Output markdown only.
+
+Cover exactly these sections:
+
+## Client & Context
+The client/site, the audience (a busy business owner / executive — NON-technical: translate platform
+metrics into business outcomes), the tone (strategic, consultative, authoritative and HONEST — diagnose
+problems but always pair them with the fix and its expected impact), and the canvas: {canvas}px, no
+scrolling.
+
+## Colour Palette & Semantics
+Take the ground / surface / ink / fonts from the assigned HOUSE STYLE below. Use these EXACT brand accents:
+--accent {accent} (brand + neutral data emphasis) and --accent-2 {accent2} (secondary series).
+Then FIX the semantic colours (state the exact hex for each) and use them consistently on EVERY slide:
+- GOOD / win / positive movement -> a green
+- BAD / critical / losing ground -> a red
+- CAUTION / needs attention -> an amber
+- NEUTRAL highlight / brand emphasis -> the accent above
+
+## Typography
+The display + body faces from the HOUSE STYLE, the type scale for this canvas, and where small uppercase
+letter-spaced kickers are allowed.
+
+## Charts
+Code-rendered (Plotly) — NEVER images. State: transparent paper/plot background, the gridline colour, the
+axis-label colour, ALWAYS include units in axis labels (%, x, currency), colour each series by SEMANTIC (a
+declining series uses the red, a winning series the green), and annotate the peak and the low point of any
+trend.
+
+## Export-safety (STRICT — this deck is exported to PowerPoint)
+- NO single-side borders (no left/top accent stripes). Use a full 4-side border OR a solid tint panel.
+- NO gradient backgrounds or gradient panels (a scrim over a cover photo is the only exception).
+- NO translucent/faded text and no opacity on text — use a lighter palette colour instead.
+- NO nested cards (a card inside a card). Group with whitespace and headings.
+
+## Layout Principles
+Top-anchor sparse content with consistent gaps; centre only on cover/hero slides. VARY the layout every
+slide — no two consecutive slides share a structure. Every non-cover slide carries a visual (chart, table,
+diagram or image). A thin muted footer is allowed (left = report name, centre = client, right = slide no.).
+
+## Recurring Motif
+Pick ONE motif / emotional anchor from the REAL data — the single headline number that defines this
+period's story (and its hopeful counterweight if that number is a decline). Name the number explicitly.
+It should recur across the deck.
+
+DATA (derive the client, the story and the motif from this — use ONLY real numbers):
+{data}"""
+
+
 _PLAN_SYSTEM = "You are a presentation strategist. You output ONLY strict JSON — no markdown, no prose."
 
 _PLAN_PROMPT = """You are planning an executive data-presentation deck. From the coverage list and DATA
@@ -728,14 +783,32 @@ below, produce a deck PLAN as STRICT JSON ONLY (no markdown fences, no commentar
 {structure_directive}
 
 Output JSON of EXACTLY this shape:
-{"slides":[{"n":1,"archetype":"layout-cover","title":"…","purpose":"the single idea of this slide in one line","data_refs":["which figures/sections of the data this slide uses"],"chart":"none|bar|line|combo|donut|scatter|choropleth|table","photo":"a vivid, specific photographic description on-theme for this site's industry, or empty string for no photo"}]}
+{"slides":[{
+ "n":1,
+ "title":"…",
+ "objective":"what this slide must achieve for the client, in one line",
+ "archetype":"layout-cover",
+ "key_takeaway":"the ONE sentence the client should remember from this slide",
+ "layout":"AN EXPLICIT COMPOSITION — the grid (e.g. 'two columns, 5fr 4fr'), what sits in each region, alignment, padding, and any full-bleed/scrim. Precise enough that a designer builds it without guessing.",
+ "blocks":[{"type":"text|chart|table|image|diagram","placement":"which region of the layout","content":"what goes in it — the REAL figures/queries from the data","creative_brief":"how it should look and feel"}],
+ "chart":{"type":"bar|line|combo|donut|scatter|choropleth|table|none","series":"exactly which data to plot","axes":"what each axis means, with units"},
+ "image":{"needed":false,"prompt":"","aspect":"16:9","sizing":"object-cover"},
+ "data_refs":["which figures/sections of the data this slide uses"]
+}]}
 
 Rules:
 - Cover every item marked REQUIRED; use ONLY the provided data; never invent numbers.
 - "archetype" MUST be one of: layout-cover, layout-section, layout-kpi-strip, layout-split,
   layout-list, layout-comparison, layout-roadmap, layout-quote, layout-closing.
 - Choose a sensible slide count per the directive above; order the slides for the strongest narrative.
-- First slide is the cover; last slide is the closing. The cover ALWAYS has a photo.
+- First slide is the cover; last slide is the closing.
+- LAYOUT IS YOUR JOB. Design each slide's composition explicitly in "layout" — the downstream designer
+  EXECUTES your composition rather than improvising it. Vary it every slide; no two consecutive slides
+  may share a structure. Obey the DESIGN GUIDELINES' layout principles and export-safety rules.
+- IMAGE BUDGET: this is a DATA-LED deck. At most {max_images} images in the WHOLE deck. The cover always
+  has one. Otherwise set "image":{"needed":false,...} — only use a photo where a real product/context
+  shot genuinely adds meaning. NEVER an image of a chart, table, graph or diagram: those are
+  code-rendered. Charts/tables are blocks of type "chart"/"table", never "image".
 
 SEMANTIC ANALYSIS (YOU decide which lens earns a slide — add the one(s) the data genuinely supports,
 and skip any that would be thin):
@@ -752,8 +825,37 @@ slide's "data_refs" so the copy stage can build it from the real rows.
 DECLINES: plan an honest "Needs Attention / what's dropping" slide whenever the data shows declines —
 never bury them. Use the ANALYST FLAGS in the DATA (AT RISK / DEFEND / PAGE DECLINE) as its source.
 
+DESIGN GUIDELINES (the brief every slide is built from — respect its palette semantics, layout
+principles and export-safety rules when planning each composition):
+{guidelines}
+
 DATA (use ONLY this):
 {data}"""
+
+
+_NOTES_SYSTEM = ("You are a senior agency consultant preparing to present to a paying client. You output "
+                 "only the speaker notes, one block per slide.")
+
+_NOTES_PROMPT = """Write SPEAKER NOTES for a consultant delivering this deck to the client — what to SAY
+while each slide is on screen.
+
+For EACH slide, output exactly:
+## Slide {n}
+<2-5 sentences of spoken delivery: how to open the slide, how to read the key number aloud, what it means
+for their business, and the transition to the next point. Quote the real figures. Where a slide reports a
+decline, coach the presenter to state it plainly and calmly and pivot straight to the fix.>
+
+Rules:
+- Use ONLY the real numbers from the slide copy — never invent one.
+- Spoken register (contractions, direct address), not written prose. No bullet lists, no markdown beyond
+  the '## Slide N' headings.
+- Land each slide's key takeaway explicitly.
+
+DECK PLAN:
+{plan}
+
+SLIDE COPY (in order):
+{copy}"""
 
 _INSIGHTS_SYSTEM = "You are a senior data analyst who writes concise, grounded slide copy."
 
@@ -769,12 +871,14 @@ HEADLINE: <one punchy line — the INSIGHT, not the metric name>
 BULLETS:
 - <short insight citing the REAL number(s) from the DATA>
 - <2-4 bullets total>
-TAKEAWAY: <ONE specific recommendation naming a real query / page / theme>
-CHART: <none | one line: chart type + EXACTLY which series/rows to plot + what each axis means>
-PHOTO: <a vivid, specific photographic description on-theme for this industry | none>
+TAKEAWAY: <the slide's key_takeaway from the plan, sharpened — naming a real query / page / theme>
+CHART: <none | one line: chart type + EXACTLY which series/rows to plot + what each axis means, with units>
+PHOTO: <the plan's image prompt if image.needed is true | none>
 
 Rules:
 - Use ONLY real numbers from the DATA — never invent one.
+- The plan already fixed this slide's OBJECTIVE and KEY TAKEAWAY — deliver them, don't re-invent them.
+- Write to fill the plan's blocks: every block in the plan needs its real content here.
 - Lead with the takeaway; the number is evidence, not the point.
 - Report declines HONESTLY: state the real movement (previous -> current, % or position change), the
   likely cause and the fix. Never spin a drop into vague positivity, never omit it.
@@ -798,20 +902,26 @@ Every slide of this deck is written INDEPENDENTLY using ONLY these classes and t
 must be complete and self-sufficient. Define, exactly once:
 - An @import url(...) from fonts.googleapis.com for the display + body fonts of the assigned HOUSE STYLE.
 - Resets + page geometry:
-    @page { size: 1280px 720px; margin: 0; }
+    @page { size: 1920px 1080px; margin: 0; }
     * { box-sizing: border-box; }
     html,body { margin:0; padding:0; }
-    .slide { width:1280px; height:720px; position:relative; overflow:hidden; page-break-after:always; }
+    .slide { width:1920px; height:1080px; position:relative; overflow:hidden; page-break-after:always; }
 - :root tokens: --bg --surface --ink --muted --accent --accent-2 --line --font-display --font-body
-  (take the ground/surface/ink/fonts from the assigned HOUSE STYLE below).
-- The type scale (display 64-96px, h2 34-44px, .kpi-num 40-56px, body 18-20px, caption 13-14px) and an
-  8px spacing rhythm, applied via the component classes.
+  (take the ground/surface/ink/fonts from the assigned HOUSE STYLE below), PLUS the semantic tokens
+  --good --bad --caution using the exact hexes fixed in the DESIGN GUIDELINES' colour semantics.
+- Helper classes for the semantics: .is-good .is-bad .is-caution (text colour) and .tint-good .tint-bad
+  .tint-caution (solid tint panel backgrounds — NOT gradients, NOT single-side borders).
+- The type scale for this 1920x1080 canvas (display 96-144px, h2 52-64px, .kpi-num 64-84px,
+  body 26-30px, caption 18-20px) and a 12px spacing rhythm, applied via the component classes.
 - Shared components: .eyebrow .kpi .kpi-num .kpi-label .card .chip .pageno
-- EVERY layout archetype as a class that makes its slide a FULL-HEIGHT 720px composition (no empty
+- EVERY layout archetype as a class that makes its slide a FULL-HEIGHT 1080px composition (no empty
   bands): .layout-cover .layout-section .layout-kpi-strip .layout-split .layout-list .layout-comparison
   .layout-roadmap .layout-quote .layout-closing — each following its structure in the DESIGN SYSTEM.
-- .ai-img sizing helpers and a .photo-overlay gradient utility for text over photos.
-Make it genuinely designed — editorial, confident, generous whitespace — not a generic template."""
+- .ai-img sizing helpers and a .photo-overlay scrim utility for text over photos (the ONLY place a
+  gradient is permitted).
+Make it genuinely designed — editorial, confident, generous whitespace — not a generic template.
+Obey the DESIGN GUIDELINES' export-safety rules: no single-side borders, no gradient backgrounds/panels,
+no translucent text (use a lighter palette colour), no nested cards."""
 
 _SLIDE_HTML_SYSTEM = ("You are an award-winning presentation designer. You output ONE slide of clean, "
                       "self-contained HTML and nothing else.")
@@ -822,27 +932,45 @@ _SLIDE_ICON_NAMES = ("trending-up, trending-down, target, search, eye, mouse-poi
                      "map-pin, link, file-text, layers, filter, zap, dollar-sign, percent, shopping-cart, "
                      "smartphone, monitor, thumbs-up, refresh-cw, compass, megaphone, sparkles, gauge")
 
-_SLIDE_HTML_PROMPT = """Render ONE slide of a presentation as HTML. Output EXACTLY ONE
+_SLIDE_HTML_PROMPT = """BUILD ONE slide of a presentation as HTML. Output EXACTLY ONE
 <section class="slide {archetype}"> ... </section> and NOTHING ELSE — no markdown fences, no <html>,
 no <head>, no <style> tag, no commentary.
 
-SLIDE COPY (use this content; refine wording lightly, NEVER invent or change a number):
+Your job is to EXECUTE the composition the designer already specified — not to invent your own.
+
+=== THE COMPOSITION TO BUILD (authoritative — follow it exactly) ===
+LAYOUT: {layout}
+
+BLOCKS (each one must appear, in its stated placement):
+{blocks}
+
+=== SLIDE COPY (the real content; refine wording lightly, NEVER invent or change a number) ===
 {md}
 
 This is slide {n} of {total}; archetype: {archetype}. Put "{index_label}" in the .pageno element.
 
 RULES:
+- Build the LAYOUT above precisely: its grid/columns and ratios, what sits in each region, the alignment,
+  padding and any full-bleed/scrim. Do not substitute a different composition.
 - Use ONLY the shared stylesheet's tokens/classes (below). Do NOT emit a <style> tag and do NOT invent or
   redefine classes. Inline style="..." is allowed ONLY for per-slide geometry (grid/flex sizing, chart box
   dimensions, photo positioning).
-- FILL the entire 1280x720 canvas — a balanced, full-height composition with no empty band.
-- CHART: if the copy specifies one, output a sized container
+- FILL the entire 1920x1080 canvas — a balanced, full-height composition with no empty band.
+- COLOUR SEMANTICS (from the guidelines): a declining/at-risk number uses the BAD colour, a win uses the
+  GOOD colour, a caution uses the AMBER, neutral emphasis uses the accent. Never colour a decline green.
+- EXPORT-SAFETY (this deck is exported to PowerPoint — STRICT): no single-side borders (use a full 4-side
+  border or a solid tint panel), no gradient backgrounds/panels (a cover photo scrim is the only
+  exception), no translucent/faded text or opacity on text (use a lighter palette colour), no nested cards.
+- CHART: if the composition calls for one, output a sized container
   <div id="chart{n}" style="width:...;height:..."></div> immediately followed by
   <script type="application/json" class="plotly-spec" data-target="chart{n}">{"data":[...],"layout":{...}}</script>
-  with STRICTLY valid JSON. Style it with the palette (accent = primary series, accent-2 = secondary),
-  transparent paper/plot bg, few gridlines. NEVER print chart JSON as visible text.
+  with STRICTLY valid JSON. Transparent paper/plot bg, few gridlines, units in axis titles, series coloured
+  by semantic. NEVER print chart JSON as visible text, and NEVER render a chart/table as an image.
 - ICONS: <i class="ai-icon" data-icon="NAME"></i> — allowed NAMEs ONLY: {icons}
 - {photo_rule}
+
+=== DESIGN GUIDELINES (the deck-wide brief) ===
+{guidelines}
 
 {art_direction}
 
@@ -890,6 +1018,39 @@ async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
             on_progress=on_progress, temperature=temperature)
 
 
+_HEX_RE = re.compile(r"#[0-9A-Fa-f]{6}")
+
+
+def _brand_hex(brand: Optional[str], which: str) -> str:
+    """Pull the resolved accent hexes out of the brand directive the route built (it states
+    '<hex> as --accent and <hex> as --accent-2'). Falls back to the TBS palette."""
+    hexes = _HEX_RE.findall(brand or "")
+    if which == "accent":
+        return hexes[0] if hexes else TBS_PALETTE["accent"]
+    return hexes[1] if len(hexes) > 1 else TBS_PALETTE["accent2"]
+
+
+_NOTE_HEAD_RE = re.compile(r"^##\s*Slide\s*(\d+)\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _split_notes(raw: str, total: int) -> List[str]:
+    """Split the batched speaker-notes reply into one entry per slide ('## Slide N' headings).
+    Always returns exactly `total` entries so notes line up with slides positionally."""
+    out = [""] * total
+    if not raw:
+        return out
+    marks = list(_NOTE_HEAD_RE.finditer(raw))
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(raw)
+        try:
+            idx = int(m.group(1)) - 1
+        except ValueError:
+            continue
+        if 0 <= idx < total:
+            out[idx] = raw[m.end():end].strip()
+    return out
+
+
 def _clean_css(text: str) -> str:
     """Strip fences / stray <style> wrappers from the stylesheet stage's reply."""
     t = (text or "").strip()
@@ -922,7 +1083,7 @@ def _fallback_slide(md: str, archetype: str, n: int, total: int) -> str:
     lines = [l.strip() for l in (md or "").splitlines() if l.strip()][:12]
     body = "<br>".join(_h.escape(l) for l in lines) or "&nbsp;"
     return (f'<section class="slide {archetype}">\n'
-            f'  <div style="display:flex;flex-direction:column;justify-content:center;height:720px;padding:56px 72px">'
+            f'  <div style="display:flex;flex-direction:column;justify-content:center;height:1080px;padding:84px 108px">'
             f'{body}</div>\n'
             f'  <div class="pageno">{n:02d} / {total:02d}</div>\n</section>')
 
@@ -945,21 +1106,46 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
                               temperature: float, on_progress: ProgressCb, on_delta,
                               variant_seed: Optional[str] = None, with_photos: bool = True,
                               style: Optional[str] = "tbs"):
-    """Per-slide pipeline: plan → shared stylesheet → per-slide markdown → per-slide HTML → assemble.
+    """Per-slide pipeline: guidelines → plan → shared stylesheet → per-slide md → per-slide HTML →
+    assemble → speaker notes.
 
-    Each slide gets its own call (and so its own full token budget + the model's full attention),
-    which is what fixes composition — one call writing 15 slides rations both. The shared stylesheet
-    is the consistency backbone: slides are written independently but may only use ITS classes/tokens.
-    Returns (html_document, slides_md, slides_html). Raises on plan failure so the caller can fall
-    back to single-pass."""
+    Each slide gets its own call (its own full token budget + the model's full attention), which is what
+    fixes composition — one call writing 15 slides rations both. Two things keep the independently-built
+    slides coherent: the DESIGN GUIDELINES (a per-deck brief with palette semantics, export-safety and
+    layout principles) and the SHARED STYLESHEET (slides may only use ITS classes/tokens). Crucially the
+    PLAN specifies each slide's LAYOUT composition, so the HTML stage executes a designed composition
+    rather than improvising geometry.
+
+    Returns (html_document, artifacts_dict). Raises on plan failure so the caller can fall back to
+    single-pass."""
     import json
     directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
+    art = _variant_directive(variant_seed or seed or "")
+    style_dir = _style_directive(style, seed)
 
-    # ── Stage 1: plan ──
+    # ── Stage 0: design guidelines — the brief every later stage is built from ──
+    if on_progress:
+        await on_progress("Setting the design direction…")
+    guidelines = (await _call_llm(
+        "\n\n".join([
+            _GUIDELINES_PROMPT
+            .replace("{canvas}", f"{SLIDE_W_PX}x{SLIDE_H_PX}")
+            .replace("{accent}", _brand_hex(brand, "accent"))
+            .replace("{accent2}", _brand_hex(brand, "accent2"))
+            .replace("{data}", data_brief),
+            style_dir, art,
+        ]),
+        system_prompt=_GUIDELINES_SYSTEM, provider=planner, on_progress=None, temperature=0.5)).strip()
+
+    # ── Stage 1: plan (designs each slide's LAYOUT, not just its content) ──
     if on_progress:
         await on_progress("Planning slides…")
+    max_images = MAX_DECK_IMAGES if with_photos else 0
     plan_raw = await _call_llm(
-        _PLAN_PROMPT.replace("{structure_directive}", directive).replace("{data}", data_brief),
+        _PLAN_PROMPT.replace("{structure_directive}", directive)
+        .replace("{guidelines}", guidelines)
+        .replace("{max_images}", str(max_images))
+        .replace("{data}", data_brief),
         system_prompt=_PLAN_SYSTEM, provider=planner, on_progress=None, temperature=0.5)
     plan = _extract_json(plan_raw)
     slides = (plan or {}).get("slides")
@@ -971,10 +1157,8 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
     # ── Stage 2: shared stylesheet (the consistency backbone) ──
     if on_progress:
         await on_progress("Designing the system…")
-    art = _variant_directive(variant_seed or seed or "")
-    css_prompt = "\n\n".join([_STYLESHEET_PROMPT, DESIGN_SYSTEM, THEME_PRESETS,
-                              _style_directive(style, seed), art,
-                              (brand or "")])
+    css_prompt = "\n\n".join([_STYLESHEET_PROMPT, DESIGN_SYSTEM, THEME_PRESETS, style_dir, art,
+                              (brand or ""), "=== DESIGN GUIDELINES ===\n" + guidelines])
     shared_css = _clean_css(await _call_llm(css_prompt, system_prompt=_STYLESHEET_SYSTEM,
                                             provider=html_provider, on_progress=None, temperature=0.5))
 
@@ -1001,29 +1185,45 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
 
     mds = list(await asyncio.gather(*[_md(s) for s in slides]))
 
-    # ── Stage 4: per-slide HTML ──
+    # ── Stage 4: per-slide HTML — EXECUTE the planned composition ──
     built = {"n": 0}
-    photo_rule = (
-        'PHOTO: if the copy names one, add <img class="ai-img" data-prompt="<that description>"> '
-        '(no src — the system fills it) sized/positioned with inline CSS; put a dark gradient overlay '
-        'under any text on top of it. The cover MUST have a full-bleed hero photo.'
-        if with_photos else
-        'PHOTO: do NOT use any <img class="ai-img"> — build this slide from colour fields, typography, '
-        'charts and icons only.'
-    )
+
+    def _photo_rule_for(slide: dict) -> str:
+        """Photos come from the PLAN's image budget, not the designer's whim — a data-led deck gets ~2."""
+        if not with_photos:
+            return ('PHOTO: do NOT use any <img class="ai-img"> — build this slide from colour fields, '
+                    'typography, charts and icons only.')
+        img = slide.get("image") or {}
+        if img.get("needed") and img.get("prompt"):
+            return (f'PHOTO: this slide HAS a planned image. Add <img class="ai-img" '
+                    f'data-prompt="{img.get("prompt")}"> (no src — the system fills it), '
+                    f'{img.get("sizing") or "object-cover"}, positioned per the LAYOUT above; put a scrim '
+                    f'under any text sitting on it.')
+        return ('PHOTO: this slide has NO planned image — do NOT add one. Never render a chart or table '
+                'as an image.')
 
     async def _html(slide: dict, md: str, idx: int) -> str:
         archetype = slide.get("archetype") or "layout-split"
         n = idx + 1
+        blocks = slide.get("blocks") or []
+        blocks_txt = "\n".join(
+            f"- [{b.get('type','text')}] @ {b.get('placement','')}: {b.get('content','')}"
+            + (f"  (brief: {b.get('creative_brief')})" if b.get("creative_brief") else "")
+            for b in blocks if isinstance(b, dict)
+        ) or "- (none specified — compose from the slide copy below)"
         async with sem:
             try:
                 prompt_txt = (_SLIDE_HTML_PROMPT
+                              .replace("{layout}", slide.get("layout") or
+                                       f"Follow the {archetype} archetype from the design system.")
+                              .replace("{blocks}", blocks_txt)
                               .replace("{md}", md)
                               .replace("{archetype}", archetype)
                               .replace("{index_label}", f"{n:02d} / {total:02d}")
                               .replace("{n}", str(n)).replace("{total}", str(total))
                               .replace("{icons}", _SLIDE_ICON_NAMES)
-                              .replace("{photo_rule}", photo_rule)
+                              .replace("{photo_rule}", _photo_rule_for(slide))
+                              .replace("{guidelines}", guidelines)
                               .replace("{art_direction}", art)
                               .replace("{shared_css}", shared_css))
                 raw = await _call_llm(prompt_txt, system_prompt=_SLIDE_HTML_SYSTEM,
@@ -1039,7 +1239,23 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
             return out
 
     htmls = list(await asyncio.gather(*[_html(s, m, i) for i, (s, m) in enumerate(zip(slides, mds))]))
-    return _assemble_deck(shared_css, htmls), mds, htmls
+    doc = _assemble_deck(shared_css, htmls)
+
+    # ── Stage 5: speaker notes (one batched call, after the slides exist) ──
+    if on_progress:
+        await on_progress("Writing speaker notes…")
+    notes: List[str] = []
+    try:
+        copy_txt = "\n\n".join(f"## Slide {i + 1}\n{m}" for i, m in enumerate(mds))
+        notes_raw = await _call_llm(
+            _NOTES_PROMPT.replace("{plan}", plan_json).replace("{copy}", copy_txt).replace("{n}", "N"),
+            system_prompt=_NOTES_SYSTEM, provider=insights_provider, on_progress=None, temperature=0.6)
+        notes = _split_notes(notes_raw, total)
+    except Exception:
+        logger.exception("speaker notes failed — shipping the deck without them")
+
+    return doc, {"guidelines_md": guidelines, "slide_plan": plan,
+                 "slides_md": mds, "slides_html": htmls, "slides_notes": notes}
 
 
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
@@ -1092,7 +1308,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
     if pipeline == "layered":
         try:
-            raw, slides_md, slides_html = await _generate_per_slide(
+            raw, produced = await _generate_per_slide(
                 data_brief, brand=brand, structure=structure, seed=seed, creativity=creativity,
                 planner=models.get("planner") or provider,
                 insights_provider=models.get("insights") or provider,
@@ -1100,10 +1316,9 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                 on_progress=on_progress, on_delta=on_delta, variant_seed=variant_seed,
                 with_photos=photos_on, style=style)
             # Hand the per-page artifacts back to the caller so they can be stored on the Document
-            # (one .md + one .html per slide, inspectable after the fact).
+            # (design guidelines, the slide plan, and one .md/.html/notes per slide).
             if artifacts is not None:
-                artifacts["slides_md"] = slides_md
-                artifacts["slides_html"] = slides_html
+                artifacts.update(produced)
         except Exception:
             logger.exception("per-slide pipeline failed — falling back to single-pass")
             raw = await _single_pass()
@@ -1403,7 +1618,7 @@ def _polish_plotly_specs(html: str) -> str:
 # instead of clustering at the top. Charts that sit in a growing flex region are stretched to
 # fill — but fixed-aspect charts (pie/choropleth) keep their own height so they don't distort.
 _FILL_CSS = """<style>/* deterministic-fill */
-.slide{display:flex !important;flex-direction:column !important;height:720px !important;
+.slide{display:flex !important;flex-direction:column !important;height:1080px !important;
   justify-content:center !important;overflow:hidden !important;position:relative !important;}
 /* pin the page index to the bottom-right so centering the content can't displace it */
 .slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;}
@@ -1674,7 +1889,7 @@ async def _render(html: str) -> Dict:
                                           device_scale_factor=_RENDER_SCALE)
             await page.goto(Path(tmp.name).as_uri(), wait_until="networkidle")
             # Pin SCREEN media for the whole pipeline. The deck is designed for screen
-            # (dark/saturated colour fields, full-bleed photos, 720px flex columns); print
+            # (dark/saturated colour fields, full-bleed photos, 1080px flex columns); print
             # emulation would drop those, which is what made the old page.pdf() output blank.
             await page.emulate_media(media="screen")
             if uses_plotly:
@@ -1728,9 +1943,10 @@ def _slides_to_pdf(slide_pngs: List[bytes]) -> bytes:
         raise ValueError("No slides were rendered — cannot build a PDF (the deck has no .slide elements).")
     pages = [Image.open(BytesIO(p)).convert("RGB") for p in slide_pngs]
     buf = BytesIO()
-    # DPI scales with the render scale so 2560x1440 screenshots still map to a 13.33x7.5in page.
+    # Derive DPI from the canvas so the physical page stays 13.333x7.5in at ANY canvas size
+    # (a hardcoded 96 DPI assumed a 1280px slide and would emit a 20x11.25in page at 1920px).
     pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:],
-                  resolution=96.0 * _RENDER_SCALE)
+                  resolution=(SLIDE_W_PX / 13.333) * _RENDER_SCALE)
     return buf.getvalue()
 
 
