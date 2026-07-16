@@ -739,10 +739,22 @@ async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
 
 def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str, *,
                                brand: Optional[str], seed: Optional[str],
-                               variant_seed: Optional[str] = None) -> str:
+                               variant_seed: Optional[str] = None, with_photos: bool = True) -> str:
     """Stage-C prompt: render the finalized PLAN + COPY into HTML. Shares the exact rendering
     contract / design system / theme / seed / exemplar tail as build_prompt so a layered deck
     meets the same quality bar as a single-pass one."""
+    photo_rule = (
+        "PHOTOS ARE REQUIRED (the plan does NOT list them — YOU must add them per the HTML OUTPUT "
+        "CONTRACT): ALWAYS give the cover a full-bleed hero <img class=\"ai-img\" data-prompt=\"…\"> "
+        "with a dark gradient overlay, and use ai-img photos as full-bleed backgrounds or side panels "
+        "on MOST content slides (keep chart/table areas on a clean solid ground). Never output a deck "
+        "with no photos.\n"
+        if with_photos else
+        # Photos are toggled OFF for this deck — do NOT emit ai-img placeholders; rely on colour
+        # fields, type and charts so there are no empty image gaps.
+        "NO PHOTOS: do NOT use any <img class=\"ai-img\"> placeholders — build every slide from colour "
+        "fields, typography, charts and icons only (an image-free deck).\n"
+    )
     head = (
         "You are an elite editorial presentation designer. Render the deck defined by the PLAN and "
         "COPY below into ONE complete, self-contained HTML document: ONE <section class=\"slide\"> per "
@@ -752,11 +764,7 @@ def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str
         "CRITICAL OUTPUT RULE: emit each slide as FINAL RENDERED HTML only — never print the plan, "
         "\"Slide X:\" headings, layout notes or chart JSON as visible text; translate all of it into "
         "the HTML/CSS and the hidden chart script. Use ONLY the real numbers from the DATA.\n"
-        "PHOTOS ARE REQUIRED (the plan does NOT list them — YOU must add them per the HTML OUTPUT "
-        "CONTRACT): ALWAYS give the cover a full-bleed hero <img class=\"ai-img\" data-prompt=\"…\"> "
-        "with a dark gradient overlay, and use ai-img photos as full-bleed backgrounds or side panels "
-        "on MOST content slides (keep chart/table areas on a clean solid ground). Never output a deck "
-        "with no photos.\n\n"
+        + photo_rule + "\n"
         "DECK PLAN (authoritative slide list + archetypes):\n" + plan_json + "\n\n"
         "SLIDE COPY (headlines, grounded insights, takeaways — use these, refine lightly):\n" + insights_md + "\n\n"
         "DATA (authoritative source of every number):\n" + data_brief
@@ -773,7 +781,7 @@ async def _generate_layered(data_brief: str, *, brand: Optional[str], structure:
                             seed: Optional[str], creativity: str,
                             planner: str, insights_provider: str, html_provider: str,
                             temperature: float, on_progress: ProgressCb, on_delta,
-                            variant_seed: Optional[str] = None) -> str:
+                            variant_seed: Optional[str] = None, with_photos: bool = True) -> str:
     """Run plan → insights → HTML and return the raw HTML string (pre-validation). Each stage
     uses its own provider. Raises on plan-parse failure so the caller can fall back to single-pass."""
     directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
@@ -798,7 +806,8 @@ async def _generate_layered(data_brief: str, *, brand: Optional[str], structure:
     if on_progress:
         await on_progress("Designing the deck…")
     full_prompt = _build_layered_html_prompt(plan_json, insights_md, data_brief,
-                                             brand=brand, seed=seed, variant_seed=variant_seed)
+                                             brand=brand, seed=seed, variant_seed=variant_seed,
+                                             with_photos=with_photos)
     return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=html_provider,
                            on_progress=on_progress, temperature=temperature, on_delta=on_delta)
 
@@ -833,6 +842,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
     # SAME site produce different compositions. Theme/fonts/brand still pin to `seed` (the domain).
     import uuid
     variant_seed = f"{html_provider}:{uuid.uuid4().hex}"
+    photos_on = image_cache is not None and images_enabled()  # AI-photo toggle for this deck
 
     async def _single_pass() -> str:
         # prompt is normally resolved by the route (from the chosen prompt id); fall back
@@ -851,7 +861,8 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                 planner=models.get("planner") or provider,
                 insights_provider=models.get("insights") or provider,
                 html_provider=html_provider, temperature=temperature,
-                on_progress=on_progress, on_delta=on_delta, variant_seed=variant_seed)
+                on_progress=on_progress, on_delta=on_delta, variant_seed=variant_seed,
+                with_photos=photos_on)
         except Exception:
             logger.exception("layered pipeline failed — falling back to single-pass")
             raw = await _single_pass()
