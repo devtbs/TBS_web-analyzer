@@ -1018,6 +1018,87 @@ async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
             on_progress=on_progress, temperature=temperature)
 
 
+# ── Per-slide QA ("test the presentation") ───────────────────────────────────────────────────
+# Conservative, high-signal checks only, so a good slide is never churned. Runs per slide so a
+# problem is repaired IN PLACE — a whole-document rewrite would throw away the other slides'
+# compositions, which is the whole point of building them one at a time.
+_SLIDE_PLOTLY_RE = re.compile(
+    r'<script\b[^>]*\bclass=["\'][^"\']*\bplotly-spec\b[^"\']*["\'][^>]*>(.*?)</script>',
+    re.IGNORECASE | re.DOTALL)
+_STYLE_SCRIPT_STRIP_RE = re.compile(r'<(style|script)\b[^>]*>.*?</\1>', re.IGNORECASE | re.DOTALL)
+_TAG_STRIP_RE = re.compile(r'<[^>]+>')
+_BORDER_SIDE_RE = re.compile(r"border-(?:left|top|right|bottom)\s*:\s*\d", re.IGNORECASE)
+_TEXT_OPACITY_RE = re.compile(r"opacity\s*:\s*0?\.\d", re.IGNORECASE)
+_NESTED_CARD_RE = re.compile(r'class=["\'][^"\']*\bcard\b[^"\']*["\'][^>]*>(?:(?!</div>).)*?'
+                             r'class=["\'][^"\']*\bcard\b', re.IGNORECASE | re.DOTALL)
+_SLIDE_MAX_WORDS = 190
+
+
+def _check_slide(section: str, *, with_photos: bool, wants_image: bool) -> List[str]:
+    """Return this slide's problems (empty = clean). Mirrors deck_validation's philosophy but
+    scoped to ONE slide, and adds the PowerPoint export-safety rules."""
+    import json as _json
+    probs: List[str] = []
+    if not section or not _SECTION_RE.search(section):
+        return ["The slide is not a single <section class=\"slide\">…</section>."]
+
+    for i, body in enumerate(_SLIDE_PLOTLY_RE.findall(section), 1):
+        raw = (body or "").strip()
+        if not raw:
+            probs.append(f"Chart spec #{i} is empty.")
+            continue
+        try:
+            spec = _json.loads(raw)
+        except Exception as e:
+            probs.append(f"Chart spec #{i} is not valid JSON ({e}). Emit strictly valid JSON.")
+            continue
+        if not isinstance(spec, dict) or "data" not in spec or "layout" not in spec:
+            probs.append(f'Chart spec #{i} is missing "data" and/or "layout".')
+
+    visible = _TAG_STRIP_RE.sub(" ", _STYLE_SCRIPT_STRIP_RE.sub(" ", section))
+    if '{"data"' in visible or '"layout":' in visible:
+        probs.append("Chart JSON is visible on the slide — it must live ONLY inside the hidden "
+                     "<script class=\"plotly-spec\"> element.")
+    words = len(visible.split())
+    if words > _SLIDE_MAX_WORDS:
+        probs.append(f"The slide is overcrowded ({words} words) — cut to the essentials and let the "
+                     "visual carry the detail.")
+
+    # Export-safety (PowerPoint): these break the .pptx render.
+    if "linear-gradient" in section and "photo-overlay" not in section and "ai-img" not in section:
+        probs.append("Gradient background/panel found — export-safety forbids gradients (a scrim over "
+                     "a cover photo is the only exception). Use a solid tint panel.")
+    if _BORDER_SIDE_RE.search(section):
+        probs.append("Single-side border/accent stripe found — use a full 4-side border or a solid "
+                     "tint panel instead (export-safety).")
+    if _TEXT_OPACITY_RE.search(section):
+        probs.append("Translucent/faded element found (opacity < 1) — use a lighter palette colour "
+                     "instead (export-safety).")
+    if _NESTED_CARD_RE.search(section):
+        probs.append("Nested cards (a .card inside a .card) — group with whitespace/headings instead.")
+
+    # Images must match the plan's budget.
+    has_img = "ai-img" in section
+    if has_img and not with_photos:
+        probs.append("This deck has photos disabled — remove the <img class=\"ai-img\"> placeholder.")
+    elif has_img and not wants_image:
+        probs.append("This slide has no planned image — remove the <img class=\"ai-img\"> placeholder.")
+    return probs
+
+
+_SLIDE_REPAIR_PROMPT = """The slide below has specific problems. Fix ONLY these problems and re-emit the
+COMPLETE slide. Preserve its composition, content, wording and numbers exactly as they are.
+
+PROBLEMS TO FIX:
+{problems}
+
+Output EXACTLY ONE <section class="slide {archetype}"> ... </section> and NOTHING ELSE — no markdown
+fences, no <style> tag, no commentary. Keep using only the shared stylesheet's classes/tokens.
+
+=== CURRENT SLIDE ===
+{section}"""
+
+
 _HEX_RE = re.compile(r"#[0-9A-Fa-f]{6}")
 
 
@@ -1239,6 +1320,41 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
             return out
 
     htmls = list(await asyncio.gather(*[_html(s, m, i) for i, (s, m) in enumerate(zip(slides, mds))]))
+
+    # ── Stage 4b: QA each slide and repair ONLY the broken ones, in place ──
+    if on_progress:
+        await on_progress("Checking slides…")
+
+    async def _qa(slide: dict, section: str, idx: int) -> str:
+        n = idx + 1
+        wants_image = bool((slide.get("image") or {}).get("needed"))
+        probs = _check_slide(section, with_photos=with_photos, wants_image=wants_image)
+        if not probs:
+            return section
+        logger.info("slide %d/%d failed QA: %s", n, total, "; ".join(probs))
+        archetype = slide.get("archetype") or "layout-split"
+        async with sem:
+            try:
+                fixed_raw = await _call_llm(
+                    _SLIDE_REPAIR_PROMPT
+                    .replace("{problems}", "\n".join(f"- {p}" for p in probs))
+                    .replace("{archetype}", archetype)
+                    .replace("{section}", section),
+                    system_prompt=_SLIDE_HTML_SYSTEM, provider=html_provider,
+                    on_progress=None, temperature=0.4, on_delta=on_delta)
+                fixed = _clean_slide(fixed_raw)
+            except Exception:
+                logger.exception("slide %d repair call failed — keeping the original", n)
+                return section
+        # Only accept a repair that is itself clean (or at least no worse) — never ship a
+        # regression from the fixer.
+        if fixed and len(_check_slide(fixed, with_photos=with_photos, wants_image=wants_image)) < len(probs):
+            if on_progress:
+                await on_progress(f"Fixed slide {n}/{total}…")
+            return fixed
+        return section
+
+    htmls = list(await asyncio.gather(*[_qa(s, h, i) for i, (s, h) in enumerate(zip(slides, htmls))]))
     doc = _assemble_deck(shared_css, htmls)
 
     # ── Stage 5: speaker notes (one batched call, after the slides exist) ──
@@ -1328,6 +1444,16 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
     result = validate_deck_html(html, data_brief, creativity=creativity)
     if result.ok:
+        return _strip_leaked_specs(html)
+
+    # The per-slide pipeline already QA'd and repaired each slide individually. A whole-document
+    # repair here would rewrite every slide at once — throwing away the per-slide compositions that
+    # are the entire point of building them one at a time. So unless the assembled doc is
+    # STRUCTURALLY broken, log the remaining notes and ship it.
+    if pipeline == "layered" and not result.structural:
+        logger.info("layered deck: per-slide QA passed; skipping whole-document repair "
+                    "(plotly=%d, ungrounded_numbers=%d, design=%d)",
+                    len(result.plotly), len(result.ungrounded_numbers), len(result.design))
         return _strip_leaked_specs(html)
 
     logger.info(
