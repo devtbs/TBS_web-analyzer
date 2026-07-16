@@ -384,6 +384,31 @@ hero photo on the cover, and photo backgrounds/side-panels on most content slide
 
 _PRESET_LETTERS = "ABCDEFGHIJKL"  # the 12 THEME_PRESETS entries
 
+# TBS Marketing brand palette (from the logo — blue / green / amber). Used as the DEFAULT deck
+# colour/look so decks carry the agency's house identity. _apply_theme forces the accents onto the
+# rendered HTML regardless of the model; _TBS_STYLE_DIRECTIVE fixes the fonts + ground.
+TBS_PALETTE = {
+    "accent": "#3C8DD9",    # TBS blue (primary pop)
+    "accent2": "#79B84B",   # TBS green (secondary series / fills)
+    "accent3": "#F4B740",   # TBS amber (highlight)
+    "ink": "#2B2B2E",
+    "muted": "#6E7075",
+    "bg": "#F7F9FB",
+    "surface": "#FFFFFF",
+}
+TBS_FONTS = {"display": "Poppins", "body": "Inter"}
+
+_TBS_STYLE_DIRECTIVE = (
+    "=== ASSIGNED HOUSE STYLE — TBS MARKETING (use THIS exactly) ===\n"
+    f"Use a clean, confident agency house style on a light ground: --bg {TBS_PALETTE['bg']}, "
+    f"--surface {TBS_PALETTE['surface']}, --ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}. "
+    f"Load and use '{TBS_FONTS['display']}' as the DISPLAY font (headlines) and '{TBS_FONTS['body']}' "
+    "as the BODY font from fonts.googleapis.com. Keep the look modern, friendly and professional with "
+    "generous whitespace and crisp hierarchy. (The --accent / --accent-2 are set automatically to the "
+    "TBS brand colours, so don't worry about picking accents — just use this ground, these fonts and "
+    "this feel.) Do not substitute a different preset or background."
+)
+
 
 def _seeded_preset(seed: str) -> str:
     """Deterministically map a site (domain) to ONE theme preset letter, so the same
@@ -407,6 +432,32 @@ def _seed_directive(seed: str) -> str:
         f"set to the brand's own colour automatically, so don't worry about matching the preset's "
         f"accent — just take its grounds, fonts and feel.) Do not substitute a different preset."
     )
+
+
+def _preset_directive(letter: str) -> str:
+    """Force a specific THEME_PRESET letter (user picked a named style)."""
+    letter = (letter or "A").upper()
+    if letter not in _PRESET_LETTERS:
+        letter = "A"
+    return (
+        "=== ASSIGNED THEME PRESET (use THIS one) ===\n"
+        f"Use THEME PRESET {letter} — adopt its BACKGROUND, SURFACE, font pairing (display + body) and "
+        "overall mood exactly. (The --accent / --accent-2 are set to the chosen brand colour "
+        "automatically, so just take its grounds, fonts and feel.) Do not substitute a different preset."
+    )
+
+
+def _style_directive(style: Optional[str], seed: Optional[str]) -> str:
+    """Pick the fonts/background directive: 'tbs' → the fixed TBS house style; 'auto' (or empty) →
+    the per-domain preset; a single letter A–L → that specific preset."""
+    s = (style or "tbs").strip()
+    if s == "tbs":
+        return _TBS_STYLE_DIRECTIVE
+    if s == "auto":
+        return _seed_directive(seed or "")
+    if len(s) == 1 and s.upper() in _PRESET_LETTERS:
+        return _preset_directive(s)
+    return _TBS_STYLE_DIRECTIVE
 
 
 # Art-direction axes rotated per-seed so different clients get visibly different decks — the single
@@ -493,7 +544,7 @@ def _structure_directive(creativity: str, structure: str) -> str:
 def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
                  brand: Optional[str] = None, structure: Optional[str] = None,
                  seed: Optional[str] = None, creativity: str = "balanced",
-                 variant_seed: Optional[str] = None) -> str:
+                 variant_seed: Optional[str] = None, style: Optional[str] = "tbs") -> str:
     """Fill the (possibly user-customised) prompt template with brand/structure/data,
     then append the rendering contract + design system + theme presets + exemplar so
     every deck — default or custom — gets the same template-grade quality bar.
@@ -518,8 +569,7 @@ def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
     if "{data}" not in template:
         filled = filled + "\n\nDATA (use ONLY this):\n" + data_brief
     parts = [filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
-    if seed and seed.strip():
-        parts.append(_seed_directive(seed))          # theme/fonts pinned to the site (brand identity)
+    parts.append(_style_directive(style, seed))      # fonts/ground: TBS house / per-site / a preset
     # Art direction varies per GENERATION (variant_seed), so two models / re-runs of the SAME site
     # get different compositions — pinning it to the domain made every deck for a site look identical.
     parts.append(_variant_directive(variant_seed or seed or ""))
@@ -739,7 +789,8 @@ async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
 
 def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str, *,
                                brand: Optional[str], seed: Optional[str],
-                               variant_seed: Optional[str] = None, with_photos: bool = True) -> str:
+                               variant_seed: Optional[str] = None, with_photos: bool = True,
+                               style: Optional[str] = "tbs") -> str:
     """Stage-C prompt: render the finalized PLAN + COPY into HTML. Shares the exact rendering
     contract / design system / theme / seed / exemplar tail as build_prompt so a layered deck
     meets the same quality bar as a single-pass one."""
@@ -770,8 +821,7 @@ def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str
         "DATA (authoritative source of every number):\n" + data_brief
     )
     parts = [head, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
-    if seed and seed.strip():
-        parts.append(_seed_directive(seed))
+    parts.append(_style_directive(style, seed))
     parts.append(_variant_directive(variant_seed or seed or ""))
     parts.append(DESIGN_EXEMPLARS)
     return "\n\n".join(parts)
@@ -781,7 +831,8 @@ async def _generate_layered(data_brief: str, *, brand: Optional[str], structure:
                             seed: Optional[str], creativity: str,
                             planner: str, insights_provider: str, html_provider: str,
                             temperature: float, on_progress: ProgressCb, on_delta,
-                            variant_seed: Optional[str] = None, with_photos: bool = True) -> str:
+                            variant_seed: Optional[str] = None, with_photos: bool = True,
+                            style: Optional[str] = "tbs") -> str:
     """Run plan → insights → HTML and return the raw HTML string (pre-validation). Each stage
     uses its own provider. Raises on plan-parse failure so the caller can fall back to single-pass."""
     directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
@@ -807,7 +858,7 @@ async def _generate_layered(data_brief: str, *, brand: Optional[str], structure:
         await on_progress("Designing the deck…")
     full_prompt = _build_layered_html_prompt(plan_json, insights_md, data_brief,
                                              brand=brand, seed=seed, variant_seed=variant_seed,
-                                             with_photos=with_photos)
+                                             with_photos=with_photos, style=style)
     return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=html_provider,
                            on_progress=on_progress, temperature=temperature, on_delta=on_delta)
 
@@ -817,7 +868,8 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              provider: str = "deepseek", on_progress: ProgressCb = None,
                              image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
                              seed: Optional[str] = None, creativity: str = "balanced",
-                             pipeline: str = "single", models: Optional[Dict[str, str]] = None) -> str:
+                             pipeline: str = "single", models: Optional[Dict[str, str]] = None,
+                             style: Optional[str] = "tbs") -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
 
     Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
@@ -848,7 +900,8 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
         # prompt is normally resolved by the route (from the chosen prompt id); fall back
         # to the built-in default if none was passed.
         full_prompt = build_prompt(data_brief, prompt=prompt, brand=brand, structure=structure,
-                                   seed=seed, creativity=creativity, variant_seed=variant_seed)
+                                   seed=seed, creativity=creativity, variant_seed=variant_seed,
+                                   style=style)
         if on_progress:
             await on_progress("Writing slides…")
         return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=provider,
@@ -862,7 +915,7 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                 insights_provider=models.get("insights") or provider,
                 html_provider=html_provider, temperature=temperature,
                 on_progress=on_progress, on_delta=on_delta, variant_seed=variant_seed,
-                with_photos=photos_on)
+                with_photos=photos_on, style=style)
         except Exception:
             logger.exception("layered pipeline failed — falling back to single-pass")
             raw = await _single_pass()
@@ -1593,6 +1646,9 @@ async def generate_deck_from_pdf(
     creativity: str = "balanced",
     pipeline: str = "single",
     models: Optional[Dict[str, str]] = None,
+    theme_mode: str = "tbs",
+    custom_color: Optional[str] = None,
+    style: str = "tbs",
 ) -> Dict:
     """Full PDF→deck flow: extract the PDF's data, have the AI design the deck with the
     chosen prompt + provider. Renders to the file unless render=False (deferred to download).
@@ -1607,12 +1663,25 @@ async def generate_deck_from_pdf(
     if not data_text.strip():
         raise ValueError("No extractable text found in the PDF.")
     data_text = data_text + to_brief_block(notes)
+    # Resolve the palette (uploaded PDFs have no site to detect, so 'site' collapses to the TBS
+    # default; 'custom' honours the picked hex).
+    palette = {"accent": TBS_PALETTE["accent"], "accent2": TBS_PALETTE["accent2"]}
+    if (theme_mode or "tbs").lower() == "custom" and custom_color:
+        from services.site_theme import _accents, _hex_to_rgb
+        rgb = _hex_to_rgb(custom_color)
+        if rgb:
+            palette = _accents(rgb)
+    brand_directive = brand or (
+        "Design a clean, modern, professional agency-grade presentation. Build the palette around "
+        f"{palette['accent']} as --accent and {palette['accent2']} as --accent-2; take the ground, "
+        "surface and fonts from the assigned HOUSE STYLE / THEME."
+    )
     # Shared cache overlaps image generation with the streamed slide-writing.
     image_cache = {} if images else None
     html = await generate_deck_html(
         data_text,
         prompt=prompt,
-        brand=brand or GOOGLE_ADS_BRAND,
+        brand=brand_directive,
         structure=structure or GOOGLE_ADS_STRUCTURE,
         provider=provider,
         on_progress=on_progress,
@@ -1621,9 +1690,11 @@ async def generate_deck_from_pdf(
         creativity=creativity,
         pipeline=pipeline,
         models=models,
+        style=style,
     )
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
     file_bytes = await render_deck(html, fmt=fmt) if render else None
     return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes}

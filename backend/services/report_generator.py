@@ -551,31 +551,57 @@ GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-co
 Use only these numbers. Positive but honest framing; declines = opportunities."""
 
 
+def _brand_accent_directive(accent: str, accent2: str) -> str:
+    """Neutral brand directive built from the resolved palette. The ground/surface/fonts come from
+    the assigned STYLE directive, so this only fixes the accent colours (and _apply_theme enforces
+    them deterministically afterward) — no cream/navy assumptions that would fight the chosen look."""
+    return (
+        "Design a clean, modern, professional agency-grade presentation. Build the palette around "
+        f"{accent} as --accent (the primary pop — emphasis, KPIs, the main chart series) and {accent2} "
+        "as --accent-2 (secondary series / subtle fills). Take the ground, surface and fonts from the "
+        "assigned HOUSE STYLE / THEME. Keep it confident and uncluttered; vary layouts slide to slide."
+    )
+
+
+async def resolve_deck_palette(theme_mode: str = "tbs", custom_color: Optional[str] = None,
+                               domain: str = "") -> Dict:
+    """Resolve {accent, accent2} for the chosen colour mode: 'tbs' (TBS house palette, the default),
+    'custom' (a picked hex, accent-2 derived), or 'site' (auto-detected from the client's website)."""
+    from services.ai_deck_service import TBS_PALETTE
+    mode = (theme_mode or "tbs").lower()
+    if mode == "custom" and custom_color:
+        from services.site_theme import _accents, _hex_to_rgb
+        rgb = _hex_to_rgb(custom_color)
+        if rgb:
+            return _accents(rgb)
+    if mode == "site":
+        from services.site_theme import detect_site_accent
+        return await detect_site_accent(domain)
+    return {"accent": TBS_PALETTE["accent"], "accent2": TBS_PALETTE["accent2"]}
+
+
 async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
                                provider: str = "deepseek", prompt: Optional[str] = None,
                                images: bool = True, notes: str = "", on_progress=None,
                                ga4_service=None, creativity: str = "balanced",
-                               pipeline: str = "single", models: Optional[dict] = None) -> Dict:
+                               pipeline: str = "single", models: Optional[dict] = None,
+                               theme_mode: str = "tbs", custom_color: Optional[str] = None,
+                               style: str = "tbs") -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
     chosen prompt + provider. Returns the HTML only — the file is rendered on download.
 
     If `ga4_service` is given, the country map uses real GA4 sessions matched to the site's
     GA4 property (falling back to GSC clicks-by-country when there's no match)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, GSC_STRUCTURE, UNIQUE_STYLE_BRAND, _apply_theme)
-    from services.site_theme import detect_site_accent
+                                          _AI_IMG_RE, GSC_STRUCTURE, _apply_theme)
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Search Console data…")
     context = await assemble_gsc_context(service, property_url, days, ga4_service=ga4_service)
     brief = _gsc_data_brief(context) + to_brief_block(notes)
-    # Theme the deck to the site's own brand colour (not always orange).
-    theme = await detect_site_accent(context["domain"])
-    brand = UNIQUE_STYLE_BRAND + (
-        f"\n\nREQUIRED BRAND ACCENT: build the palette around {theme['accent']} as --accent and "
-        f"{theme['accent2']} as --accent-2, on a warm cream/ivory ground with dark ink. Do NOT default to "
-        f"terracotta/orange unless that brand colour is itself orange."
-    )
+    # Resolve the deck palette by colour mode (TBS house by default; site brand or custom on request).
+    palette = await resolve_deck_palette(theme_mode, custom_color, context["domain"])
+    brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     # Shared cache lets image generation start (during the streamed write) and finish
     # concurrently with slide-writing instead of serially afterward.
     image_cache = {} if images else None
@@ -583,12 +609,12 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
                                     structure=GSC_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=context["domain"], creativity=creativity,
-                                    pipeline=pipeline, models=models)
+                                    pipeline=pipeline, models=models, style=style)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
-    # Deterministically force the site theme regardless of what the model emitted.
-    html = _apply_theme(html, theme["accent"], theme["accent2"])
+    # Deterministically force the resolved palette regardless of what the model emitted.
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
     return {
         "property_url": property_url,
         "domain": context["domain"],
@@ -665,26 +691,31 @@ async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
                                prompt: Optional[str] = None, images: bool = True,
                                notes: str = "", on_progress=None,
                                creativity: str = "balanced",
-                               pipeline: str = "single", models: Optional[dict] = None) -> Dict:
+                               pipeline: str = "single", models: Optional[dict] = None,
+                               theme_mode: str = "tbs", custom_color: Optional[str] = None,
+                               style: str = "tbs") -> Dict:
     """AI-designed website-analytics deck for a GA4 property. Returns the HTML only —
     the file is rendered on download. `label` is the property display name (for the cover)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, GA4_STRUCTURE, UNIQUE_STYLE_BRAND)
+                                          _AI_IMG_RE, GA4_STRUCTURE, _apply_theme)
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Google Analytics data…")
     context = await assemble_ga4_context(service, property_id, days, label=label)
     name = context["name"]
     brief = _ga4_data_brief(context) + to_brief_block(notes)
+    palette = await resolve_deck_palette(theme_mode, custom_color, name)
+    brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     image_cache = {} if images else None
-    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+    html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GA4_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=name, creativity=creativity,
-                                    pipeline=pipeline, models=models)
+                                    pipeline=pipeline, models=models, style=style)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
     return {"property_id": property_id, "domain": name, "html": html}
 
 
@@ -780,26 +811,31 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
                                prompt: Optional[str] = None, images: bool = True,
                                notes: str = "", on_progress=None,
                                creativity: str = "balanced",
-                               pipeline: str = "single", models: Optional[dict] = None) -> Dict:
+                               pipeline: str = "single", models: Optional[dict] = None,
+                               theme_mode: str = "tbs", custom_color: Optional[str] = None,
+                               style: str = "tbs") -> Dict:
     """AI-designed paid-search deck for a Google Ads account. Returns the HTML only —
     the file is rendered on download. `label` is the account display name (for the cover)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, GOOGLE_ADS_STRUCTURE, UNIQUE_STYLE_BRAND)
+                                          _AI_IMG_RE, GOOGLE_ADS_STRUCTURE, _apply_theme)
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Google Ads data…")
     context = await assemble_ads_context(service, customer_id, days)
     name = label or f"Account {customer_id}"
     brief = _ads_data_brief(context, name) + to_brief_block(notes)
+    palette = await resolve_deck_palette(theme_mode, custom_color, name)
+    brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     image_cache = {} if images else None
-    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+    html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GOOGLE_ADS_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=name, creativity=creativity,
-                                    pipeline=pipeline, models=models)
+                                    pipeline=pipeline, models=models, style=style)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
     return {"customer_id": customer_id, "domain": name, "html": html}
 
 
@@ -922,11 +958,13 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
                                 notes: str = "", ai_perf_csv: Optional[str] = None,
                                 ai_perf_data: Optional[Dict] = None,
                                 on_progress=None, creativity: str = "balanced",
-                                pipeline: str = "single", models: Optional[dict] = None) -> Dict:
+                                pipeline: str = "single", models: Optional[dict] = None,
+                                theme_mode: str = "tbs", custom_color: Optional[str] = None,
+                                style: str = "tbs") -> Dict:
     """AI-designed Bing search deck for one verified site. Returns the HTML only —
     the file is rendered on download. `label` is the site display name (for the cover)."""
     from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, BING_STRUCTURE, UNIQUE_STYLE_BRAND)
+                                          _AI_IMG_RE, BING_STRUCTURE, _apply_theme)
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Bing Webmaster data…")
@@ -934,15 +972,18 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
                                           ai_perf_data=ai_perf_data)
     name = label or site
     brief = _bing_data_brief(context, name) + to_brief_block(notes)
+    palette = await resolve_deck_palette(theme_mode, custom_color, name)
+    brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     image_cache = {} if images else None
-    html = await generate_deck_html(brief, prompt=prompt, brand=UNIQUE_STYLE_BRAND,
+    html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=BING_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=name, creativity=creativity,
-                                    pipeline=pipeline, models=models)
+                                    pipeline=pipeline, models=models, style=style)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
     return {"site": site, "domain": name, "html": html}
 
 

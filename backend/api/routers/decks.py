@@ -118,6 +118,9 @@ async def presentation_ai_deck_from_pdf(
     creativity: str = Form("balanced"),
     pipeline: str = Form("single"),
     models: str = Form(""),
+    theme_mode: str = Form("tbs"),
+    custom_color: str = Form(""),
+    style: str = Form("tbs"),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -142,7 +145,8 @@ async def presentation_ai_deck_from_pdf(
                                               images=images and images_enabled(),
                                               notes=notes, seed=label, creativity=creativity,
                                               pipeline=pipeline, models=models_dict,
-                                              on_progress=on_progress)
+                                              theme_mode=theme_mode, custom_color=custom_color or None,
+                                              style=style, on_progress=on_progress)
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
         return {"document_id": doc_id, "slides": slides, "label": label}
 
@@ -261,6 +265,9 @@ async def presentation_ai_deck_gsc(
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
     models = _parse_models((body or {}).get("models"))
+    theme_mode = (body or {}).get("theme_mode", "tbs")
+    custom_color = (body or {}).get("custom_color")
+    style = (body or {}).get("style", "tbs")
     place_label = _domain_of(property)
 
     async def run(on_progress, set_doc_id):
@@ -269,7 +276,9 @@ async def presentation_ai_deck_gsc(
         result = await generate_ai_gsc_deck(service, property, days, provider=provider,
                                             images=images and images_enabled(),
                                             notes=notes, creativity=creativity,
-                                            pipeline=pipeline, models=models, on_progress=on_progress)
+                                            pipeline=pipeline, models=models,
+                                            theme_mode=theme_mode, custom_color=custom_color, style=style,
+                                            on_progress=on_progress)
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
@@ -311,6 +320,9 @@ async def presentation_ai_deck_bing(
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
     models = _parse_models((body or {}).get("models"))
+    theme_mode = (body or {}).get("theme_mode", "tbs")
+    custom_color = (body or {}).get("custom_color")
+    style = (body or {}).get("style", "tbs")
     ai_perf_csv = (body or {}).get("ai_performance_csv")
     # A manually uploaded CSV that doesn't parse should fail loudly, not be silently ignored.
     if ai_perf_csv:
@@ -335,7 +347,9 @@ async def presentation_ai_deck_bing(
                                              images=images and images_enabled(),
                                              notes=notes, ai_perf_csv=ai_perf_csv,
                                              ai_perf_data=ai_perf_data, creativity=creativity,
-                                             pipeline=pipeline, models=models, on_progress=on_progress)
+                                             pipeline=pipeline, models=models,
+                                            theme_mode=theme_mode, custom_color=custom_color, style=style,
+                                            on_progress=on_progress)
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
@@ -367,6 +381,9 @@ async def presentation_ai_deck_ga4(
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
     models = _parse_models((body or {}).get("models"))
+    theme_mode = (body or {}).get("theme_mode", "tbs")
+    custom_color = (body or {}).get("custom_color")
+    style = (body or {}).get("style", "tbs")
     place_label = label or _domain_of(property_id)
 
     async def run(on_progress, set_doc_id):
@@ -375,7 +392,9 @@ async def presentation_ai_deck_ga4(
         result = await generate_ai_ga4_deck(service, property_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
                                             notes=notes, creativity=creativity,
-                                            pipeline=pipeline, models=models, on_progress=on_progress)
+                                            pipeline=pipeline, models=models,
+                                            theme_mode=theme_mode, custom_color=custom_color, style=style,
+                                            on_progress=on_progress)
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
@@ -418,6 +437,9 @@ async def presentation_ai_deck_ads(
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
     models = _parse_models((body or {}).get("models"))
+    theme_mode = (body or {}).get("theme_mode", "tbs")
+    custom_color = (body or {}).get("custom_color")
+    style = (body or {}).get("style", "tbs")
     place_label = label or _domain_of(customer_id)
 
     async def run(on_progress, set_doc_id):
@@ -426,7 +448,9 @@ async def presentation_ai_deck_ads(
         result = await generate_ai_ads_deck(service, customer_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
                                             notes=notes, creativity=creativity,
-                                            pipeline=pipeline, models=models, on_progress=on_progress)
+                                            pipeline=pipeline, models=models,
+                                            theme_mode=theme_mode, custom_color=custom_color, style=style,
+                                            on_progress=on_progress)
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 

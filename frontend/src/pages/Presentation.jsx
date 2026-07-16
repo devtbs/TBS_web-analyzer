@@ -95,6 +95,9 @@ const Presentation = () => {
     const [pipeline, setPipeline] = useState('single');       // 'single' | 'layered'
     const [layerModels, setLayerModels] = useState({ planner: '', insights: '', html: '' });
     const [creativity, setCreativity] = useState('balanced');
+    const [themeMode, setThemeMode] = useState('tbs');        // 'tbs' | 'site' | 'custom' (deck colours)
+    const [customColor, setCustomColor] = useState('#3C8DD9');
+    const [style, setStyle] = useState('tbs');                // 'tbs' | 'auto' | preset letter A-L
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
     const [generating, setGenerating] = useState(false);      // transient: only while dispatching requests
@@ -368,7 +371,11 @@ const Presentation = () => {
         };
         const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
         const models = pipeline === 'layered' ? resolvedLayerModels(prov) : undefined;
-        const body = { notes, creativity, pipeline, ...(models ? { models } : {}) };
+        const body = {
+            notes, creativity, pipeline, theme_mode: themeMode, style,
+            ...(themeMode === 'custom' ? { custom_color: customColor } : {}),
+            ...(models ? { models } : {}),
+        };
         try {
             let response;
             if (mode === 'gsc') {
@@ -395,6 +402,9 @@ const Presentation = () => {
                 fd.append('notes', notes);
                 fd.append('creativity', creativity);
                 fd.append('pipeline', pipeline);
+                fd.append('theme_mode', themeMode);
+                fd.append('style', style);
+                if (themeMode === 'custom') fd.append('custom_color', customColor);
                 if (models) fd.append('models', JSON.stringify(models));
                 response = await fetch('/api/presentation/ai-deck-from-pdf', { method: 'POST', headers, body: fd });
             }
@@ -798,6 +808,43 @@ const Presentation = () => {
                         </div>
                     </div>
                 )}
+
+                {/* Deck colours: TBS house palette (default), the client's site brand, or a custom hex */}
+                <label className="block text-sm font-bold text-slate-700 mb-2">Deck colours</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                    {[['tbs', 'TBS brand'], ['site', 'Site brand'], ['custom', 'Custom']].map(([val, lbl]) => (
+                        <button key={val} type="button" onClick={() => setThemeMode(val)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${themeMode === val ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
+                            {lbl}
+                        </button>
+                    ))}
+                    {themeMode === 'custom' && (
+                        <span className="inline-flex items-center gap-2">
+                            <input type="color" value={customColor} onChange={(e) => setCustomColor(e.target.value)}
+                                className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer p-0.5" />
+                            <input type="text" value={customColor} onChange={(e) => setCustomColor(e.target.value)}
+                                className="w-24 text-xs border border-slate-300 rounded-lg px-2 py-1.5 font-mono" />
+                        </span>
+                    )}
+                </div>
+                <p className="text-xs text-slate-400 mb-6">
+                    {themeMode === 'tbs' ? 'TBS Marketing house colours (blue/green) on every deck.'
+                        : themeMode === 'site' ? "Auto-detected from the client's own website."
+                        : 'Your chosen accent colour (a second shade is derived from it).'}
+                </p>
+
+                {/* Visual style: fonts + background */}
+                <label className="block text-sm font-bold text-slate-700 mb-2">Visual style</label>
+                <select value={style} onChange={(e) => setStyle(e.target.value)} className={fieldCls + ' mb-6'}>
+                    <option value="tbs">TBS house — Poppins + Inter, clean light ground (default)</option>
+                    <option value="auto">Auto — a distinct look chosen per site</option>
+                    <option value="A">Editorial — Fraunces serif, cream</option>
+                    <option value="B">Bold Modern — Space Grotesk, mono</option>
+                    <option value="C">Clean Corporate — Archivo</option>
+                    <option value="D">Warm Premium — Playfair</option>
+                    <option value="I">Ink &amp; Gold — Libre Caslon (dark)</option>
+                    <option value="K">Coastal — Space Grotesk, sky</option>
+                </select>
 
                 {/* Generation pipeline: single-pass vs 3-layer (per-layer model choice) */}
                 <label className="block text-sm font-bold text-slate-700 mb-2">Pipeline</label>
