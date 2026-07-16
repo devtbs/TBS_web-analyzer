@@ -112,7 +112,7 @@ async def presentation_deck_download(
 @router.post("/api/presentation/ai-deck-from-pdf")
 async def presentation_ai_deck_from_pdf(
     file: UploadFile = File(...),
-    provider: str = Form("deepseek"),
+    provider: str = Form("qwen3.7-max"),
     images: bool = Form(True),
     notes: str = Form(""),
     creativity: str = Form("balanced"),
@@ -228,8 +228,8 @@ def _require_llm_key():
     from services.ai_service import AIService
     if not AIService.configured_providers():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="No LLM key configured — set at least one provider key "
-                                   "(e.g. DEEPSEEK_API_KEY, QWEN_API_KEY, GLM_API_KEY).")
+                            detail="No LLM key configured — set QWEN_API_KEY to the Alibaba Token "
+                                   "Plan seat key (it serves Qwen, GLM, DeepSeek and Kimi).")
 
 
 def _require_google_token(db, email):
@@ -246,7 +246,7 @@ def _require_google_token(db, email):
 async def presentation_ai_deck_gsc(
     property: str,
     days: int = 28,
-    provider: str = "deepseek",
+    provider: str = "qwen3.7-max",
     images: bool = True,
     body: dict = Body(default={}),
     account_id: Optional[int] = Depends(get_account_id),
@@ -293,7 +293,7 @@ async def presentation_ai_deck_bing(
     account_id: int,
     site: str,
     days: int = 28,
-    provider: str = "deepseek",
+    provider: str = "qwen3.7-max",
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),
@@ -364,7 +364,7 @@ async def presentation_ai_deck_bing(
 async def presentation_ai_deck_ga4(
     property_id: str,
     days: int = 28,
-    provider: str = "deepseek",
+    provider: str = "qwen3.7-max",
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),
@@ -410,7 +410,7 @@ async def presentation_ai_deck_ga4(
 async def presentation_ai_deck_ads(
     customer_id: str,
     days: int = 28,
-    provider: str = "deepseek",
+    provider: str = "qwen3.7-max",
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),

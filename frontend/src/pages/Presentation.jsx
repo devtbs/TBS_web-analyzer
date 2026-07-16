@@ -113,7 +113,7 @@ const Presentation = () => {
 
     // shared
     const [providers, setProviders] = useState([]);
-    const [provider, setProvider] = useState('deepseek');
+    const [provider, setProvider] = useState('qwen3.7-max');
     const [compareModels, setCompareModels] = useState([]);   // extra models to run the SAME deck on
     const [pipeline, setPipeline] = useState('single');       // 'single' | 'layered'
     const [layerModels, setLayerModels] = useState({ planner: '', insights: '', html: '' });
@@ -151,7 +151,7 @@ const Presentation = () => {
                 const res = await api.get('/api/presentation/ai-providers');
                 const list = res.data.providers || [];
                 setProviders(list);
-                if (list.length) setProvider(list.some(p => p.id === 'deepseek') ? 'deepseek' : list[0].id);
+                if (list.length) setProvider(list.some(p => p.id === 'qwen3.7-max') ? 'qwen3.7-max' : list[0].id);
             } catch {}
         })();
     }, []);
@@ -816,7 +816,7 @@ const Presentation = () => {
                     summary={`${providerLabel(provider)}${compareModels.length ? ` +${compareModels.length}` : ''} · ${pipeline === 'layered' ? '3-layer' : 'Single-pass'}`}>
                     <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
                     <select value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls + ' mb-3'}>
-                        {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
+                        {providers.length === 0 && <option value="qwen3.7-max">Qwen3.7 Max</option>}
                         {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                     {/* Compare models: run the SAME deck across extra models at once */}

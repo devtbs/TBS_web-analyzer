@@ -1454,7 +1454,7 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
 
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
-                             provider: str = "deepseek", on_progress: ProgressCb = None,
+                             provider: str = "qwen3.7-max", on_progress: ProgressCb = None,
                              image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
                              seed: Optional[str] = None, creativity: str = "balanced",
                              pipeline: str = "single", models: Optional[Dict[str, str]] = None,
@@ -2243,7 +2243,7 @@ async def generate_deck_from_pdf(
     *,
     fmt: str = "pdf",
     prompt: Optional[str] = None,
-    provider: str = "deepseek",
+    provider: str = "qwen3.7-max",
     brand: Optional[str] = None,
     structure: Optional[str] = None,
     render: bool = True,

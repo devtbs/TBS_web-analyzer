@@ -26,9 +26,7 @@ _TOKEN_PLAN_BASE = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatib
 # OpenAI-compatible providers the user can choose from. Each deck-writing model
 # is reached through the same chat-completions API, just a different base_url/model.
 AI_PROVIDERS = {
-    "deepseek": {"key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com",
-                 "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8192},
-    # All of the below are served by the Alibaba Token Plan, so the single QWEN_API_KEY (the plan's
+    # Every provider is served by the Alibaba Token Plan, so the single QWEN_API_KEY (the plan's
     # sk-sp seat key) reaches every one — Qwen, GLM, DeepSeek and Kimi alike. They are reasoning
     # models (they emit hidden reasoning_content that eats into the token budget), so they get a
     # larger per-call ceiling; the continuation loop (below) still stitches long single responses.
@@ -69,11 +67,13 @@ class AIService:
                 base_url="https://api.groq.com/openai/v1"
             )
 
-        # Initialize DeepSeek (uses OpenAI-compatible API)
-        if hasattr(settings, 'DEEPSEEK_API_KEY') and settings.DEEPSEEK_API_KEY:
+        # DeepSeek — served by the prepaid Alibaba Token Plan, NOT api.deepseek.com. The direct
+        # DeepSeek endpoint bills pay-as-you-go on its own key; the plan already includes DeepSeek,
+        # so every caller (briefs, topical map, knowledge graph, comparator) runs on the subscription.
+        if settings.QWEN_API_KEY:
             self.deepseek_client = AsyncOpenAI(
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url="https://api.deepseek.com"
+                api_key=settings.QWEN_API_KEY,
+                base_url=_TOKEN_PLAN_BASE
             )
 
         # Initialize Anthropic (Claude) — used for client-facing monthly reports,
@@ -111,7 +111,7 @@ class AIService:
         )
 
     async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
-                                    provider: str = "deepseek", on_progress: ProgressCb = None,
+                                    provider: str = "qwen3.7-max", on_progress: ProgressCb = None,
                                     on_delta: DeltaCb = None, temperature: float = 0.8) -> str:
         """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
         OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations.
@@ -139,12 +139,13 @@ class AIService:
         messages.append({"role": "user", "content": prompt})
 
         max_tokens = cfg.get("max_tokens", 8000)
-        # DashScope-hosted models (Qwen, GLM, DeepSeek-V4, Kimi) are reasoning models: left on,
+        # The Alibaba-hosted models (Qwen, GLM, DeepSeek-V4, Kimi) are reasoning models: left on,
         # they spend the ENTIRE token budget on hidden reasoning and emit no deck HTML (GLM-5.2
         # measured 410s / 53K reasoning chars / 0 content). enable_thinking=False makes them
-        # output the deck directly. The direct DeepSeek endpoint doesn't take this param, so only
-        # send it to DashScope.
-        extra_body = {"enable_thinking": False} if "dashscope" in (cfg.get("base_url") or "") else None
+        # output the deck directly. Match on "aliyuncs" so this covers BOTH the public DashScope
+        # endpoints and the Token Plan's dedicated maas.aliyuncs.com base URL — keying it to
+        # "dashscope" alone silently dropped the flag when we moved onto the plan.
+        extra_body = {"enable_thinking": False} if "aliyuncs" in (cfg.get("base_url") or "") else None
         parts: List[str] = []
         for attempt in range(_MAX_CONTINUATIONS + 1):
             content, finish_reason = await self._complete_once(
@@ -247,9 +248,9 @@ class AIService:
         try:
             # DeepSeek limit is 8192 tokens, use 8000 for safety
             safe_max_tokens = min(max_tokens, 8000)
-            
+
             response = await self.deepseek_client.chat.completions.create(
-                model="deepseek-chat",  # Main model
+                model="deepseek-v3.2",  # DeepSeek on the prepaid Token Plan (was deepseek-chat direct)
                 messages=messages,
                 temperature=0.7,
                 max_tokens=safe_max_tokens,
