@@ -56,7 +56,7 @@ The report must look like it was hand-crafted by a premium data-analytics agency
 =======================================================
 CRITICAL RULES FOR DATA ACCURACY & TONE:
 1. Use ONLY the actual data provided inside the file/text. Do NOT add fake numbers, assumptions, or estimates.
-2. If metrics dropped or declined, do NOT use negative, alarmist, or failing language. Present drops professionally as an "Optimization Opportunity," "Niche Segment to Watch," or "Strategic Content Refresh Target."
+2. REPORT DECLINES HONESTLY AND PROMINENTLY. If a metric, query, page or theme dropped, say so plainly — state the actual number and movement (e.g. "clicks 1,240 -> 980, -21%"), the likely cause, and the specific fix. Never hide, omit, bury or spin a decline into vague positivity. Keep the tone professional and calm (a senior consultant briefing a client), NOT alarmist — but the client must be able to see exactly what is going down and what you will do about it. Anything flagged in ANALYST FLAGS as AT RISK / DEFEND / PAGE DECLINE MUST appear in the deck.
 3. Follow the structural rule: One core narrative or trend = one slide. Do NOT overcrowd layout spaces with dense blocks of text.
 
 =======================================================
@@ -180,8 +180,9 @@ GOOGLE_ADS_STRUCTURE = (
     "6. Conversion Funnel Analysis — funnel visualization, drop-off points, positive conversion flow insights.\n"
     "7. Click Type Analysis — breakdown of click types, performance comparison, strongest engagement sources.\n"
     "8. Demographics Performance — age, gender, audience segments if available; highlight highest-performing demographics.\n"
-    "9. Strategic Insights & Optimization Opportunities — actionable Google Ads recommendations ONLY (scale winning campaigns, improve keyword targeting, budget allocation, audience optimization, bid strategy). Do NOT suggest website redesign unless the data supports it.\n"
-    "10. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "9. Needs Attention — What's Dropping (REQUIRED — always include this slide) — every declining metric, campaign, keyword or landing page RANKED BY IMPACT, each with its real movement (previous → current, % change), the likely cause, and the specific fix (bids, budget, targeting, creative). Calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
+    "10. Strategic Insights & Optimization Opportunities — actionable Google Ads recommendations ONLY (scale winning campaigns, improve keyword targeting, budget allocation, audience optimization, bid strategy). Do NOT suggest website redesign unless the data supports it.\n"
+    "11. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 
@@ -226,8 +227,9 @@ GSC_STRUCTURE = (
     "15. Website Audience & Engagement (OMIT this entire slide if there is no WEBSITE ANALYTICS / GA4 section in the data) — from AUDIENCE & ENGAGEMENT: a CHART-LED analytics slide using Google Analytics on-site behaviour. Show sessions, total users, new users, engagement rate, bounce rate, avg session duration and conversions with their period-over-period change as a slim KPI strip, and make the SESSIONS OVER TIME daily series the hero chart (an area/line of sessions & users, with conversions if present). This is the GA4 counterpart to the search-performance slide — clearly label it as website analytics so it's not confused with Search Console clicks.\n"
     "16. Traffic by Channel (OMIT this entire slide if there is no WEBSITE ANALYTICS / GA4 section) — from TRAFFIC BY CHANNEL: how sessions/users/conversions split across channels (organic, direct, paid, referral, social, etc.). Use a horizontal bar or donut of sessions by channel paired with a small table; highlight the strongest acquisition channels and frame conversions positively.\n"
     "17. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
-    "18. Strategic Insights & Recommendations — actionable recommendations ONLY, spanning BOTH search and (when present) website analytics: SEO content/internal-linking/CTR/title improvements, target near-page-1 queries, defend declining queries/pages, plus double-down on best-converting channels and lift engagement/conversion where the analytics support it.\n"
-    "19. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "18. Needs Attention — What's Dropping (REQUIRED — always include this slide) — the honest counterpart to the wins. Every declining query, landing page and theme, RANKED BY IMPACT, each with its real movement (previous → current, and the % or position change), the likely cause, and the specific fix. Source this from the ANALYST FLAGS in the data (AT RISK / DEFEND / PAGE DECLINE) plus the falling movers. Use a clear, readable table or ranked rows — calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
+    "19. Strategic Insights & Recommendations — actionable recommendations ONLY, spanning BOTH search and (when present) website analytics: SEO content/internal-linking/CTR/title improvements, target near-page-1 queries, defend declining queries/pages, plus double-down on best-converting channels and lift engagement/conversion where the analytics support it.\n"
+    "20. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 
@@ -241,8 +243,9 @@ GA4_STRUCTURE = (
     "5. Traffic by Channel (REQUIRED — always include this slide) — from TRAFFIC BY CHANNEL: how sessions/users/conversions split across channels (organic, direct, paid, referral, social, etc.). Use a horizontal bar or donut of sessions by channel paired with a small labelled table; highlight the strongest acquisition channels and frame conversions positively.\n"
     "6. Sessions by Device — from BY DEVICE: a donut or bar of sessions by desktop/mobile/tablet with each device's session share; note the period-over-period movement. OMIT this slide if BY DEVICE is (none).\n"
     "7. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\", \"locationmode\":\"country names\") shaded by sessions, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
-    "8. Strategic Insights & Recommendations — actionable recommendations ONLY, grounded in the analytics: double-down on best-converting channels, lift engagement/reduce bounce where the data supports it, grow the strongest audiences/geographies, and improve conversion paths.\n"
-    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "8. Needs Attention — What's Dropping (REQUIRED — always include this slide) — every declining metric, channel, device or geography RANKED BY IMPACT, each with its real movement (previous → current, % change), the likely cause, and the specific fix. Calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
+    "9. Strategic Insights & Recommendations — actionable recommendations ONLY, grounded in the analytics: double-down on best-converting channels, lift engagement/reduce bounce where the data supports it, grow the strongest audiences/geographies, and improve conversion paths.\n"
+    "10. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 
@@ -258,8 +261,9 @@ BING_STRUCTURE = (
     "5. Top Queries (REQUIRED — always include this slide) — a clean, readable TABLE of the top ~10 queries by clicks with columns Query · Clicks · Impressions · CTR · Avg position. This is a real labelled table so the boss can read exactly which keywords drive Bing traffic.\n"
     "6. Top Pages (REQUIRED — always include this slide) — a readable TABLE of the best-performing landing pages by clicks (Page · Clicks · Impressions · CTR); shorten long URLs to their path. Focus on strengths.\n"
     "7. AI Search Visibility (OMIT this ENTIRE slide if there is no AI SEARCH VISIBILITY section in the data) — the 'reporting on AI' slide: show Total AI Citations and Average Cited Pages as KPIs, make the CITATIONS OVER TIME daily series the hero chart (a Plotly filled AREA/line of citations), and call out the peak citation day. Frame it as how often this site is cited as a source in Microsoft Copilot / Bing AI-generated answers — a growing AI-search visibility signal.\n"
-    "8. Strategic Insights & Recommendations — actionable Bing-specific recommendations ONLY: grow Bing visibility, target near-page-1 Bing queries, improve CTR on high-impression queries, and (when AI data present) sustain/grow AI-citation momentum by strengthening the most-cited content. Do NOT reference Google.\n"
-    "9. Closing Slide — key takeaways, positive momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "8. Needs Attention — What's Dropping (REQUIRED — always include this slide) — every declining query, landing page or metric RANKED BY IMPACT, each with its real movement (previous → current, % change), the likely cause, and the specific fix. Calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
+    "9. Strategic Insights & Recommendations — actionable Bing-specific recommendations ONLY: grow Bing visibility, target near-page-1 Bing queries, improve CTR on high-impression queries, and (when AI data present) sustain/grow AI-citation momentum by strengthening the most-cited content. Do NOT reference Google.\n"
+    "10. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
 )
 
 
@@ -529,9 +533,10 @@ def _structure_directive(creativity: str, structure: str) -> str:
             "authoritative outline; follow it faithfully:\n\n" + themes + "\n\n"
             "SLIDE-COUNT DISCIPLINE (critical): a SEPARATE slide for every applicable item — do NOT "
             "merge items onto one slide, do NOT shorten to a generic 8-10 slide summary, and NEVER "
-            "skip an item marked REQUIRED (especially the keyword-opportunity bubble). The ONLY items "
-            "you may omit are those explicitly marked \"OMIT … if …\" whose data is absent. Expect a "
-            "rich deck of ~12-19 slides depending on which optional data is present.")
+            "skip an item marked REQUIRED (especially the keyword-opportunity bubble and the "
+            "Needs Attention / what's-dropping slide). The ONLY items you may omit are those explicitly "
+            "marked \"OMIT … if …\" whose data is absent. Expect a rich deck of ~12-20 slides depending "
+            "on which optional data is present.")
     if creativity == "creative":
         return (
             "DESIGN THIS DECK YOUR OWN WAY. The list below is a CHECKLIST OF WHAT TO COVER, not a slide "
@@ -723,35 +728,126 @@ below, produce a deck PLAN as STRICT JSON ONLY (no markdown fences, no commentar
 {structure_directive}
 
 Output JSON of EXACTLY this shape:
-{"slides":[{"n":1,"archetype":"layout-cover","title":"…","purpose":"the single idea of this slide in one line","data_refs":["which figures/sections of the data this slide uses"],"chart":"none|bar|line|combo|donut|scatter|choropleth|table"}]}
+{"slides":[{"n":1,"archetype":"layout-cover","title":"…","purpose":"the single idea of this slide in one line","data_refs":["which figures/sections of the data this slide uses"],"chart":"none|bar|line|combo|donut|scatter|choropleth|table","photo":"a vivid, specific photographic description on-theme for this site's industry, or empty string for no photo"}]}
 
 Rules:
 - Cover every item marked REQUIRED; use ONLY the provided data; never invent numbers.
 - "archetype" MUST be one of: layout-cover, layout-section, layout-kpi-strip, layout-split,
   layout-list, layout-comparison, layout-roadmap, layout-quote, layout-closing.
 - Choose a sensible slide count per the directive above; order the slides for the strongest narrative.
-- First slide is the cover; last slide is the closing.
+- First slide is the cover; last slide is the closing. The cover ALWAYS has a photo.
+
+SEMANTIC ANALYSIS (YOU decide which lens earns a slide — add the one(s) the data genuinely supports,
+and skip any that would be thin):
+- TOPIC CLUSTERS: group the queries into meaningful themes (e.g. product lines, services, locations),
+  and consider a slide showing each theme's clicks/impressions/avg position and which themes are
+  growing vs slipping.
+- SEARCH INTENT MIX: classify queries as informational / commercial / navigational / branded and
+  consider a slide on how performance splits across intent.
+- CONTENT-GAP THEMES: themes with high impressions but weak rank or CTR — where content is missing or
+  underperforming.
+Put the actual grouping you intend (the theme names and which queries belong to each) into that
+slide's "data_refs" so the copy stage can build it from the real rows.
+
+DECLINES: plan an honest "Needs Attention / what's dropping" slide whenever the data shows declines —
+never bury them. Use the ANALYST FLAGS in the DATA (AT RISK / DEFEND / PAGE DECLINE) as its source.
 
 DATA (use ONLY this):
 {data}"""
 
 _INSIGHTS_SYSTEM = "You are a senior data analyst who writes concise, grounded slide copy."
 
-_INSIGHTS_PROMPT = """Write the on-slide COPY for every slide in the deck PLAN below, grounded ONLY in the DATA.
-For EACH slide, under a heading '## Slide {n}: {title}', give:
-- a punchy headline,
-- 2–4 short bullet insights, each citing the REAL number(s) from the data,
-- ONE strategic takeaway/recommendation.
-Frame any decline positively (an optimization opportunity, not a failure). Use ONLY real numbers from
-the DATA — never invent. PRIORITISE the ANALYST FLAGS in the DATA when writing takeaways/recommendations
-(they are pre-computed, grounded insights — build the slide narrative around them). Output plain
-markdown only (NO HTML, NO chart JSON).
+# ── Per-slide markdown (one artifact per page, like the reference tool) ──────────────────────
+_SLIDE_MD_PROMPT = """Write the on-slide COPY for ONE slide of an executive deck, grounded ONLY in the DATA.
 
-DECK PLAN:
+THIS SLIDE (from the deck plan):
+{slide_json}
+
+Output plain markdown ONLY (no HTML, no chart JSON, no commentary), in EXACTLY this shape:
+KICKER: <tiny all-caps eyebrow, 2-4 words>
+HEADLINE: <one punchy line — the INSIGHT, not the metric name>
+BULLETS:
+- <short insight citing the REAL number(s) from the DATA>
+- <2-4 bullets total>
+TAKEAWAY: <ONE specific recommendation naming a real query / page / theme>
+CHART: <none | one line: chart type + EXACTLY which series/rows to plot + what each axis means>
+PHOTO: <a vivid, specific photographic description on-theme for this industry | none>
+
+Rules:
+- Use ONLY real numbers from the DATA — never invent one.
+- Lead with the takeaway; the number is evidence, not the point.
+- Report declines HONESTLY: state the real movement (previous -> current, % or position change), the
+  likely cause and the fix. Never spin a drop into vague positivity, never omit it.
+- PRIORITISE the ANALYST FLAGS in the DATA (pre-computed, grounded insights) — build this slide's
+  narrative around any that apply to it.
+- Cover ONLY this slide's purpose; the other planned slides cover the rest — do not duplicate them.
+
+DECK PLAN (context only):
 {plan}
 
 DATA (use ONLY this):
 {data}"""
+
+# ── Shared stylesheet: the consistency backbone for independently-generated slides ───────────
+_STYLESHEET_SYSTEM = "You are a senior design engineer. You output ONLY raw CSS — no HTML, no commentary."
+
+_STYLESHEET_PROMPT = """Produce the SHARED STYLESHEET for ONE presentation deck. Output ONLY raw CSS —
+no <style> tag, no markdown fences, no commentary.
+
+Every slide of this deck is written INDEPENDENTLY using ONLY these classes and tokens, so the stylesheet
+must be complete and self-sufficient. Define, exactly once:
+- An @import url(...) from fonts.googleapis.com for the display + body fonts of the assigned HOUSE STYLE.
+- Resets + page geometry:
+    @page { size: 1280px 720px; margin: 0; }
+    * { box-sizing: border-box; }
+    html,body { margin:0; padding:0; }
+    .slide { width:1280px; height:720px; position:relative; overflow:hidden; page-break-after:always; }
+- :root tokens: --bg --surface --ink --muted --accent --accent-2 --line --font-display --font-body
+  (take the ground/surface/ink/fonts from the assigned HOUSE STYLE below).
+- The type scale (display 64-96px, h2 34-44px, .kpi-num 40-56px, body 18-20px, caption 13-14px) and an
+  8px spacing rhythm, applied via the component classes.
+- Shared components: .eyebrow .kpi .kpi-num .kpi-label .card .chip .pageno
+- EVERY layout archetype as a class that makes its slide a FULL-HEIGHT 720px composition (no empty
+  bands): .layout-cover .layout-section .layout-kpi-strip .layout-split .layout-list .layout-comparison
+  .layout-roadmap .layout-quote .layout-closing — each following its structure in the DESIGN SYSTEM.
+- .ai-img sizing helpers and a .photo-overlay gradient utility for text over photos.
+Make it genuinely designed — editorial, confident, generous whitespace — not a generic template."""
+
+_SLIDE_HTML_SYSTEM = ("You are an award-winning presentation designer. You output ONE slide of clean, "
+                      "self-contained HTML and nothing else.")
+
+_SLIDE_ICON_NAMES = ("trending-up, trending-down, target, search, eye, mouse-pointer-click, users, globe, "
+                     "bar-chart, line-chart, pie-chart, activity, arrow-up-right, arrow-down-right, "
+                     "check-circle, alert-triangle, lightbulb, rocket, star, award, flag, calendar, clock, "
+                     "map-pin, link, file-text, layers, filter, zap, dollar-sign, percent, shopping-cart, "
+                     "smartphone, monitor, thumbs-up, refresh-cw, compass, megaphone, sparkles, gauge")
+
+_SLIDE_HTML_PROMPT = """Render ONE slide of a presentation as HTML. Output EXACTLY ONE
+<section class="slide {archetype}"> ... </section> and NOTHING ELSE — no markdown fences, no <html>,
+no <head>, no <style> tag, no commentary.
+
+SLIDE COPY (use this content; refine wording lightly, NEVER invent or change a number):
+{md}
+
+This is slide {n} of {total}; archetype: {archetype}. Put "{index_label}" in the .pageno element.
+
+RULES:
+- Use ONLY the shared stylesheet's tokens/classes (below). Do NOT emit a <style> tag and do NOT invent or
+  redefine classes. Inline style="..." is allowed ONLY for per-slide geometry (grid/flex sizing, chart box
+  dimensions, photo positioning).
+- FILL the entire 1280x720 canvas — a balanced, full-height composition with no empty band.
+- CHART: if the copy specifies one, output a sized container
+  <div id="chart{n}" style="width:...;height:..."></div> immediately followed by
+  <script type="application/json" class="plotly-spec" data-target="chart{n}">{"data":[...],"layout":{...}}</script>
+  with STRICTLY valid JSON. Style it with the palette (accent = primary series, accent-2 = secondary),
+  transparent paper/plot bg, few gridlines. NEVER print chart JSON as visible text.
+- ICONS: <i class="ai-icon" data-icon="NAME"></i> — allowed NAMEs ONLY: {icons}
+- {photo_rule}
+
+{art_direction}
+
+SHARED STYLESHEET (already in the document — these classes/tokens exist; use them):
+{shared_css}"""
 
 
 def _extract_json(text: str) -> Optional[dict]:
@@ -794,80 +890,156 @@ async def _call_llm(full_prompt: str, *, system_prompt: str, provider: str,
             on_progress=on_progress, temperature=temperature)
 
 
-def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str, *,
-                               brand: Optional[str], seed: Optional[str],
-                               variant_seed: Optional[str] = None, with_photos: bool = True,
-                               style: Optional[str] = "tbs") -> str:
-    """Stage-C prompt: render the finalized PLAN + COPY into HTML. Shares the exact rendering
-    contract / design system / theme / seed / exemplar tail as build_prompt so a layered deck
-    meets the same quality bar as a single-pass one."""
-    photo_rule = (
-        "PHOTOS ARE REQUIRED (the plan does NOT list them — YOU must add them per the HTML OUTPUT "
-        "CONTRACT): ALWAYS give the cover a full-bleed hero <img class=\"ai-img\" data-prompt=\"…\"> "
-        "with a dark gradient overlay, and use ai-img photos as full-bleed backgrounds or side panels "
-        "on MOST content slides (keep chart/table areas on a clean solid ground). Never output a deck "
-        "with no photos.\n"
-        if with_photos else
-        # Photos are toggled OFF for this deck — do NOT emit ai-img placeholders; rely on colour
-        # fields, type and charts so there are no empty image gaps.
-        "NO PHOTOS: do NOT use any <img class=\"ai-img\"> placeholders — build every slide from colour "
-        "fields, typography, charts and icons only (an image-free deck).\n"
-    )
-    head = (
-        "You are an elite editorial presentation designer. Render the deck defined by the PLAN and "
-        "COPY below into ONE complete, self-contained HTML document: ONE <section class=\"slide\"> per "
-        "planned slide, IN ORDER, each carrying its planned archetype class and expressing its copy. "
-        "Design it like a high-end magazine/poster system (see DESIGN SYSTEM), not a generic template.\n"
-        + (brand or UNIQUE_STYLE_BRAND) + "\n\n"
-        "CRITICAL OUTPUT RULE: emit each slide as FINAL RENDERED HTML only — never print the plan, "
-        "\"Slide X:\" headings, layout notes or chart JSON as visible text; translate all of it into "
-        "the HTML/CSS and the hidden chart script. Use ONLY the real numbers from the DATA.\n"
-        + photo_rule + "\n"
-        "DECK PLAN (authoritative slide list + archetypes):\n" + plan_json + "\n\n"
-        "SLIDE COPY (headlines, grounded insights, takeaways — use these, refine lightly):\n" + insights_md + "\n\n"
-        "DATA (authoritative source of every number):\n" + data_brief
-    )
-    parts = [head, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
-    parts.append(_style_directive(style, seed))
-    parts.append(_variant_directive(variant_seed or seed or ""))
-    parts.append(DESIGN_EXEMPLARS)
-    return "\n\n".join(parts)
+def _clean_css(text: str) -> str:
+    """Strip fences / stray <style> wrappers from the stylesheet stage's reply."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t
+        if t.endswith("```"):
+            t = t[: t.rfind("```")]
+    t = re.sub(r"</?style[^>]*>", "", t, flags=re.IGNORECASE)
+    return t.strip()
 
 
-async def _generate_layered(data_brief: str, *, brand: Optional[str], structure: Optional[str],
-                            seed: Optional[str], creativity: str,
-                            planner: str, insights_provider: str, html_provider: str,
-                            temperature: float, on_progress: ProgressCb, on_delta,
-                            variant_seed: Optional[str] = None, with_photos: bool = True,
-                            style: Optional[str] = "tbs") -> str:
-    """Run plan → insights → HTML and return the raw HTML string (pre-validation). Each stage
-    uses its own provider. Raises on plan-parse failure so the caller can fall back to single-pass."""
+_SECTION_RE = re.compile(r"<section\b.*</section>", re.IGNORECASE | re.DOTALL)
+
+
+def _clean_slide(text: str) -> str:
+    """Extract exactly the <section>…</section> a per-slide call should have returned."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.split("\n", 1)[1] if "\n" in t else t
+        if t.endswith("```"):
+            t = t[: t.rfind("```")]
+    m = _SECTION_RE.search(t)
+    return m.group(0).strip() if m else ""
+
+
+def _fallback_slide(md: str, archetype: str, n: int, total: int) -> str:
+    """A minimal but valid slide built from the markdown, used when ONE slide's HTML call fails —
+    the deck still ships rather than the whole generation dying on a single page."""
+    import html as _h
+    lines = [l.strip() for l in (md or "").splitlines() if l.strip()][:12]
+    body = "<br>".join(_h.escape(l) for l in lines) or "&nbsp;"
+    return (f'<section class="slide {archetype}">\n'
+            f'  <div style="display:flex;flex-direction:column;justify-content:center;height:720px;padding:56px 72px">'
+            f'{body}</div>\n'
+            f'  <div class="pageno">{n:02d} / {total:02d}</div>\n</section>')
+
+
+def _assemble_deck(shared_css: str, slides_html: List[str]) -> str:
+    """Wrap the independently-generated slides in ONE document with the shared stylesheet, so the
+    existing render/validate/theme path downstream sees a normal self-contained deck."""
+    body = "\n".join(s for s in slides_html if s and s.strip())
+    return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Report</title>\n'
+            "<style>\n" + shared_css + "\n</style>\n</head>\n<body>\n" + body + "\n</body>\n</html>")
+
+
+# How many per-slide calls may be in flight at once (DashScope rate limits + the shared event loop).
+_SLIDE_CONCURRENCY = 3
+
+
+async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structure: Optional[str],
+                              seed: Optional[str], creativity: str,
+                              planner: str, insights_provider: str, html_provider: str,
+                              temperature: float, on_progress: ProgressCb, on_delta,
+                              variant_seed: Optional[str] = None, with_photos: bool = True,
+                              style: Optional[str] = "tbs"):
+    """Per-slide pipeline: plan → shared stylesheet → per-slide markdown → per-slide HTML → assemble.
+
+    Each slide gets its own call (and so its own full token budget + the model's full attention),
+    which is what fixes composition — one call writing 15 slides rations both. The shared stylesheet
+    is the consistency backbone: slides are written independently but may only use ITS classes/tokens.
+    Returns (html_document, slides_md, slides_html). Raises on plan failure so the caller can fall
+    back to single-pass."""
+    import json
     directive = _structure_directive(creativity, structure or DEFAULT_STRUCTURE)
+
+    # ── Stage 1: plan ──
     if on_progress:
         await on_progress("Planning slides…")
     plan_raw = await _call_llm(
         _PLAN_PROMPT.replace("{structure_directive}", directive).replace("{data}", data_brief),
-        system_prompt=_PLAN_SYSTEM, provider=planner, on_progress=on_progress, temperature=0.5)
+        system_prompt=_PLAN_SYSTEM, provider=planner, on_progress=None, temperature=0.5)
     plan = _extract_json(plan_raw)
-    if not plan or not isinstance(plan.get("slides"), list) or not plan["slides"]:
+    slides = (plan or {}).get("slides")
+    if not isinstance(slides, list) or not slides:
         raise ValueError("planner did not return a usable slide plan")
-    import json
     plan_json = json.dumps(plan, ensure_ascii=False, indent=1)
+    total = len(slides)
 
+    # ── Stage 2: shared stylesheet (the consistency backbone) ──
     if on_progress:
-        await on_progress("Writing insights…")
-    insights_md = await _call_llm(
-        _INSIGHTS_PROMPT.replace("{plan}", plan_json).replace("{data}", data_brief),
-        system_prompt=_INSIGHTS_SYSTEM, provider=insights_provider,
-        on_progress=on_progress, temperature=0.6)
+        await on_progress("Designing the system…")
+    art = _variant_directive(variant_seed or seed or "")
+    css_prompt = "\n\n".join([_STYLESHEET_PROMPT, DESIGN_SYSTEM, THEME_PRESETS,
+                              _style_directive(style, seed), art,
+                              (brand or "")])
+    shared_css = _clean_css(await _call_llm(css_prompt, system_prompt=_STYLESHEET_SYSTEM,
+                                            provider=html_provider, on_progress=None, temperature=0.5))
 
-    if on_progress:
-        await on_progress("Designing the deck…")
-    full_prompt = _build_layered_html_prompt(plan_json, insights_md, data_brief,
-                                             brand=brand, seed=seed, variant_seed=variant_seed,
-                                             with_photos=with_photos, style=style)
-    return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=html_provider,
-                           on_progress=on_progress, temperature=temperature, on_delta=on_delta)
+    sem = asyncio.Semaphore(_SLIDE_CONCURRENCY)
+
+    # ── Stage 3: per-slide markdown ──
+    written = {"n": 0}
+
+    async def _md(slide: dict) -> str:
+        async with sem:
+            try:
+                out = await _call_llm(
+                    _SLIDE_MD_PROMPT.replace("{slide_json}", json.dumps(slide, ensure_ascii=False))
+                    .replace("{plan}", plan_json).replace("{data}", data_brief),
+                    system_prompt=_INSIGHTS_SYSTEM, provider=insights_provider,
+                    on_progress=None, temperature=0.6)
+            except Exception:
+                logger.exception("slide md failed (n=%s) — using the plan entry as copy", slide.get("n"))
+                out = f"HEADLINE: {slide.get('title','')}\nTAKEAWAY: {slide.get('purpose','')}"
+            written["n"] += 1
+            if on_progress:
+                await on_progress(f"Writing slide {written['n']}/{total}…")
+            return (out or "").strip()
+
+    mds = list(await asyncio.gather(*[_md(s) for s in slides]))
+
+    # ── Stage 4: per-slide HTML ──
+    built = {"n": 0}
+    photo_rule = (
+        'PHOTO: if the copy names one, add <img class="ai-img" data-prompt="<that description>"> '
+        '(no src — the system fills it) sized/positioned with inline CSS; put a dark gradient overlay '
+        'under any text on top of it. The cover MUST have a full-bleed hero photo.'
+        if with_photos else
+        'PHOTO: do NOT use any <img class="ai-img"> — build this slide from colour fields, typography, '
+        'charts and icons only.'
+    )
+
+    async def _html(slide: dict, md: str, idx: int) -> str:
+        archetype = slide.get("archetype") or "layout-split"
+        n = idx + 1
+        async with sem:
+            try:
+                prompt_txt = (_SLIDE_HTML_PROMPT
+                              .replace("{md}", md)
+                              .replace("{archetype}", archetype)
+                              .replace("{index_label}", f"{n:02d} / {total:02d}")
+                              .replace("{n}", str(n)).replace("{total}", str(total))
+                              .replace("{icons}", _SLIDE_ICON_NAMES)
+                              .replace("{photo_rule}", photo_rule)
+                              .replace("{art_direction}", art)
+                              .replace("{shared_css}", shared_css))
+                raw = await _call_llm(prompt_txt, system_prompt=_SLIDE_HTML_SYSTEM,
+                                      provider=html_provider, on_progress=None,
+                                      temperature=temperature, on_delta=on_delta)
+                out = _clean_slide(raw) or _fallback_slide(md, archetype, n, total)
+            except Exception:
+                logger.exception("slide html failed (n=%s) — using a fallback slide", n)
+                out = _fallback_slide(md, archetype, n, total)
+            built["n"] += 1
+            if on_progress:
+                await on_progress(f"Building slide {built['n']}/{total}…")
+            return out
+
+    htmls = list(await asyncio.gather(*[_html(s, m, i) for i, (s, m) in enumerate(zip(slides, mds))]))
+    return _assemble_deck(shared_css, htmls), mds, htmls
 
 
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
@@ -876,8 +1048,12 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
                              seed: Optional[str] = None, creativity: str = "balanced",
                              pipeline: str = "single", models: Optional[Dict[str, str]] = None,
-                             style: Optional[str] = "tbs") -> str:
+                             style: Optional[str] = "tbs",
+                             artifacts: Optional[Dict] = None) -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
+
+    `artifacts`, when given, is filled with the per-slide {slides_md, slides_html} produced by the
+    per-slide pipeline so the caller can persist one artifact per page.
 
     Runs one cheap (no-browser) validation pass; if it finds structural, Plotly-spec,
     or ungrounded-number problems, makes a single targeted repair call. Always returns
@@ -916,15 +1092,20 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
 
     if pipeline == "layered":
         try:
-            raw = await _generate_layered(
+            raw, slides_md, slides_html = await _generate_per_slide(
                 data_brief, brand=brand, structure=structure, seed=seed, creativity=creativity,
                 planner=models.get("planner") or provider,
                 insights_provider=models.get("insights") or provider,
                 html_provider=html_provider, temperature=temperature,
                 on_progress=on_progress, on_delta=on_delta, variant_seed=variant_seed,
                 with_photos=photos_on, style=style)
+            # Hand the per-page artifacts back to the caller so they can be stored on the Document
+            # (one .md + one .html per slide, inspectable after the fact).
+            if artifacts is not None:
+                artifacts["slides_md"] = slides_md
+                artifacts["slides_html"] = slides_html
         except Exception:
-            logger.exception("layered pipeline failed — falling back to single-pass")
+            logger.exception("per-slide pipeline failed — falling back to single-pass")
             raw = await _single_pass()
     else:
         raw = await _single_pass()
@@ -1685,6 +1866,7 @@ async def generate_deck_from_pdf(
     )
     # Shared cache overlaps image generation with the streamed slide-writing.
     image_cache = {} if images else None
+    artifacts = {}   # filled with per-slide md/html by the per-slide pipeline
     html = await generate_deck_html(
         data_text,
         prompt=prompt,
@@ -1698,10 +1880,12 @@ async def generate_deck_from_pdf(
         pipeline=pipeline,
         models=models,
         style=style,
+        artifacts=artifacts,
     )
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
     html = _apply_theme(html, palette["accent"], palette["accent2"])
     file_bytes = await render_deck(html, fmt=fmt) if render else None
-    return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes}
+    return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes,
+            "artifacts": artifacts}

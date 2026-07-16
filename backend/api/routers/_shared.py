@@ -233,9 +233,10 @@ def _update_deck_content(doc_id: str, **fields) -> None:
         db.commit()
 
 
-def _finalize_deck_document(doc_id: str, *, html: str) -> None:
-    """Mark a placeholder deck row done and store its final HTML."""
-    _update_deck_content(doc_id, status="done", html=html, error=None)
+def _finalize_deck_document(doc_id: str, *, html: str, artifacts: Optional[dict] = None) -> None:
+    """Mark a placeholder deck row done and store its final HTML, plus any per-slide artifacts
+    (slides_md / slides_html from the per-slide pipeline) so each page stays inspectable."""
+    _update_deck_content(doc_id, status="done", html=html, error=None, **(artifacts or {}))
 
 
 def _fail_deck_document(doc_id: str, *, error: str) -> None:

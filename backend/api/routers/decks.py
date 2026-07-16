@@ -147,7 +147,8 @@ async def presentation_ai_deck_from_pdf(
                                               pipeline=pipeline, models=models_dict,
                                               theme_mode=theme_mode, custom_color=custom_color or None,
                                               style=style, on_progress=on_progress)
-        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                              artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": label}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
@@ -172,12 +173,12 @@ async def presentation_deck_job(job_id: str, current_user: UserInfo = Depends(ge
     return _deck_job_public(job)
 
 
-async def _finalize_and_preview(doc_id: str, html: str, on_progress) -> list:
+async def _finalize_and_preview(doc_id: str, html: str, on_progress, artifacts: dict = None) -> list:
     """Save the finished deck HTML to its Document row first (so it's valid/downloadable even
     if preview rendering hiccups), then render preview images. A preview-render failure is
     non-fatal: the deck is already saved, so return an empty carousel rather than failing the job."""
     from services.ai_deck_service import render_slide_images
-    _finalize_deck_document(doc_id, html=html)
+    _finalize_deck_document(doc_id, html=html, artifacts=artifacts)
     try:
         imgs = await render_slide_images(html, on_progress=on_progress)
         slides = _slides_payload(imgs)
@@ -279,7 +280,8 @@ async def presentation_ai_deck_gsc(
                                             pipeline=pipeline, models=models,
                                             theme_mode=theme_mode, custom_color=custom_color, style=style,
                                             on_progress=on_progress)
-        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                              artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
@@ -350,7 +352,8 @@ async def presentation_ai_deck_bing(
                                              pipeline=pipeline, models=models,
                                             theme_mode=theme_mode, custom_color=custom_color, style=style,
                                             on_progress=on_progress)
-        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                              artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
@@ -395,7 +398,8 @@ async def presentation_ai_deck_ga4(
                                             pipeline=pipeline, models=models,
                                             theme_mode=theme_mode, custom_color=custom_color, style=style,
                                             on_progress=on_progress)
-        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                              artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
@@ -451,7 +455,8 @@ async def presentation_ai_deck_ads(
                                             pipeline=pipeline, models=models,
                                             theme_mode=theme_mode, custom_color=custom_color, style=style,
                                             on_progress=on_progress)
-        slides = await _finalize_and_preview(doc_id, result["html"], on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                              artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),

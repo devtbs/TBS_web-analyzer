@@ -548,7 +548,7 @@ TOP COUNTRIES (by clicks):
 GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-countries bar). {geo_note}
 {geo_lines}{ga4_block}{analyst_block}
 
-Use only these numbers. Positive but honest framing; declines = opportunities."""
+Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with its real number and movement, the likely cause, and the specific fix. Professional and calm, never alarmist, but never hidden or spun."""
 
 
 def _brand_accent_directive(accent: str, accent2: str) -> str:
@@ -615,11 +615,13 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
     # Shared cache lets image generation start (during the streamed write) and finish
     # concurrently with slide-writing instead of serially afterward.
     image_cache = {} if images else None
+    artifacts = {}   # filled with per-slide md/html by the per-slide pipeline
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GSC_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=context["domain"], creativity=creativity,
-                                    pipeline=pipeline, models=models, style=style)
+                                    pipeline=pipeline, models=models, style=style,
+                                    artifacts=artifacts)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
@@ -629,6 +631,7 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
         "property_url": property_url,
         "domain": context["domain"],
         "html": html,
+        "artifacts": artifacts,
     }
 
 
@@ -693,7 +696,7 @@ GEOGRAPHY — SESSIONS BY COUNTRY (use for a choropleth world map + a top-countr
 Country values are full English names — render a Plotly choropleth with "locationmode":"country names", shaded by sessions.
 {geo_lines}
 
-Use only these numbers. Positive but honest framing; declines = opportunities."""
+Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with its real number and movement, the likely cause, and the specific fix. Professional and calm, never alarmist, but never hidden or spun."""
 
 
 async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
@@ -717,16 +720,18 @@ async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
     palette = await resolve_deck_palette(theme_mode, custom_color, name)
     brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     image_cache = {} if images else None
+    artifacts = {}   # filled with per-slide md/html by the per-slide pipeline
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GA4_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=name, creativity=creativity,
-                                    pipeline=pipeline, models=models, style=style)
+                                    pipeline=pipeline, models=models, style=style,
+                                    artifacts=artifacts)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
     html = _apply_theme(html, palette["accent"], palette["accent2"])
-    return {"property_id": property_id, "domain": name, "html": html}
+    return {"property_id": property_id, "domain": name, "html": html, "artifacts": artifacts}
 
 
 # ============================================================================
@@ -813,7 +818,7 @@ PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
 TOP CAMPAIGNS (by cost):
 {campaign_lines}
 
-Use only these numbers. Positive but honest framing; declines = opportunities."""
+Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with its real number and movement, the likely cause, and the specific fix. Professional and calm, never alarmist, but never hidden or spun."""
 
 
 async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
@@ -837,16 +842,18 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
     palette = await resolve_deck_palette(theme_mode, custom_color, name)
     brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     image_cache = {} if images else None
+    artifacts = {}   # filled with per-slide md/html by the per-slide pipeline
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GOOGLE_ADS_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=name, creativity=creativity,
-                                    pipeline=pipeline, models=models, style=style)
+                                    pipeline=pipeline, models=models, style=style,
+                                    artifacts=artifacts)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
     html = _apply_theme(html, palette["accent"], palette["accent2"])
-    return {"customer_id": customer_id, "domain": name, "html": html}
+    return {"customer_id": customer_id, "domain": name, "html": html, "artifacts": artifacts}
 
 
 async def assemble_bing_context(access_token: str, site: str, days: int = 28,
@@ -958,7 +965,9 @@ use for a table showing which AI queries the site wins, with intent/topic/citati
 {gq_lines}
 """
 
-    brief += "\nUse only these numbers. Positive but honest framing; declines = opportunities."
+    brief += ("\nUse only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with "
+              "its real number and movement, the likely cause, and the specific fix. Professional and calm, "
+              "never alarmist, but never hidden or spun.")
     return brief
 
 
@@ -985,16 +994,18 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
     palette = await resolve_deck_palette(theme_mode, custom_color, name)
     brand = _brand_accent_directive(palette["accent"], palette["accent2"])
     image_cache = {} if images else None
+    artifacts = {}   # filled with per-slide md/html by the per-slide pipeline
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=BING_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=name, creativity=creativity,
-                                    pipeline=pipeline, models=models, style=style)
+                                    pipeline=pipeline, models=models, style=style,
+                                    artifacts=artifacts)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
     html = _apply_theme(html, palette["accent"], palette["accent2"])
-    return {"site": site, "domain": name, "html": html}
+    return {"site": site, "domain": name, "html": html, "artifacts": artifacts}
 
 
 async def generate_monthly_report(site_id: int, days: int = 30) -> Dict:

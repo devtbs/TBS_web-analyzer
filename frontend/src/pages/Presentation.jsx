@@ -1,9 +1,32 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+
+/* Friendly names for the visual-style presets (kept next to the <select> options). */
+const STYLE_LABELS = {
+    tbs: 'TBS house', auto: 'Auto', A: 'Editorial', B: 'Bold Modern',
+    C: 'Clean Corporate', D: 'Warm Premium', I: 'Ink & Gold', K: 'Coastal',
+};
+
+/* A collapsible options group. Collapsed it shows a one-line summary of its current values, so the
+   form reads at a glance instead of as a wall of inputs. Defined at module level so toggling it
+   doesn't remount its children (which would blur inputs mid-typing). */
+const Section = ({ title, summary, open, onToggle, children }) => (
+    <div className="border border-slate-200 rounded-xl mb-3 overflow-hidden">
+        <button type="button" onClick={onToggle}
+            className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+            <span className="text-sm font-bold text-slate-700 flex-shrink-0">{title}</span>
+            <span className="flex items-center gap-2 min-w-0">
+                {!open && <span className="text-xs text-slate-400 truncate">{summary}</span>}
+                <ChevronDownIcon className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </span>
+        </button>
+        {open && <div className="px-4 pb-4 pt-3 border-t border-slate-100">{children}</div>}
+    </div>
+);
 
 /* Flatten the grouped /all response into a single list, tagging each item with
    the Google account it belongs to. */
@@ -98,6 +121,8 @@ const Presentation = () => {
     const [themeMode, setThemeMode] = useState('tbs');        // 'tbs' | 'site' | 'custom' (deck colours)
     const [customColor, setCustomColor] = useState('#3C8DD9');
     const [style, setStyle] = useState('tbs');                // 'tbs' | 'auto' | preset letter A-L
+    // Options groups start collapsed — the defaults are shown as a summary on each header.
+    const [openSec, setOpenSec] = useState({ ai: false, design: false, notes: false });
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
     const [generating, setGenerating] = useState(false);      // transient: only while dispatching requests
@@ -480,7 +505,7 @@ const Presentation = () => {
     const fieldCls = 'w-full border border-slate-300 rounded-xl px-4 py-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#26397A]/40 bg-white';
 
     return (
-        <div className="p-6 md:p-10 max-w-3xl mx-auto">
+        <div className="p-6 md:p-10 max-w-4xl mx-auto">
             <div className="flex items-center gap-3 mb-2">
                 <div className="w-11 h-11 rounded-xl bg-[#26397A] flex items-center justify-center">
                     <PresentationChartLineIcon className="w-6 h-6 text-white" />
@@ -494,7 +519,7 @@ const Presentation = () => {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
-                <div className="grid grid-cols-3 gap-3 mb-6">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-6">
                     {[['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['bing', 'Bing'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
                             className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
@@ -784,125 +809,147 @@ const Presentation = () => {
                     </>
                 )}
 
-                <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
-                <select value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls + ' mb-3'}>
-                    {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
-                    {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                </select>
 
-                {/* Compare models: run the SAME deck across extra models at once */}
-                {providers.length > 1 && (
-                    <div className="mb-6">
-                        <label className="block text-xs font-bold text-slate-500 mb-2">Also generate with (compare) <span className="font-normal text-slate-400">— runs the same deck on each, in parallel</span></label>
-                        <div className="flex flex-wrap gap-2">
-                            {providers.filter(p => p.id !== provider).map((p) => {
-                                const on = compareModels.includes(p.id);
-                                return (
-                                    <button key={p.id} type="button"
-                                        onClick={() => setCompareModels(cm => on ? cm.filter(x => x !== p.id) : [...cm, p.id])}
-                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${on ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
-                                        {on ? '✓ ' : '+ '}{p.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* Deck colours: TBS house palette (default), the client's site brand, or a custom hex */}
-                <label className="block text-sm font-bold text-slate-700 mb-2">Deck colours</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                    {[['tbs', 'TBS brand'], ['site', 'Site brand'], ['custom', 'Custom']].map(([val, lbl]) => (
-                        <button key={val} type="button" onClick={() => setThemeMode(val)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${themeMode === val ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
-                            {lbl}
-                        </button>
-                    ))}
-                    {themeMode === 'custom' && (
-                        <span className="inline-flex items-center gap-2">
-                            <input type="color" value={customColor} onChange={(e) => setCustomColor(e.target.value)}
-                                className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer p-0.5" />
-                            <input type="text" value={customColor} onChange={(e) => setCustomColor(e.target.value)}
-                                className="w-24 text-xs border border-slate-300 rounded-lg px-2 py-1.5 font-mono" />
-                        </span>
-                    )}
-                </div>
-                <p className="text-xs text-slate-400 mb-6">
-                    {themeMode === 'tbs' ? 'TBS Marketing house colours (blue/green) on every deck.'
-                        : themeMode === 'site' ? "Auto-detected from the client's own website."
-                        : 'Your chosen accent colour (a second shade is derived from it).'}
-                </p>
-
-                {/* Visual style: fonts + background */}
-                <label className="block text-sm font-bold text-slate-700 mb-2">Visual style</label>
-                <select value={style} onChange={(e) => setStyle(e.target.value)} className={fieldCls + ' mb-6'}>
-                    <option value="tbs">TBS house — Poppins + Inter, clean light ground (default)</option>
-                    <option value="auto">Auto — a distinct look chosen per site</option>
-                    <option value="A">Editorial — Fraunces serif, cream</option>
-                    <option value="B">Bold Modern — Space Grotesk, mono</option>
-                    <option value="C">Clean Corporate — Archivo</option>
-                    <option value="D">Warm Premium — Playfair</option>
-                    <option value="I">Ink &amp; Gold — Libre Caslon (dark)</option>
-                    <option value="K">Coastal — Space Grotesk, sky</option>
-                </select>
-
-                {/* Generation pipeline: single-pass vs 3-layer (per-layer model choice) */}
-                <label className="block text-sm font-bold text-slate-700 mb-2">Pipeline</label>
-                <select value={pipeline} onChange={(e) => setPipeline(e.target.value)} className={fieldCls + ' mb-2'}>
-                    <option value="single">Single-pass — one model writes the whole deck (fast)</option>
-                    <option value="layered">3-layer — plan → insights → design (slower, higher quality)</option>
-                </select>
-                {pipeline === 'layered' ? (
-                    <div className="mb-6 mt-2 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                        <p className="text-xs text-slate-400">Pick a model per layer (blank = the AI model above). 3× the calls, so notably slower.</p>
-                        {[['planner', 'Planner (deck outline)'], ['insights', 'Insights (slide copy)'], ['html', 'Design (HTML)']].map(([key, lbl]) => (
-                            <div key={key} className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-slate-500 w-40 flex-shrink-0">{lbl}</span>
-                                <select value={layerModels[key]} onChange={(e) => setLayerModels(m => ({ ...m, [key]: e.target.value }))}
-                                    className="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
-                                    <option value="">Same as AI model ({providerLabel(provider)})</option>
-                                    {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                                </select>
+                {/* ── AI ── model, compare, pipeline ── */}
+                <Section title="AI model & pipeline" open={openSec.ai}
+                    onToggle={() => setOpenSec(o => ({ ...o, ai: !o.ai }))}
+                    summary={`${providerLabel(provider)}${compareModels.length ? ` +${compareModels.length}` : ''} · ${pipeline === 'layered' ? '3-layer' : 'Single-pass'}`}>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
+                    <select value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls + ' mb-3'}>
+                        {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
+                        {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                    {/* Compare models: run the SAME deck across extra models at once */}
+                    {providers.length > 1 && (
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-slate-500 mb-2">Also generate with (compare) <span className="font-normal text-slate-400">— runs the same deck on each, in parallel</span></label>
+                            <div className="flex flex-wrap gap-2">
+                                {providers.filter(p => p.id !== provider).map((p) => {
+                                    const on = compareModels.includes(p.id);
+                                    return (
+                                        <button key={p.id} type="button"
+                                            onClick={() => setCompareModels(cm => on ? cm.filter(x => x !== p.id) : [...cm, p.id])}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${on ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
+                                            {on ? '✓ ' : '+ '}{p.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
+                        </div>
+                    )}
+                    {/* Generation pipeline: single-pass vs 3-layer (per-layer model choice) */}
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Pipeline</label>
+                    <select value={pipeline} onChange={(e) => setPipeline(e.target.value)} className={fieldCls + ' mb-2'}>
+                        <option value="single">Single-pass — one model writes the whole deck (fast)</option>
+                        <option value="layered">3-layer — plan → per-slide copy → per-slide design (slower, best layout)</option>
+                    </select>
+                    {pipeline === 'layered' ? (
+                        <div className="mb-6 mt-2 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                            <p className="text-xs text-slate-400">Pick a model per layer (blank = the AI model above). 3× the calls, so notably slower.</p>
+                            {[['planner', 'Planner (deck outline)'], ['insights', 'Insights (slide copy)'], ['html', 'Design (HTML)']].map(([key, lbl]) => (
+                                <div key={key} className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-slate-500 w-40 flex-shrink-0">{lbl}</span>
+                                    <select value={layerModels[key]} onChange={(e) => setLayerModels(m => ({ ...m, [key]: e.target.value }))}
+                                        className="flex-1 text-xs border border-slate-300 rounded-lg px-2 py-1.5">
+                                        <option value="">Same as AI model ({providerLabel(provider)})</option>
+                                        {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                                    </select>
+                                </div>
+                            ))}
+                        </div>
+                    ) : <div className="mb-6" />}
+                </Section>
+
+                {/* ── Design ── colours, style, freedom, photos ── */}
+                <Section title="Design" open={openSec.design}
+                    onToggle={() => setOpenSec(o => ({ ...o, design: !o.design }))}
+                    summary={`${themeMode === 'tbs' ? 'TBS brand' : themeMode === 'site' ? 'Site brand' : 'Custom'} · ${STYLE_LABELS[style] || 'Custom'} · ${creativity[0].toUpperCase() + creativity.slice(1)} · Photos ${useImages ? 'on' : 'off'}`}>
+                    {/* Deck colours: TBS house palette (default), the client's site brand, or a custom hex */}
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Deck colours</label>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                        {[['tbs', 'TBS brand', ['#3C8DD9', '#79B84B']], ['site', 'Site brand', null], ['custom', 'Custom', [customColor]]].map(([val, lbl, swatch]) => (
+                            <button key={val} type="button" onClick={() => setThemeMode(val)}
+                                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${themeMode === val ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
+                                {swatch && (
+                                    <span className="flex -space-x-1">
+                                        {swatch.map((c) => (
+                                            <span key={c} className="w-3 h-3 rounded-full border border-white/70" style={{ background: c }} />
+                                        ))}
+                                    </span>
+                                )}
+                                {lbl}
+                            </button>
                         ))}
+                        {themeMode === 'custom' && (
+                            <span className="inline-flex items-center gap-2">
+                                <input type="color" value={customColor} onChange={(e) => setCustomColor(e.target.value)}
+                                    className="w-9 h-9 rounded-lg border border-slate-300 cursor-pointer p-0.5" />
+                                <input type="text" value={customColor} onChange={(e) => setCustomColor(e.target.value)}
+                                    className="w-24 text-xs border border-slate-300 rounded-lg px-2 py-1.5 font-mono" />
+                            </span>
+                        )}
                     </div>
-                ) : <div className="mb-6" />}
+                    <p className="text-xs text-slate-400 mb-6">
+                        {themeMode === 'tbs' ? 'TBS Marketing house colours (blue/green) on every deck.'
+                            : themeMode === 'site' ? "Auto-detected from the client's own website."
+                            : 'Your chosen accent colour (a second shade is derived from it).'}
+                    </p>
 
-                <label className="block text-sm font-bold text-slate-700 mb-2">Design freedom</label>
-                <select value={creativity} onChange={(e) => setCreativity(e.target.value)} disabled={generating} className={fieldCls}>
-                    <option value="structured">Structured — consistent, predictable template</option>
-                    <option value="balanced">Balanced — varied layouts, safe on any model</option>
-                    <option value="creative">Creative — model designs freely (best with GLM)</option>
-                </select>
-                <p className="text-xs text-slate-400 mt-1 mb-6">
-                    {creativity === 'creative' ? 'Maximum design freedom — pair with a strong model like GLM-5.2.'
-                        : creativity === 'structured' ? 'The classic fixed template — most predictable.'
-                        : 'The model chooses slide count & layouts, with guardrails kept on.'}
-                </p>
+                    {/* Visual style: fonts + background */}
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Visual style</label>
+                    <select value={style} onChange={(e) => setStyle(e.target.value)} className={fieldCls + ' mb-6'}>
+                        <option value="tbs">TBS house — editorial, Fraunces + Inter, warm ground (default)</option>
+                        <option value="auto">Auto — a distinct look chosen per site</option>
+                        <option value="A">Editorial — Fraunces serif, cream</option>
+                        <option value="B">Bold Modern — Space Grotesk, mono</option>
+                        <option value="C">Clean Corporate — Archivo</option>
+                        <option value="D">Warm Premium — Playfair</option>
+                        <option value="I">Ink &amp; Gold — Libre Caslon (dark)</option>
+                        <option value="K">Coastal — Space Grotesk, sky</option>
+                    </select>
+                    <label className="block text-sm font-bold text-slate-700 mb-2">Design freedom</label>
+                    <select value={creativity} onChange={(e) => setCreativity(e.target.value)} disabled={generating} className={fieldCls}>
+                        <option value="structured">Structured — consistent, predictable template</option>
+                        <option value="balanced">Balanced — varied layouts, safe on any model</option>
+                        <option value="creative">Creative — model designs freely (best with GLM)</option>
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1 mb-6">
+                        {creativity === 'creative' ? 'Maximum design freedom — pair with a strong model like GLM-5.2.'
+                            : creativity === 'structured' ? 'The classic fixed template — most predictable.'
+                            : 'The model chooses slide count & layouts, with guardrails kept on.'}
+                    </p>
+                    <button type="button" onClick={() => setUseImages((v) => !v)} disabled={generating}
+                        className="w-full flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-8 text-left hover:border-[#26397A]/50 disabled:opacity-60">
+                        <span>
+                            <span className="block text-sm font-bold text-slate-700">Add AI photos</span>
+                            <span className="block text-xs text-slate-400">Supermachine photos on most slides · slower &amp; uses Supermachine credits</span>
+                        </span>
+                        <span className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${useImages ? 'bg-[#26397A]' : 'bg-slate-300'}`}>
+                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${useImages ? 'translate-x-5' : ''}`} />
+                        </span>
+                    </button>
+                </Section>
 
-                <button type="button" onClick={() => setUseImages((v) => !v)} disabled={generating}
-                    className="w-full flex items-center justify-between gap-3 border border-slate-300 rounded-xl px-4 py-3 mb-8 text-left hover:border-[#26397A]/50 disabled:opacity-60">
-                    <span>
-                        <span className="block text-sm font-bold text-slate-700">Add AI photos</span>
-                        <span className="block text-xs text-slate-400">Supermachine photos on most slides · slower &amp; uses Supermachine credits</span>
-                    </span>
-                    <span className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${useImages ? 'bg-[#26397A]' : 'bg-slate-300'}`}>
-                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${useImages ? 'translate-x-5' : ''}`} />
-                    </span>
-                </button>
+                {/* ── Notes ── */}
+                <Section title="Notes / highlights" open={openSec.notes}
+                    onToggle={() => setOpenSec(o => ({ ...o, notes: !o.notes }))}
+                    summary={notes.trim() ? `${notes.trim().split('\n').length} line(s)` : 'None'}>
+                    <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={generating} rows={3}
+                        placeholder={"Lines starting with /on <date> are added verbatim to a Key Dates slide, e.g.\n/on 26 may product launch at 9 AM\n/on 30 may final client sign-off"}
+                        className={fieldCls + ' text-sm font-mono'} />
+                </Section>
 
-                <label className="block text-sm font-bold text-slate-700 mb-2">Notes / highlights <span className="font-normal text-slate-400">(optional)</span></label>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={generating} rows={3}
-                    placeholder={"Lines starting with /on <date> are added verbatim to a Key Dates slide, e.g.\n/on 26 may product launch at 9 AM\n/on 30 may final client sign-off"}
-                    className={fieldCls + ' mb-8 text-sm font-mono'} />
 
-                <button onClick={generate} disabled={generating || !canGenerate}
-                    className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
-                    {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Starting…</>
-                        : <><SparklesIcon className="w-5 h-5" /> {compareModels.length ? `Generate ${1 + compareModels.length} decks` : 'Generate presentation'}</>}
-                </button>
-                <p className="text-xs text-slate-400 mt-3 text-center">
-                    Decks generate in the background — you can start more, leave, or reload this page; each appears in Documents.</p>
+                {/* Sticky CTA — stays reachable without scrolling past every option */}
+                <div className="sticky bottom-0 -mx-6 md:-mx-8 -mb-6 md:-mb-8 mt-6 px-6 md:px-8 py-4 bg-white/95 backdrop-blur border-t border-slate-200 rounded-b-2xl">
+                    <button onClick={generate} disabled={generating || !canGenerate}
+                        className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
+                        {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Starting…</>
+                            : <><SparklesIcon className="w-5 h-5" /> {compareModels.length ? `Generate ${1 + compareModels.length} decks` : 'Generate presentation'}</>}
+                    </button>
+                    <p className="text-xs text-slate-400 mt-2 text-center">
+                        Decks generate in the background — you can start more, leave, or reload this page; each appears in Documents.</p>
+                </div>
             </motion.div>
 
             {/* Active-job tracker: one row per in-flight/finished deck */}
