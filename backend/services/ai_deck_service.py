@@ -686,7 +686,9 @@ For EACH slide, under a heading '## Slide {n}: {title}', give:
 - 2–4 short bullet insights, each citing the REAL number(s) from the data,
 - ONE strategic takeaway/recommendation.
 Frame any decline positively (an optimization opportunity, not a failure). Use ONLY real numbers from
-the DATA — never invent. Output plain markdown only (NO HTML, NO chart JSON).
+the DATA — never invent. PRIORITISE the ANALYST FLAGS in the DATA when writing takeaways/recommendations
+(they are pre-computed, grounded insights — build the slide narrative around them). Output plain
+markdown only (NO HTML, NO chart JSON).
 
 DECK PLAN:
 {plan}

@@ -459,6 +459,20 @@ def _gsc_data_brief(ctx: Dict) -> str:
     period_label = period.get("label", f"last {ctx['days']} days")
     ga4 = ctx.get("ga4") or None
     ga4_block = ("\n\n" + _ga4_brief_sections(ga4)) if ga4 else ""
+
+    # ── Analyst playbook: core principles (from deck_playbook.md) + grounded conditional flags ──
+    from services.analyst_flags import compute_analyst_flags, load_core_principles
+    core = load_core_principles()
+    flags = compute_analyst_flags(ctx)
+    analyst_block = ""
+    if core or flags:
+        flag_lines = "\n".join(f"  - {f}" for f in flags) or "  (none)"
+        analyst_block = (
+            "\n\nANALYST PLAYBOOK (apply these principles to EVERY slide's narrative):\n" + core +
+            "\n\nANALYST FLAGS (pre-computed from THIS site's data — weave these specific, grounded "
+            "insights & recommendations into the relevant slides; do NOT invent others, and do NOT "
+            "restate raw numbers without the takeaway):\n" + flag_lines
+        )
     intro = (
         f"Monthly performance report (Google Search Console + Google Analytics) for {ctx['domain']}. "
         "It combines organic SEARCH data with website ANALYTICS (sessions, engagement, channels)."
@@ -532,7 +546,7 @@ TOP COUNTRIES (by clicks):
 {country_lines}
 
 GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-countries bar). {geo_note}
-{geo_lines}{ga4_block}
+{geo_lines}{ga4_block}{analyst_block}
 
 Use only these numbers. Positive but honest framing; declines = opportunities."""
 
