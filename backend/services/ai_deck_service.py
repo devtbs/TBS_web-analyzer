@@ -293,43 +293,82 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    display 96-144px, h2 52-64px, kpi-number 64-84px, body 26-30px, caption 18-20px.
    Spacing in multiples of 12px. Border-radius consistent.
 
-2. SHARED COMPONENTS — define and reuse these classes (consistent on every slide):
-   - .eyebrow  : tiny ALL-CAPS letter-spaced kicker in --accent above a heading.
-   - .kpi      : a metric block — big number (--font-display, --accent) + small label (--muted).
-   - .card     : --surface bg, --line border, generous padding, consistent radius & subtle shadow.
-   - .chip     : small pill label (used for tags, deltas like ▲ +12%).
-   - .pageno   : small corner index "03 / 09".
+2. SHARED COMPONENTS — define and reuse these classes (consistent on every slide).
 
-3. FILL THE WHOLE SLIDE (critical — slides must NOT end half-empty):
+   THE SLIDE CHROME (this is what makes the deck read as ONE designed system — every content
+   slide carries the header, and most carry the takeaway bar and footer):
+   - .slide-header : the header block = .eyebrow + h2 title + optional .subtitle + .rule.
+   - .eyebrow      : small ALL-CAPS letter-spaced kicker above the title (e.g. "BUDGET EFFICIENCY REVIEW").
+   - .subtitle     : ONE quiet line under the title (--muted, or --accent for emphasis).
+   - .rule         : a thin FULL-WIDTH accent hairline closing the header off from the content.
+   - .takeaway     : a FULL-WIDTH SOLID DARK band pinned near the bottom, containing
+                     .takeaway-label (small ALL-CAPS, in --accent) + the takeaway sentence in white.
+                     This carries the slide's key takeaway and is the deck's recurring motif.
+   - .footer       : a thin muted row at the very bottom — left: "<client> — <report name>",
+                     right: the period/date (and "Confidential" where appropriate).
+
+   CONTENT COMPONENTS:
+   - .kpi-tile  : a SOLID TINT tile = small label (--muted) + BIG number (--font-display) + a .delta
+                  chip. Variants .tile-dark (inverted, white text) and .tile-accent (solid accent/green)
+                  to spotlight ONE hero metric.
+   - .delta     : a small solid pill showing movement — .delta-good (green) for a win,
+                  .delta-bad (red) for a decline, .delta-warn (amber) for caution. ALWAYS semantic.
+   - .panel     : a SOLID tint block (--tint or --tint-2) with generous padding — the default grouping
+                  device. .panel-dark for an inverted panel. NO gradients, NO single-side accent stripes.
+   - .stat-big  : a very large hero number (with its label) used inside a panel — the "74.9%" moment.
+   - table      : dark header row (--dark bg, white text), zebra body rows (--tint-2 on alternate rows),
+                  right-aligned numerics, and CELL VALUES COLOURED SEMANTICALLY (a declining value is
+                  red, a winning value green). A final total row may be inverted dark.
+   - .chip      : small pill label for tags.
+   - .pageno    : small corner index "03 / 09".
+
+3. THE SLIDE SKELETON (every content slide, no exceptions):
    Make every .slide a full-height column: display:flex; flex-direction:column; height:1080px;
-   padding:84px 108px. Give it a header (eyebrow+title), then a MAIN content region that GROWS
-   to fill all remaining height (flex:1; min-height:0; display:flex), then the .pageno pinned at
-   the bottom. The main region's chart/cards/table MUST stretch to consume that space — size
-   charts large (e.g. height:100% of the main region, ~640-780px), enlarge cards and spacing.
-   No slide may leave more than ~10% empty vertical space (no big empty band at the bottom).
+   padding:84px 108px.
+     .slide-header (eyebrow + title + subtitle + rule)
+     MAIN content region — flex:1; min-height:0 — this GROWS to fill all remaining height
+     .takeaway  (the dark band, on content slides that have a key takeaway)
+     .footer
+   The main region's chart/panels/table MUST stretch to consume that space — size charts large
+   (~640-780px tall), enlarge panels and spacing. No slide may leave more than ~10% empty vertical
+   space. Cover / section / closing slides are the exception: they are posters and skip the chrome.
 
-4. LAYOUT ARCHETYPES — EVERY <section class="slide"> must ALSO carry one archetype class,
-   and follow its structure (this is what makes the deck feel templated). All of them obey
-   rule 3 (fill the full height):
-   - .layout-cover    : poster title page — a FULL-BLEED hero PHOTO (an <img class="ai-img">
-                        covering the whole slide) with a dark gradient overlay for legible text;
-                        oversized display title (one *italic serif* accent word), an eyebrow report
-                        label, and the REPORTING PERIOD date range as the subtitle. (Use a bold
-                        saturated colour field only if no fitting photo.) Do NOT put any KPI numbers,
-                        metric chips, clicks or impressions on the cover — keep it clean (title +
-                        report label + reporting period + hero photo only).
-   - .layout-section  : a divider — huge number + section title on a saturated/dark ground.
-   - .layout-kpi-strip: a slim horizontal KPI row (3-5 .kpi) at the top + ONE large chart that
-                        fills ALL the remaining height below it (the chart is the hero, not a thumbnail).
-   - .layout-split    : two columns ~40/60, both stretched to full slide height — text/KPIs on one
-                        side, a large chart or full-height photo on the other.
-   - .layout-list     : icon bullets spread over the full height — each row is an .ai-icon + bold
-                        lead-in + one line; use generous row spacing so the list fills the slide.
-   - .layout-comparison: two/three .card columns, full height, compared side by side.
-   - .layout-roadmap  : a horizontal numbered step sequence (3-5 steps) centred in the slide.
-   - .layout-quote    : one large pull-quote / single headline insight, vertically centred.
-   - .layout-closing  : thank-you poster — big type + the reporting period in a slim footer strip.
-   Vary archetypes across the deck; never repeat the same layout on consecutive content slides."""
+4. LAYOUT ARCHETYPES — EVERY <section class="slide"> must ALSO carry one archetype class and follow
+   its structure. The archetype describes the MAIN CONTENT REGION (the chrome above stays constant).
+   - .layout-cover      : title page — a two-column split ~60/40: the LEFT is a clean panel holding
+                          the eyebrow report label, a very large bold title, a short accent rule, the
+                          client name, then quiet metadata lines (period, account, "Prepared by").
+                          The RIGHT is a full-height hero PHOTO (<img class="ai-img">, object-cover)
+                          with a thin accent stripe at the seam. NO KPI numbers on the cover.
+   - .layout-section    : a chapter divider — huge number + section title on a solid saturated/dark field.
+   - .layout-kpi-tiles  : a grid of .kpi-tile (4 across, 1-2 rows), each label + big number + .delta
+                          chip; make ONE tile .tile-dark or .tile-accent to spotlight the hero metric.
+   - .layout-kpi-strip  : a slim row of 3-5 metrics separated by thin vertical dividers (no boxes) ABOVE
+                          ONE large chart that fills the rest of the height.
+   - .layout-chart-rail : the workhorse — ONE large chart taking ~70% width, plus a right rail of a
+                          .panel callout (bullets or a .stat-big) and an optional quiet note panel.
+   - .layout-chart-table: a chart on one side and a data TABLE on the other (dark header, zebra rows,
+                          semantic cell colours) — use for before/after and ranked breakdowns.
+   - .layout-stat-panel : a solid DARK or ACCENT panel on one side carrying a giant number/short claim
+                          + 2-3 mini-stats, and a chart (plus a small panel) on the other.
+   - .layout-two-chart  : two charts side by side, each with its own small heading, plus a row of 2-4
+                          tint stat panels beneath them.
+   - .layout-panels     : 2-3 equal SOLID tint panels side by side, each a heading + bullet list
+                          (e.g. Strengths / Opportunities / Observations).
+   - .layout-priority   : ranked full-width rows — each row = a solid priority chip on the left
+                          ("Priority 1 / High Impact"), the recommendation title + one-line rationale
+                          in the middle, and a bordered "Expected Impact" box on the right. Tint the
+                          top-priority row with --tint.
+   - .layout-phases     : a phased roadmap — a thin timeline of dots/connectors across the top, then
+                          3 equal tint columns (number + phase title + bullets) each with an "Outcome"
+                          box pinned at the column's bottom.
+   - .layout-split      : the generic two-column fallback ~40/60, both stretched full height — text/
+                          metrics on one side, a large chart, table or full-height photo on the other.
+   - .layout-list       : icon bullets spread over the full height — .ai-icon + bold lead-in + one line.
+   - .layout-comparison : two/three panels compared side by side, full height.
+   - .layout-quote      : one large pull-quote / single headline insight, vertically centred.
+   - .layout-closing    : closing poster — big type on a solid field + the period in a slim footer.
+   Vary archetypes across the deck; NEVER repeat the same layout on consecutive content slides."""
 
 
 # A short menu of vetted, cohesive palette + Google-font pairings. The model picks ONE
@@ -353,34 +392,40 @@ Load the chosen fonts from fonts.googleapis.com. You MAY tune the accent toward 
 
 # One complete worked example anchors the model far more than instructions alone. Generic
 # placeholder content only (no numbers that could be mistaken for real data).
-DESIGN_EXEMPLARS = """=== EXEMPLAR (ONE possible treatment — a QUALITY + full-height reference, NOT a layout to copy) ===
-This shows the polish bar and the full-height skeleton to match; do NOT replicate its composition,
-cover style, words or theme — follow the ART DIRECTION above for THIS deck's actual look. Note how the
-slide is a full-height column and the chart region (flex:1) fills ALL space below the KPI row so there
-is no empty band at the bottom:
-<section class="slide layout-kpi-strip" style="display:flex;flex-direction:column;height:1080px;padding:84px 108px">
-  <span class="eyebrow">Performance Overview</span>
-  <h2>The quarter in <em>focus</em>.</h2>
-  <div class="kpi-row" style="display:flex;gap:20px">
-    <div class="kpi"><i class="ai-icon" data-icon="trending-up"></i><span class="kpi-num">—</span><span class="kpi-label">Clicks</span></div>
-    <div class="kpi"><i class="ai-icon" data-icon="eye"></i><span class="kpi-num">—</span><span class="kpi-label">Impressions</span></div>
-    <div class="kpi"><i class="ai-icon" data-icon="target"></i><span class="kpi-num">—</span><span class="kpi-label">Avg position</span></div>
+DESIGN_EXEMPLARS = """=== EXEMPLAR (the SKELETON + chrome to match — do NOT copy its words, theme or composition) ===
+This shows the agency-grade slide SYSTEM: every content slide = header (eyebrow + CLAIM title +
+subtitle + rule) -> a main region that fills all remaining height -> the dark EXECUTIVE TAKEAWAY band
+-> the muted footer. Follow the ART DIRECTION + the planned LAYOUT for this deck's actual composition:
+<section class="slide layout-chart-rail" style="display:flex;flex-direction:column;height:1080px;padding:84px 108px">
+  <div class="slide-header">
+    <span class="eyebrow">Budget Efficiency Review</span>
+    <h2>Headroom Beyond the Budget Cap</h2>
+    <p class="subtitle">Utilization and incremental conversion potential</p>
+    <div class="rule"></div>
   </div>
-  <div style="flex:1;min-height:0;margin-top:24px"><div id="chart1" style="width:100%;height:100%"></div></div>
-  <div class="pageno" style="margin-top:16px">02 / 09</div>
-  <script type="application/json" class="plotly-spec" data-target="chart1">{"data":[{"type":"bar","x":["Jan","Feb","Mar"],"y":[3,5,4]}],"layout":{}}</script>
+  <div style="flex:1;min-height:0;display:grid;grid-template-columns:7fr 3fr;gap:36px;margin:32px 0">
+    <div id="chart3" style="width:100%;height:100%"></div>
+    <div style="display:flex;flex-direction:column;gap:24px">
+      <div class="panel"><h3>Reading the Trend</h3><ul><li>—</li><li>—</li></ul></div>
+      <div class="panel panel-quiet"><span class="stat-big">—</span><span>label</span></div>
+    </div>
+  </div>
+  <div class="takeaway"><span class="takeaway-label">Executive Takeaway</span><p>The one sentence the client should remember.</p></div>
+  <div class="footer"><span>Client — Report name</span><span>Period</span></div>
+  <script type="application/json" class="plotly-spec" data-target="chart3">{"data":[{"type":"bar","x":["Mar","Apr"],"y":[3,5]}],"layout":{}}</script>
 </section>
-And a clean cover — a FULL-BLEED hero photo with a dark overlay, then title + report label +
-reporting PERIOD only (NO metric chips):
-<section class="slide layout-cover" style="position:relative;display:flex;flex-direction:column;justify-content:center;height:1080px;padding:96px 108px;color:#fff">
-  <img class="ai-img" data-prompt="modern luxury bathroom showroom, marble vanity, soft warm lighting, premium, photographic" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0">
-  <div style="position:absolute;inset:0;background:linear-gradient(rgba(20,12,8,.72),rgba(20,12,8,.42));z-index:1"></div>
-  <div style="position:relative;z-index:2">
-    <span class="eyebrow">Organic Search Report</span>
-    <h1>Bathrooms &amp; <em>More</em></h1>
-    <p class="period">1 – 28 May 2026</p>
+And the cover — a two-column split (NOT a full-bleed photo): a clean panel of type on one side, a
+full-height photo on the other, with a thin accent stripe at the seam. NO metric chips on the cover:
+<section class="slide layout-cover" style="display:grid;grid-template-columns:6fr 4fr;height:1080px">
+  <div style="display:flex;flex-direction:column;justify-content:center;padding:96px 108px">
+    <span class="eyebrow">Google Ads Performance Review</span>
+    <h1>Performance Audit Report</h1>
+    <div class="rule" style="width:120px"></div>
+    <p class="client">Client Name</p>
+    <p class="meta">15 May – 15 June 2026 · vs previous period</p>
+    <p class="meta">Prepared by TBS Marketing</p>
   </div>
-  <div class="pageno" style="position:relative;z-index:2">01 / 09</div>
+  <img class="ai-img" data-prompt="premium product context photo, editorial lighting, no text" style="width:100%;height:100%;object-fit:cover">
 </section>
 Every real slide must fill all 1920x1080 (no bottom band), use the tokens/components above, put a
 relevant icon on every KPI and list bullet, and use ai-img photos liberally — ALWAYS a full-bleed
@@ -393,32 +438,42 @@ _PRESET_LETTERS = "ABCDEFGHIJKL"  # the 12 THEME_PRESETS entries
 # colour/look so decks carry the agency's house identity. _apply_theme forces the accents onto the
 # rendered HTML regardless of the model; _TBS_STYLE_DIRECTIVE fixes the fonts + ground.
 TBS_PALETTE = {
-    "accent": "#3C8DD9",    # TBS blue (primary pop)
-    "accent2": "#79B84B",   # TBS green (secondary series / fills)
-    "accent3": "#F4B740",   # TBS amber (highlight)
-    "ink": "#1F2024",
+    "accent": "#3C8DD9",    # TBS blue (primary pop / data emphasis)
+    "accent2": "#79B84B",   # TBS green (wins / secondary series)
+    "accent3": "#F4B740",   # TBS amber (caution)
+    "bad": "#C4553B",       # terracotta red — declines / losing ground
+    "ink": "#1F2937",       # near-black navy ink
+    "dark": "#23262B",      # solid dark panel (inverted tiles, table headers, takeaway bar)
     "muted": "#6E7075",
-    "bg": "#FAF9F6",       # warm off-white paper ground (editorial warmth, not clinical grey)
+    "tint": "#E8F4FB",      # solid light-blue tint panel
+    "tint2": "#F2F3EC",     # solid light-neutral tint panel
+    "bg": "#FFFFFF",        # clean white ground
     "surface": "#FFFFFF",
 }
-# Display MUST be an expressive face — an oversized headline in a geometric UI sans (e.g. Poppins)
-# reads as a generic corporate template, which is what made TBS-styled decks look flat.
-TBS_FONTS = {"display": "Fraunces", "body": "Inter"}
+# A BOLD GEOMETRIC SANS is correct here — the agency reference decks are exactly this on white and
+# read as premium. (An earlier switch to a display serif on cream was a misdiagnosis: the flatness
+# came from missing slide chrome + flat compositions, not from the typeface.)
+TBS_FONTS = {"display": "Poppins", "body": "Inter"}
 
 _TBS_STYLE_DIRECTIVE = (
     "=== ASSIGNED HOUSE STYLE — TBS MARKETING (use THIS exactly) ===\n"
-    "Art-direct this like a premium EDITORIAL DESIGN STUDIO in the TBS house identity — never a generic "
-    "corporate slide template.\n"
-    f"- GROUND: a warm off-white paper ground --bg {TBS_PALETTE['bg']}, cards/panels --surface "
-    f"{TBS_PALETTE['surface']}, --ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}. Cover, section "
-    "dividers and closing may instead use ONE saturated full-bleed field in the TBS accent.\n"
-    f"- TYPE: load '{TBS_FONTS['display']}' as --font-display and '{TBS_FONTS['body']}' as --font-body from "
-    "fonts.googleapis.com. Headlines are OVERSIZED and confident (clamp ~84-156px) with tight line-height and "
-    "ONE italic accent word inside the headline; tiny ALL-CAPS letter-spaced kickers above headings.\n"
-    "- Keep 60-30-10 discipline (ground / ink / ONE accent pop), ONE restrained repeating motif, and confident "
-    "ASYMMETRIC magazine-grade composition with generous negative space.\n"
-    "(The --accent / --accent-2 are set automatically to the TBS brand colours, so don't pick accents — just "
-    "use this ground, these fonts and this art direction.) Do not substitute a different preset or background."
+    "A modern, confident CONSULTING house style: clean white ground, bold geometric type, solid tint "
+    "panels, and colour used to carry MEANING. Never a generic corporate slide template.\n"
+    f"- GROUND: --bg {TBS_PALETTE['bg']} (white), --surface {TBS_PALETTE['surface']}, "
+    f"--ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}.\n"
+    f"- PANELS are SOLID tints — never gradients: --tint {TBS_PALETTE['tint']} (light blue), "
+    f"--tint-2 {TBS_PALETTE['tint2']} (light neutral), and --dark {TBS_PALETTE['dark']} for inverted "
+    "panels/table headers/the takeaway bar. Cover, section dividers and closing may use ONE full-bleed "
+    "saturated field in the accent, the green or the dark.\n"
+    f"- TYPE: load '{TBS_FONTS['display']}' as --font-display and '{TBS_FONTS['body']}' as --font-body "
+    "from fonts.googleapis.com. Titles are LARGE and BOLD (clamp ~64-104px), tight line-height, sentence "
+    "case; a small ALL-CAPS letter-spaced kicker sits above the title; the subtitle is one quiet line.\n"
+    f"- SEMANTIC COLOUR (non-negotiable): wins/positive -> {TBS_PALETTE['accent2']} (green); "
+    f"declines/at-risk -> {TBS_PALETTE['bad']} (terracotta red); caution -> {TBS_PALETTE['accent3']} "
+    f"(amber); neutral emphasis/brand -> {TBS_PALETTE['accent']} (blue). Deltas, table cells and chart "
+    "series MUST take these colours. NEVER colour a decline green.\n"
+    "(The --accent / --accent-2 are set automatically to the TBS brand colours — just use this ground, "
+    "these fonts and this system.) Do not substitute a different preset or background."
 )
 
 
@@ -798,10 +853,19 @@ Output JSON of EXACTLY this shape:
 
 Rules:
 - Cover every item marked REQUIRED; use ONLY the provided data; never invent numbers.
-- "archetype" MUST be one of: layout-cover, layout-section, layout-kpi-strip, layout-split,
-  layout-list, layout-comparison, layout-roadmap, layout-quote, layout-closing.
+- "archetype" MUST be one of: layout-cover, layout-section, layout-kpi-tiles, layout-kpi-strip,
+  layout-chart-rail, layout-chart-table, layout-stat-panel, layout-two-chart, layout-panels,
+  layout-priority, layout-phases, layout-split, layout-list, layout-comparison, layout-quote,
+  layout-closing.
+  Pick the one whose SHAPE matches the content (a ranked recommendation set -> layout-priority; a
+  30/60/90 plan -> layout-phases; a before/after -> layout-chart-table; a single dominant number ->
+  layout-stat-panel). Never use the same archetype on consecutive slides.
 - Choose a sensible slide count per the directive above; order the slides for the strongest narrative.
 - First slide is the cover; last slide is the closing.
+- TITLES ARE CLAIMS, NOT LABELS. The title states what the data SAYS — "Flat Investment, Volatile
+  Returns", "Visibility Constrained by Rank", "Where Demand Converts", "A Single-Engine Account" —
+  never "Performance Overview" or "Top Queries". Put the section name in the eyebrow instead, and use
+  the subtitle for the quiet descriptive line.
 - LAYOUT IS YOUR JOB. Design each slide's composition explicitly in "layout" — the downstream designer
   EXECUTES your composition rather than improvising it. Vary it every slide; no two consecutive slides
   may share a structure. Obey the DESIGN GUIDELINES' layout principles and export-safety rules.
@@ -907,13 +971,21 @@ must be complete and self-sufficient. Define, exactly once:
     html,body { margin:0; padding:0; }
     .slide { width:1920px; height:1080px; position:relative; overflow:hidden; page-break-after:always; }
 - :root tokens: --bg --surface --ink --muted --accent --accent-2 --line --font-display --font-body
-  (take the ground/surface/ink/fonts from the assigned HOUSE STYLE below), PLUS the semantic tokens
-  --good --bad --caution using the exact hexes fixed in the DESIGN GUIDELINES' colour semantics.
+  (take the ground/surface/ink/fonts from the assigned HOUSE STYLE below), PLUS --tint --tint-2 --dark
+  (the solid panel grounds) and the semantic tokens --good --bad --caution using the exact hexes fixed
+  in the DESIGN GUIDELINES' colour semantics.
 - Helper classes for the semantics: .is-good .is-bad .is-caution (text colour) and .tint-good .tint-bad
   .tint-caution (solid tint panel backgrounds — NOT gradients, NOT single-side borders).
 - The type scale for this 1920x1080 canvas (display 96-144px, h2 52-64px, .kpi-num 64-84px,
   body 26-30px, caption 18-20px) and a 12px spacing rhythm, applied via the component classes.
-- Shared components: .eyebrow .kpi .kpi-num .kpi-label .card .chip .pageno
+- The SLIDE CHROME classes: .slide-header .eyebrow .subtitle .rule (a thin full-width accent hairline),
+  .takeaway (a FULL-WIDTH SOLID DARK band) + .takeaway-label (small ALL-CAPS in the accent), and
+  .footer (a thin muted row, space-between).
+- The content components: .kpi-tile (+ .tile-dark, .tile-accent), .delta (+ .delta-good, .delta-bad,
+  .delta-warn — solid semantic pills), .panel (+ .panel-dark, and a --tint-2 variant), .stat-big,
+  .chip, .pageno.
+- TABLE styling: dark header row (white text), zebra body rows, right-aligned numerics, and helper
+  classes so individual cells can take the semantic colours.
 - EVERY layout archetype as a class that makes its slide a FULL-HEIGHT 1080px composition (no empty
   bands): .layout-cover .layout-section .layout-kpi-strip .layout-split .layout-list .layout-comparison
   .layout-roadmap .layout-quote .layout-closing — each following its structure in the DESIGN SYSTEM.
@@ -952,6 +1024,12 @@ This is slide {n} of {total}; archetype: {archetype}. Put "{index_label}" in the
 RULES:
 - Build the LAYOUT above precisely: its grid/columns and ratios, what sits in each region, the alignment,
   padding and any full-bleed/scrim. Do not substitute a different composition.
+- SLIDE CHROME (mandatory on every CONTENT slide — cover/section/closing are posters and skip it):
+  open with .slide-header (.eyebrow kicker + the claim title + optional .subtitle + .rule), then the
+  main content region, then the .takeaway dark band carrying this slide's key takeaway
+  (.takeaway-label "EXECUTIVE TAKEAWAY" + the sentence), then the .footer. This chrome is what makes
+  the deck read as one designed system — do not omit or restyle it.
+- Deltas/movements use a .delta chip with the SEMANTIC class (.delta-good / .delta-bad / .delta-warn).
 - Use ONLY the shared stylesheet's tokens/classes (below). Do NOT emit a <style> tag and do NOT invent or
   redefine classes. Inline style="..." is allowed ONLY for per-slide geometry (grid/flex sizing, chart box
   dimensions, photo positioning).
