@@ -447,12 +447,16 @@ const Presentation = () => {
         setDownloading(fmt);
         try {
             const res = await api.get(`/api/presentation/deck/${deckDocId}/download?format=${fmt}`, { responseType: 'blob' });
+            if (!res.data || res.data.size === 0) throw new Error('Empty file returned.');
+            const type = fmt === 'pdf' ? 'application/pdf'
+                : 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
             const name = `AI_Deck_${(deckLabel || 'report').replace(/[^a-z0-9.-]/gi, '_')}.${fmt}`;
-            const url = URL.createObjectURL(new Blob([res.data]));
+            const url = URL.createObjectURL(new Blob([res.data], { type }));
             const a = document.createElement('a');
             a.href = url; a.download = name;
-            document.body.appendChild(a); a.click(); a.remove();
-            URL.revokeObjectURL(url);
+            document.body.appendChild(a); a.click();
+            // Defer cleanup — revoking the blob URL in the same tick as click() cancels the download.
+            setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
         } catch (e) {
             let msg = 'Download failed.';
             try { msg = JSON.parse(await e.response?.data?.text())?.detail || msg; } catch {}

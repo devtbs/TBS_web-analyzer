@@ -241,11 +241,17 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
         const dl = async (fmt) => {
             try {
                 const res = await api.get(`/api/presentation/deck/${documentId}/download?format=${fmt}`, { responseType: 'blob' });
+                if (!res.data || res.data.size === 0) throw new Error('Empty file returned.');
+                const type = fmt === 'pdf' ? 'application/pdf'
+                    : 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
                 const name = `${(documentData.title || 'AI_Deck').replace(/[^a-z0-9.-]/gi, '_')}.${fmt}`;
-                const url = URL.createObjectURL(new Blob([res.data]));
+                const url = URL.createObjectURL(new Blob([res.data], { type }));
                 const a = document.createElement('a'); a.href = url; a.download = name;
-                document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-            } catch { toast.error('Download failed.'); }
+                document.body.appendChild(a); a.click();
+                // Defer cleanup — revoking the blob URL in the same tick as click() cancels the
+                // download in Chromium before it starts (why the button appeared to do nothing).
+                setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 1500);
+            } catch (e) { console.error('deck download failed', e); toast.error('Download failed.'); }
         };
         return (
             <div className="p-6 md:p-8 max-w-4xl mx-auto min-h-screen pb-24">
