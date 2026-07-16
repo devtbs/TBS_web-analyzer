@@ -751,7 +751,12 @@ def _build_layered_html_prompt(plan_json: str, insights_md: str, data_brief: str
         + (brand or UNIQUE_STYLE_BRAND) + "\n\n"
         "CRITICAL OUTPUT RULE: emit each slide as FINAL RENDERED HTML only — never print the plan, "
         "\"Slide X:\" headings, layout notes or chart JSON as visible text; translate all of it into "
-        "the HTML/CSS and the hidden chart script. Use ONLY the real numbers from the DATA.\n\n"
+        "the HTML/CSS and the hidden chart script. Use ONLY the real numbers from the DATA.\n"
+        "PHOTOS ARE REQUIRED (the plan does NOT list them — YOU must add them per the HTML OUTPUT "
+        "CONTRACT): ALWAYS give the cover a full-bleed hero <img class=\"ai-img\" data-prompt=\"…\"> "
+        "with a dark gradient overlay, and use ai-img photos as full-bleed backgrounds or side panels "
+        "on MOST content slides (keep chart/table areas on a clean solid ground). Never output a deck "
+        "with no photos.\n\n"
         "DECK PLAN (authoritative slide list + archetypes):\n" + plan_json + "\n\n"
         "SLIDE COPY (headlines, grounded insights, takeaways — use these, refine lightly):\n" + insights_md + "\n\n"
         "DATA (authoritative source of every number):\n" + data_brief
