@@ -112,7 +112,7 @@ async def presentation_deck_download(
 @router.post("/api/presentation/ai-deck-from-pdf")
 async def presentation_ai_deck_from_pdf(
     file: UploadFile = File(...),
-    provider: str = Form("qwen3.7-max"),
+    provider: str = Form("deepseek"),
     images: bool = Form(True),
     notes: str = Form(""),
     creativity: str = Form("balanced"),
@@ -246,7 +246,7 @@ def _require_google_token(db, email):
 async def presentation_ai_deck_gsc(
     property: str,
     days: int = 28,
-    provider: str = "qwen3.7-max",
+    provider: str = "deepseek",
     images: bool = True,
     body: dict = Body(default={}),
     account_id: Optional[int] = Depends(get_account_id),
@@ -293,7 +293,7 @@ async def presentation_ai_deck_bing(
     account_id: int,
     site: str,
     days: int = 28,
-    provider: str = "qwen3.7-max",
+    provider: str = "deepseek",
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),
@@ -364,7 +364,7 @@ async def presentation_ai_deck_bing(
 async def presentation_ai_deck_ga4(
     property_id: str,
     days: int = 28,
-    provider: str = "qwen3.7-max",
+    provider: str = "deepseek",
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),
@@ -410,7 +410,7 @@ async def presentation_ai_deck_ga4(
 async def presentation_ai_deck_ads(
     customer_id: str,
     days: int = 28,
-    provider: str = "qwen3.7-max",
+    provider: str = "deepseek",
     images: bool = True,
     label: str = "",
     body: dict = Body(default={}),

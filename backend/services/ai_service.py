@@ -26,10 +26,15 @@ _TOKEN_PLAN_BASE = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatib
 # OpenAI-compatible providers the user can choose from. Each deck-writing model
 # is reached through the same chat-completions API, just a different base_url/model.
 AI_PROVIDERS = {
-    # Every provider is served by the Alibaba Token Plan, so the single QWEN_API_KEY (the plan's
-    # sk-sp seat key) reaches every one — Qwen, GLM, DeepSeek and Kimi alike. They are reasoning
-    # models (they emit hidden reasoning_content that eats into the token budget), so they get a
-    # larger per-call ceiling; the continuation loop (below) still stitches long single responses.
+    # Plain DeepSeek runs on DeepSeek's OWN endpoint + key (billed separately from the Alibaba
+    # plan) — kept deliberately, per the user. It is NOT a reasoning model and doesn't accept
+    # enable_thinking, which the "aliyuncs" guard below handles.
+    "deepseek": {"key": "DEEPSEEK_API_KEY", "base_url": "https://api.deepseek.com",
+                 "model": "deepseek-chat", "label": "DeepSeek", "max_tokens": 8192},
+    # The rest are served by the Alibaba Token Plan, so the single QWEN_API_KEY (the plan's sk-sp
+    # seat key) reaches every one on prepaid credit. They are reasoning models (they emit hidden
+    # reasoning_content that eats into the token budget), so they get a larger per-call ceiling;
+    # the continuation loop (below) still stitches long single responses.
     "qwen3.7-max": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
                     "model": "qwen3.7-max", "label": "Qwen3.7 Max", "max_tokens": 16384},
     "qwen3.7-plus": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
@@ -67,13 +72,12 @@ class AIService:
                 base_url="https://api.groq.com/openai/v1"
             )
 
-        # DeepSeek — served by the prepaid Alibaba Token Plan, NOT api.deepseek.com. The direct
-        # DeepSeek endpoint bills pay-as-you-go on its own key; the plan already includes DeepSeek,
-        # so every caller (briefs, topical map, knowledge graph, comparator) runs on the subscription.
-        if settings.QWEN_API_KEY:
+        # DeepSeek on its own endpoint/key — powers briefs, topical map, knowledge graph and the
+        # comparator (billed separately from the Alibaba plan, by design).
+        if hasattr(settings, 'DEEPSEEK_API_KEY') and settings.DEEPSEEK_API_KEY:
             self.deepseek_client = AsyncOpenAI(
-                api_key=settings.QWEN_API_KEY,
-                base_url=_TOKEN_PLAN_BASE
+                api_key=settings.DEEPSEEK_API_KEY,
+                base_url="https://api.deepseek.com"
             )
 
         # Initialize Anthropic (Claude) — used for client-facing monthly reports,
@@ -111,7 +115,7 @@ class AIService:
         )
 
     async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
-                                    provider: str = "qwen3.7-max", on_progress: ProgressCb = None,
+                                    provider: str = "deepseek", on_progress: ProgressCb = None,
                                     on_delta: DeltaCb = None, temperature: float = 0.8) -> str:
         """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
         OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations.
@@ -250,7 +254,7 @@ class AIService:
             safe_max_tokens = min(max_tokens, 8000)
 
             response = await self.deepseek_client.chat.completions.create(
-                model="deepseek-v3.2",  # DeepSeek on the prepaid Token Plan (was deepseek-chat direct)
+                model="deepseek-chat",  # DeepSeek direct
                 messages=messages,
                 temperature=0.7,
                 max_tokens=safe_max_tokens,

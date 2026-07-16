@@ -541,12 +541,14 @@ _LEAD_LAYOUTS = [
     "a comparison of 2-3 cards",
     "a two-chart data spread side by side",
 ]
+# NOTE: a "slightly rotated outlined frame" was removed — models rendered it as a detached box
+# floating in a corner, overlapping titles. Motifs must be devices that ATTACH to real content.
 _MOTIFS = [
-    "a thin dot-grid",
-    "a slightly rotated outlined frame",
-    "pill / tape-style labels",
+    "a thin dot-grid behind the content region",
+    "a solid accent rule under the kicker",
+    "pill / tape-style labels on tags and deltas",
     "a hairline rule paired with index numbers",
-    "a single small filled star or circle accent",
+    "a small filled square bullet before each list item",
 ]
 _HEADLINE_STYLES = [
     "oversized high-contrast SERIF headlines with ONE italic accent word",
@@ -1155,6 +1157,19 @@ def _check_slide(section: str, *, with_photos: bool, wants_image: bool) -> List[
     if _NESTED_CARD_RE.search(section):
         probs.append("Nested cards (a .card inside a .card) — group with whitespace/headings instead.")
 
+    # Geometry: absolutely-positioned chrome is what makes the takeaway band and the footer collide
+    # and clip the content. They must be normal flow children at the end of the slide column.
+    for cls in ("takeaway", "footer"):
+        m = re.search(r'class=["\'][^"\']*\b%s\b[^"\']*["\'][^>]*style=["\']([^"\']*)["\']' % cls, section, re.I)
+        if m and re.search(r"position\s*:\s*(absolute|fixed)", m.group(1), re.I):
+            probs.append(f"The .{cls} is absolutely positioned — it collides with the other bottom "
+                         f"band and clips the content. Make it a normal flow child at the end of the "
+                         f"slide's flex column (no position:absolute).")
+    if section.count('class="slide-header"') + section.count("class='slide-header'") == 0 \
+            and not re.search(r"layout-(cover|section|closing)", section, re.I):
+        probs.append("Missing the .slide-header chrome (eyebrow + title + subtitle + rule) — every "
+                     "content slide must carry it.")
+
     # Images must match the plan's budget.
     has_img = "ai-img" in section
     if has_img and not with_photos:
@@ -1454,7 +1469,7 @@ async def _generate_per_slide(data_brief: str, *, brand: Optional[str], structur
 
 async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              brand: Optional[str] = None, structure: Optional[str] = None,
-                             provider: str = "qwen3.7-max", on_progress: ProgressCb = None,
+                             provider: str = "deepseek", on_progress: ProgressCb = None,
                              image_cache: Optional[Dict[str, "asyncio.Task"]] = None,
                              seed: Optional[str] = None, creativity: str = "balanced",
                              pipeline: str = "single", models: Optional[Dict[str, str]] = None,
@@ -1823,11 +1838,30 @@ def _polish_plotly_specs(html: str) -> str:
 # fill — but fixed-aspect charts (pie/choropleth) keep their own height so they don't distort.
 _FILL_CSS = """<style>/* deterministic-fill */
 .slide{display:flex !important;flex-direction:column !important;height:1080px !important;
-  justify-content:center !important;overflow:hidden !important;position:relative !important;}
+  justify-content:flex-start !important;overflow:hidden !important;position:relative !important;}
+/* THE SKELETON, forced. Models kept absolutely-positioning the takeaway band and the footer, so
+   they stacked on each other and clipped the content region. Pin them as normal flow children at
+   the end of the column instead, and let the middle grow — this is geometry, not a design choice,
+   so it must not depend on the model getting it right. */
+.slide > .slide-header{flex:0 0 auto !important;}
+.slide > .takeaway{position:static !important;flex:0 0 auto !important;order:98 !important;
+  margin:0 !important;width:100% !important;box-sizing:border-box !important;}
+.slide > .footer{position:static !important;flex:0 0 auto !important;order:99 !important;
+  margin:0 !important;width:100% !important;box-sizing:border-box !important;
+  display:flex !important;justify-content:space-between !important;align-items:center !important;}
+/* everything between the header and the chrome is the content region: it grows and clips itself
+   rather than overflowing onto the bands below */
+.slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
+  flex:1 1 auto;min-height:0;overflow:hidden;}
+/* covers/section/closing are posters — let them centre and fill edge to edge */
+.slide.layout-cover,.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
+.slide.layout-cover > *{flex:none;min-height:0;}
 /* pin the page index to the bottom-right so centering the content can't displace it */
-.slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;}
+.slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;z-index:5;}
 /* let a chart that is the slide's direct hero grow to fill the column */
 .slide > .js-plotly-plot{flex:1 1 auto;min-height:320px;}
+/* charts must never spill over neighbouring content (a chart drawn on top of a table) */
+.slide .js-plotly-plot,.slide .plot-container{max-width:100% !important;max-height:100% !important;}
 </style>"""
 
 
@@ -2243,7 +2277,7 @@ async def generate_deck_from_pdf(
     *,
     fmt: str = "pdf",
     prompt: Optional[str] = None,
-    provider: str = "qwen3.7-max",
+    provider: str = "deepseek",
     brand: Optional[str] = None,
     structure: Optional[str] = None,
     render: bool = True,

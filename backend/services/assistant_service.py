@@ -253,7 +253,7 @@ async def _run_generate_deck(args: dict, ctx: ToolContext) -> dict:
     # Decks are long structured HTML — keep them on the app's tested deck provider
     # (DeepSeek). MiniMax-M1 is a reasoning model whose <think> output would corrupt the
     # HTML; it drives the chat, not the deck rendering.
-    provider = "qwen3.7-max"
+    provider = "deepseek"
     token, is_refresh = _resolve_token(ctx.db, ctx.user_email, ctx.account_id)
 
     if source == "gsc":
@@ -300,11 +300,8 @@ def _providers() -> dict:
     return {
         "minimax": {"key": settings.MINIMAX_API_KEY, "base_url": settings.MINIMAX_BASE_URL,
                     "model": settings.MINIMAX_MODEL},
-        # DeepSeek via the prepaid Alibaba Token Plan — never api.deepseek.com, which bills
-        # pay-as-you-go on a separate key.
-        "deepseek": {"key": settings.QWEN_API_KEY,
-                     "base_url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
-                     "model": "deepseek-v3.2"},
+        "deepseek": {"key": settings.DEEPSEEK_API_KEY, "base_url": "https://api.deepseek.com",
+                     "model": "deepseek-chat"},
     }
 
 
