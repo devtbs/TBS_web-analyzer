@@ -18,6 +18,34 @@ from api.routers._shared import (
 
 router = APIRouter()
 
+# Rendered-slide cache: rendering a deck's slides is a full headless-Chromium pass (launch +
+# Plotly + one screenshot per slide), which made opening a saved deck slow every time. Cache the
+# rendered data-URLs per document so repeat opens are instant, and seed it at generation time
+# (the deck is already rendered then) so the first open is instant too. Single uvicorn process ⇒
+# in-memory is fine (same pattern as _DECK_JOBS); after a restart it lazily refills on first open.
+import time as _time
+_SLIDES_CACHE: dict = {}          # document_id -> (ts, slides_payload)
+_SLIDES_CACHE_TTL = 6 * 60 * 60   # 6h
+_SLIDES_CACHE_MAX = 24            # cap memory — evict oldest beyond this
+
+
+def _cache_slides(doc_id: str, slides: list) -> None:
+    _SLIDES_CACHE[doc_id] = (_time.time(), slides)
+    if len(_SLIDES_CACHE) > _SLIDES_CACHE_MAX:
+        for k in sorted(_SLIDES_CACHE, key=lambda k: _SLIDES_CACHE[k][0])[:len(_SLIDES_CACHE) - _SLIDES_CACHE_MAX]:
+            _SLIDES_CACHE.pop(k, None)
+
+
+def _get_cached_slides(doc_id: str):
+    v = _SLIDES_CACHE.get(doc_id)
+    if not v:
+        return None
+    ts, slides = v
+    if _time.time() - ts > _SLIDES_CACHE_TTL:
+        _SLIDES_CACHE.pop(doc_id, None)
+        return None
+    return slides
+
 
 @router.get("/api/presentation/deck/{document_id}/slides")
 async def presentation_deck_slides(
@@ -35,11 +63,17 @@ async def presentation_deck_slides(
     html = (doc.content or {}).get("html")
     if not html:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deck has no stored HTML.")
+    label = (doc.content or {}).get("label", "")
+    cached = _get_cached_slides(document_id)
+    if cached is not None:
+        return {"slides": cached, "label": label}
     try:
         imgs = await render_slide_images(html)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Render failed: {str(e)}")
-    return {"slides": _slides_payload(imgs), "label": (doc.content or {}).get("label", "")}
+    slides = _slides_payload(imgs)
+    _cache_slides(document_id, slides)
+    return {"slides": slides, "label": label}
 
 
 @router.get("/api/presentation/deck/{document_id}/download")
@@ -142,7 +176,9 @@ async def _finalize_and_preview(doc_id: str, html: str, on_progress) -> list:
     _finalize_deck_document(doc_id, html=html)
     try:
         imgs = await render_slide_images(html, on_progress=on_progress)
-        return _slides_payload(imgs)
+        slides = _slides_payload(imgs)
+        _cache_slides(doc_id, slides)   # seed so the first Documents-page open is instant too
+        return slides
     except Exception:
         return []
 
