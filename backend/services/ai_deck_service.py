@@ -2065,33 +2065,37 @@ def _polish_plotly_specs(html: str) -> str:
 _FILL_CSS = """<style>/* deterministic-fill */
 .slide{display:flex !important;flex-direction:column !important;height:1080px !important;
   justify-content:flex-start !important;overflow:hidden !important;position:relative !important;}
+/* NOTE ON SELECTORS: the autofit script (below) may wrap a slide's children in a .autofit
+   div to scale an overflowing slide. That makes the chrome a GRANDCHILD of .slide, which
+   silently killed every `.slide > X` rule here — the takeaway lost its pin and printed over
+   the charts. So each skeleton rule matches through the wrapper as well. */
 /* THE SKELETON, forced. Models kept absolutely-positioning the takeaway band and the footer, so
    they stacked on each other and clipped the content region. Pin them as normal flow children at
    the end of the column instead, and let the middle grow — this is geometry, not a design choice,
    so it must not depend on the model getting it right. */
-.slide > .slide-header{flex:0 0 auto !important;}
-.slide > .takeaway{position:static !important;flex:0 0 auto !important;order:98 !important;
+:is(.slide,.slide > .autofit) > .slide-header{flex:0 0 auto !important;}
+:is(.slide,.slide > .autofit) > .takeaway{position:static !important;flex:0 0 auto !important;order:98 !important;
   margin:0 !important;width:100% !important;box-sizing:border-box !important;}
-.slide > .footer{position:static !important;flex:0 0 auto !important;order:99 !important;
+:is(.slide,.slide > .autofit) > .footer{position:static !important;flex:0 0 auto !important;order:99 !important;
   margin:0 !important;width:100% !important;box-sizing:border-box !important;
   display:flex !important;justify-content:space-between !important;align-items:center !important;}
 /* Content children size to their content and may SHRINK, but must not grow — giving every child
    flex:1 stretched KPI strips halfway down the slide into empty space. */
-.slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
+:is(.slide,.slide > .autofit) > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
   flex:0 1 auto;min-height:0;}
 /* ...except a chart or table region, which grows to absorb the slack. NOTE: card grids and KPI
    strips deliberately do NOT grow. Chasing a 100%-filled canvas is what produced stretched tiles,
    inflated bands and stranded text; the reference house style leaves the lower third of many
    slides empty and reads better for it, because the cards give the space a shape. Only overflow
    is a defect here — emptiness is not. */
-.slide > *:has(.js-plotly-plot),.slide > *:has(table){flex:1 1 auto;min-height:0;}
+:is(.slide,.slide > .autofit) > *:has(.js-plotly-plot),:is(.slide,.slide > .autofit) > *:has(table){flex:1 1 auto;min-height:0;}
 /* Cards: equal height within a row, content top-aligned, and never stretched vertically by the
    column. The grid sizes to its content and the slack falls to the bottom of the slide. */
 .slide .card-grid{align-items:stretch !important;}
 .slide .card{display:flex;flex-direction:column;align-items:flex-start;}
 /* A table must shrink to fit rather than be sliced off by the clip (slide 5 lost 9 of 10 rows). */
 .slide table{max-height:100%;}
-.slide > *:has(table){overflow:auto;}
+:is(.slide,.slide > .autofit) > *:has(table){overflow:auto;}
 /* the footer already carries the page index — drop the duplicate pinned one */
 .slide:has(.footer) .pageno{display:none !important;}
 /* PIN THE BOTTOM BAND. Content is top-anchored and no longer grows to fill (by design), so nothing
@@ -2099,7 +2103,7 @@ _FILL_CSS = """<style>/* deterministic-fill */
    margin-top:auto absorbs the slack in the gap ABOVE the band instead of stretching the content —
    content stays at the top, the band sits on the floor, and the whitespace lands between them
    where it belongs. Only the topmost band takes it, or the two would fight over the slack. */
-.slide > .takeaway{margin-top:auto !important;}
+:is(.slide,.slide > .autofit) > .takeaway{margin-top:auto !important;}
 .slide:not(:has(> .takeaway)) > .callout-row{margin-top:auto !important;}
 .slide:not(:has(> .takeaway)):not(:has(> .callout-row)) > .footer{margin-top:auto !important;}
 /* covers/section/closing are posters — let them centre and fill edge to edge */
@@ -2194,8 +2198,14 @@ _AUTOFIT_JS = (
     "var cs=getComputedStyle(s);"
     "var padT=parseFloat(cs.paddingTop)||0,padB=parseFloat(cs.paddingBottom)||0;"
     "var avail=H-padT-padB;if(avail<=0)continue;"
-    # Wrap the slide's own children once, so we can scale them as a single group.
     "var w=s.querySelector(':scope > .autofit');"
+    # Only touch a slide that ACTUALLY overflows. The wrapper reparents the chrome one level
+    # deeper, so wrapping every slide unconditionally (which the first version did) meant the
+    # takeaway/footer pinning stopped matching everywhere and the band printed over the charts.
+    # The CSS above now matches through the wrapper, but a slide that fits should still be left
+    # completely untouched — the smallest blast radius that solves the problem.
+    "if(!w&&s.scrollHeight<=H+2)continue;"
+    # Wrap the slide's own children once, so we can scale them as a single group.
     "if(!w){w=document.createElement('div');w.className='autofit';"
     "w.style.cssText='display:flex;flex-direction:column;height:100%;width:100%;"
     "transform-origin:top center;';"
