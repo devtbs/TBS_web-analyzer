@@ -2061,6 +2061,11 @@ _FILL_CSS = """<style>/* deterministic-fill */
 .slide.layout-closing{position:relative;overflow:hidden;}
 .slide.layout-closing > img.ai-img{position:absolute !important;inset:0 !important;width:100% !important;
   height:100% !important;object-fit:cover !important;z-index:0 !important;flex:none !important;}
+/* Force the scrim. Without it the closing type sits straight on a busy photo and is unreadable —
+   which is exactly what shipped. ::after guarantees one even when the model omitted the element,
+   and a flat rgba fill keeps it export-safe (no gradient). */
+.slide.layout-closing::after{content:"";position:absolute;inset:0;background:rgba(15,27,45,.72);
+  z-index:1;pointer-events:none;}
 .slide.layout-closing > *:not(img){position:relative;z-index:2;flex:none;}
 /* pin the page index to the bottom-right so centering the content can't displace it */
 .slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;z-index:5;}
@@ -2113,6 +2118,60 @@ def _inject_leak_cleanup(html: str) -> str:
     return html + _LEAK_CLEANUP_JS
 
 
+# Overflow is the one defect no prompt rule reliably prevents: the model cannot know how tall its
+# text will actually render, so it writes one line too many and the slide silently slices content
+# off the bottom (a donut spilling past the canvas, a card row cut in half, headings overlapping).
+# It IS measurable at render time, in the browser, where the real box heights exist. So we measure
+# and fix it deterministically instead of asking the model to guess better.
+#
+# The fix is a uniform scale on a wrapper around the slide's own children — the same thing a human
+# does when they nudge a group smaller to fit. Everything shrinks together, so the composition and
+# all proportions are preserved; it just gets slightly smaller. We clamp at 0.72: below that the
+# type would be too small to read, and a slide that overfull is a content bug worth SEEING rather
+# than hiding. Runs after Plotly has drawn (charts change height on render), hence the rAF chain.
+_AUTOFIT_JS = (
+    "<script>(function(){function fit(){"
+    "var slides=document.querySelectorAll('.slide');"
+    "for(var i=0;i<slides.length;i++){var s=slides[i];"
+    # Skip posters: they're intentionally full-bleed and use absolute positioning.
+    "if(/layout-(cover|closing|section)/.test(s.className))continue;"
+    "var H=s.clientHeight;if(!H)continue;"
+    "var cs=getComputedStyle(s);"
+    "var padT=parseFloat(cs.paddingTop)||0,padB=parseFloat(cs.paddingBottom)||0;"
+    "var avail=H-padT-padB;if(avail<=0)continue;"
+    # Wrap the slide's own children once, so we can scale them as a single group.
+    "var w=s.querySelector(':scope > .autofit');"
+    "if(!w){w=document.createElement('div');w.className='autofit';"
+    "w.style.cssText='display:flex;flex-direction:column;height:100%;width:100%;"
+    "transform-origin:top center;';"
+    "var kids=[];for(var k=0;k<s.childNodes.length;k++){var n=s.childNodes[k];"
+    "if(n.nodeType===1&&(n.tagName==='SCRIPT'||n.tagName==='STYLE'))continue;kids.push(n);}"
+    "for(var k=0;k<kids.length;k++)w.appendChild(kids[k]);s.appendChild(w);}"
+    "w.style.transform='none';w.style.height='100%';"
+    "var need=w.scrollHeight;"
+    "if(need>avail+2){var r=Math.max(0.72,avail/need);"
+    "w.style.height=(avail/r)+'px';"
+    "w.style.transform='scale('+r+')';"
+    "s.setAttribute('data-autofit',r.toFixed(3));}"
+    "}}"
+    # Plotly resizes after paint; run on a rAF chain and once more on load to catch late layout.
+    "requestAnimationFrame(function(){requestAnimationFrame(function(){"
+    "try{fit();}catch(e){}"
+    "setTimeout(function(){try{fit();}catch(e){}},350);});});"
+    "window.addEventListener('load',function(){setTimeout(function(){try{fit();}catch(e){}},250);});"
+    "})();</script>"
+)
+
+
+def _inject_autofit(html: str) -> str:
+    """Scale-to-fit any content slide whose content overflows the 1080px canvas."""
+    if "slide" not in html:
+        return html
+    if "</body>" in html:
+        return html.replace("</body>", _AUTOFIT_JS + "</body>", 1)
+    return html + _AUTOFIT_JS
+
+
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
@@ -2123,6 +2182,9 @@ def _prepare_html_for_render(html: str) -> str:
     html = _enforce_fill(html)
     # Authoritative leaked-spec guard — runs on every deck, including the chart-less path.
     html = _inject_leak_cleanup(html)
+    # Scale-to-fit overflowing slides. Injected before </body> so it runs after the inline
+    # Plotly.newPlot calls, and re-runs on a rAF chain to catch charts that resize after paint.
+    html = _inject_autofit(html)
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
     html = _polish_plotly_specs(html)
