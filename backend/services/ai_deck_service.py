@@ -1923,6 +1923,112 @@ def _enforce_keyword_bubble(html: str) -> str:
     return _PLOTLY_SPEC_RE.sub(_fix, html)
 
 
+# A series is only safe to share an axis with another when their magnitudes are within this
+# factor. Beyond it the smaller series is visually annihilated — clicks (~12) against impressions
+# (~1,369) is a 100x+ ratio, and the clicks bars flatten into an invisible line on the baseline.
+_SAME_AXIS_MAX_RATIO = 10.0
+
+
+def _typical(vals: List[float]) -> float:
+    """A magnitude summary that ignores zeros and isn't hostage to one spike (unlike max())."""
+    nz = sorted(v for v in vals if v > 0)
+    return nz[len(nz) // 2] if nz else 0.0     # median of the non-zero values
+
+
+def _needs_secondary_axis(a: List[float], b: List[float]) -> bool:
+    """True when two series must NOT share one axis."""
+    ta, tb = _typical(a), _typical(b)
+    if ta <= 0 or tb <= 0:
+        return False                            # one series is empty; sharing is moot
+    return (max(ta, tb) / min(ta, tb)) > _SAME_AXIS_MAX_RATIO
+
+
+def _enforce_axis_scale(html: str) -> str:
+    """Split mismatched-magnitude series onto a second y-axis, in the model's OWN spec.
+
+    Two prompt rules failed to stop this, because the model cannot see what it draws — it has no
+    way to notice that its clicks series became a flat line against impressions. The axis strategy
+    is a pure function of the numbers, so it is decided here instead of asked for.
+
+    The smaller series moves to y2 AS A LINE, deliberately: Plotly cannot group bars across two
+    y-axes, so two bar traces on different axes simply overlay at the same x — which is the "one
+    giant block" defect wearing a different hat. A line over bars is the honest read of a small
+    series against a large one, and it is legible at slide scale.
+    """
+    if "plotly-spec" not in html:
+        return html
+    import json
+
+    def _floats(seq):
+        out = []
+        for v in seq or []:
+            try:
+                out.append(float(v))
+            except (TypeError, ValueError):
+                out.append(0.0)
+        return out
+
+    def _fix(m):
+        try:
+            spec = json.loads(m.group(2))
+        except Exception:
+            return m.group(0)                   # invalid JSON is deck_validation's problem
+        data = spec.get("data")
+        layout = spec.get("layout") or {}
+        if not isinstance(data, list) or len(data) != 2:
+            return m.group(0)                   # only the unambiguous two-series case
+        if any(not isinstance(t, dict) for t in data):
+            return m.group(0)
+        # Already split by the model? Then it got it right — leave it alone.
+        if any(t.get("yaxis") == "y2" for t in data) or "yaxis2" in layout:
+            return m.group(0)
+        if not all(isinstance(t.get("y"), list) for t in data):
+            return m.group(0)
+        if not all(str(t.get("type", "bar")).lower() in ("bar", "scatter", "scattergl", "")
+                   for t in data):
+            return m.group(0)                   # pies/heatmaps have no shared magnitude to compare
+
+        ys = [_floats(t["y"]) for t in data]
+        if not _needs_secondary_axis(ys[0], ys[1]):
+            return m.group(0)
+
+        small = 0 if _typical(ys[0]) < _typical(ys[1]) else 1
+        st = data[small]
+        st["yaxis"] = "y2"
+        st["type"] = "scatter"
+        st["mode"] = "lines+markers"
+        st.pop("width", None)                   # a bar width on a line trace is a Plotly error
+        line = st.get("line") if isinstance(st.get("line"), dict) else {}
+        line.setdefault("width", 3)
+        st["line"] = line
+
+        def _axis_title(t):
+            return (t.get("text") if isinstance(t, dict) else t) or ""
+
+        y1 = layout.get("yaxis") if isinstance(layout.get("yaxis"), dict) else {}
+        # Name each axis for the series it now carries. The model's original title described BOTH
+        # series ("Count"), which was honest while they shared an axis and is misleading the moment
+        # they don't — the reader cannot tell which side is which. We know what is on each axis, so
+        # the trace name wins; the old title is only kept when the trace is anonymous.
+        y1["title"] = {"text": data[1 - small].get("name") or _axis_title(y1.get("title"))}
+        layout["yaxis"] = y1
+        layout["yaxis2"] = {
+            "title": {"text": st.get("name") or ""},
+            "overlaying": "y",
+            "side": "right",
+            "showgrid": False,                  # two grids over one plot is unreadable
+            "rangemode": "tozero",
+        }
+        layout.setdefault("legend", {"orientation": "h", "y": -0.18})
+        margin = layout.get("margin") if isinstance(layout.get("margin"), dict) else {}
+        margin["r"] = max(int(margin.get("r", 0) or 0), 90)   # room for the right-hand axis
+        layout["margin"] = margin
+        spec["layout"] = layout
+        return m.group(1) + json.dumps(spec) + m.group(3)
+
+    return _PLOTLY_SPEC_RE.sub(_fix, html)
+
+
 _ACCENT_VAR_RE = re.compile(r'(--accent\s*:\s*)([^;}\n]+)([;}])', re.IGNORECASE)
 _ACCENT2_VAR_RE = re.compile(r'(--accent-2\s*:\s*)([^;}\n]+)([;}])', re.IGNORECASE)
 
@@ -2251,6 +2357,9 @@ def _prepare_html_for_render(html: str) -> str:
         return html
     html = _polish_plotly_specs(html)
     html = _enforce_keyword_bubble(html)
+    # Mismatched magnitudes on one axis — the defect that made a clicks series vanish into the
+    # baseline. Decided from the numbers, not asked for in the prompt.
+    html = _enforce_axis_scale(html)
     src = _plotly_source()
     if not src:
         return html  # no local bundle available — leave the CDN tag as-is
