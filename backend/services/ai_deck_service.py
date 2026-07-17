@@ -1854,10 +1854,19 @@ _FILL_CSS = """<style>/* deterministic-fill */
 .slide > .footer{position:static !important;flex:0 0 auto !important;order:99 !important;
   margin:0 !important;width:100% !important;box-sizing:border-box !important;
   display:flex !important;justify-content:space-between !important;align-items:center !important;}
-/* everything between the header and the chrome is the content region: it grows and clips itself
-   rather than overflowing onto the bands below */
+/* Content children size to their content and may SHRINK, but must not grow — giving every child
+   flex:1 stretched KPI strips halfway down the slide into empty space. */
 .slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
-  flex:1 1 auto;min-height:0;overflow:hidden;}
+  flex:0 1 auto;min-height:0;}
+/* ...except the region that actually carries the hero visual: that one grows to absorb the slack,
+   which is what fills the canvas without inflating text blocks. */
+.slide > *:has(.js-plotly-plot),.slide > *:has(table),.slide > *:has(> img.ai-img){
+  flex:1 1 auto;min-height:0;}
+/* A table must shrink to fit rather than be sliced off by the clip (slide 5 lost 9 of 10 rows). */
+.slide table{max-height:100%;}
+.slide > *:has(table){overflow:auto;}
+/* the footer already carries the page index — drop the duplicate pinned one */
+.slide:has(.footer) .pageno{display:none !important;}
 /* covers/section/closing are posters — let them centre and fill edge to edge */
 .slide.layout-cover,.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
 .slide.layout-cover > *{flex:none;min-height:0;}
