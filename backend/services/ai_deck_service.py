@@ -335,11 +335,24 @@ per-slide colours, fonts or spacing — everything references the tokens below.
 
 4. LAYOUT ARCHETYPES — EVERY <section class="slide"> must ALSO carry one archetype class and follow
    its structure. The archetype describes the MAIN CONTENT REGION (the chrome above stays constant).
-   - .layout-cover      : title page — a two-column split ~60/40: the LEFT is a clean panel holding
-                          the eyebrow report label, a very large bold title, a short accent rule, the
-                          client name, then quiet metadata lines (period, account, "Prepared by").
-                          The RIGHT is a full-height hero PHOTO (<img class="ai-img">, object-cover)
-                          with a thin accent stripe at the seam. NO KPI numbers on the cover.
+   - .layout-cover      : title page — a two-column grid ~1.05fr / 0.95fr, full height.
+                          LEFT (solid light ground, contents vertically centred, ~96px padding):
+                            1. a brand mark row — "TBS" in the accent + a small muted label
+                               ("ORGANIC SEARCH REPORT" / "GROWTH DECK");
+                            2. an EYEBROW PILL — uppercase, letter-spaced, on a solid accent-tint pill
+                               (not bare text);
+                            3. the TITLE, very large and bold (clamp ~72-104px), tight tracking, sentence
+                               case, with ONE or TWO key words tinted in the accent / accent-2 as a
+                               brand cue (e.g. "Google Ads" blue, "Meta Ads" green);
+                            4. a subtitle line "Prepared by TBS for <client>";
+                            5. a small muted note (the reporting period, and the data source).
+                          RIGHT: a full-height hero PHOTO (<img class="ai-img">, object-cover) with a
+                          FLOATING WHITE CARD overlapping its lower area — full 4-side border, subtle
+                          shadow, holding a "PREPARED FOR" label, the client name, a one-line
+                          descriptor, and a 2x2 grid of context stats (big number + muted label).
+                          A clean hard edge or thin accent divider between the columns — NO gradient
+                          bleed (export-safe). The cover's stats are CONTEXT (period, category count),
+                          never performance KPIs.
    - .layout-section    : a chapter divider — huge number + section title on a solid saturated/dark field.
    - .layout-kpi-tiles  : a grid of .kpi-tile (4 across, 1-2 rows), each label + big number + .delta
                           chip; make ONE tile .tile-dark or .tile-accent to spotlight the hero metric.
@@ -414,18 +427,29 @@ subtitle + rule) -> a main region that fills all remaining height -> the dark EX
   <div class="footer"><span>Client — Report name</span><span>Period</span></div>
   <script type="application/json" class="plotly-spec" data-target="chart3">{"data":[{"type":"bar","x":["Mar","Apr"],"y":[3,5]}],"layout":{}}</script>
 </section>
-And the cover — a two-column split (NOT a full-bleed photo): a clean panel of type on one side, a
-full-height photo on the other, with a thin accent stripe at the seam. NO metric chips on the cover:
-<section class="slide layout-cover" style="display:grid;grid-template-columns:6fr 4fr;height:1080px">
-  <div style="display:flex;flex-direction:column;justify-content:center;padding:96px 108px">
-    <span class="eyebrow">Google Ads Performance Review</span>
-    <h1>Performance Audit Report</h1>
-    <div class="rule" style="width:120px"></div>
-    <p class="client">Client Name</p>
-    <p class="meta">15 May – 15 June 2026 · vs previous period</p>
-    <p class="meta">Prepared by TBS Marketing</p>
+And the cover — a two-column grid (NOT a full-bleed photo): a type panel on the left, a full-height
+photo on the right carrying a FLOATING WHITE CARD of context stats. Note the eyebrow PILL, the
+accent-tinted word in the title, and the brand mark. NO performance KPIs on the cover:
+<section class="slide layout-cover" style="display:grid;grid-template-columns:1.05fr 0.95fr;height:1080px">
+  <div style="display:flex;flex-direction:column;justify-content:center;padding:96px;gap:24px">
+    <p class="brandmark"><strong style="color:var(--accent)">TBS</strong> <span class="meta">ORGANIC SEARCH REPORT</span></p>
+    <span class="eyebrow-pill">Premium Performance Strategy</span>
+    <h1>Organic <em style="color:var(--accent)">Search</em> Growth Strategy</h1>
+    <p class="subtitle">Prepared by TBS for Client Name</p>
+    <p class="meta">15 Jun – 13 Jul 2026 · Google Search Console</p>
   </div>
-  <img class="ai-img" data-prompt="premium product context photo, editorial lighting, no text" style="width:100%;height:100%;object-fit:cover">
+  <div style="position:relative">
+    <img class="ai-img" data-prompt="premium product context photo, editorial lighting, no text, no people" style="width:100%;height:100%;object-fit:cover">
+    <div class="panel" style="position:absolute;left:48px;right:48px;bottom:56px;background:#fff;border:1px solid var(--line);box-shadow:0 8px 30px rgba(0,0,0,.12)">
+      <span class="eyebrow">Prepared for</span>
+      <h3>Client Name</h3>
+      <p class="meta">One-line descriptor of the business.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+        <div><span class="kpi-num">97</span><span class="kpi-label">Unique keywords</span></div>
+        <div><span class="kpi-num">28</span><span class="kpi-label">Days reported</span></div>
+      </div>
+    </div>
+  </div>
 </section>
 Every real slide must fill all 1920x1080 (no bottom band), use the tokens/components above, put a
 relevant icon on every KPI and list bullet, and use ai-img photos liberally — ALWAYS a full-bleed
@@ -983,6 +1007,8 @@ must be complete and self-sufficient. Define, exactly once:
 - The SLIDE CHROME classes: .slide-header .eyebrow .subtitle .rule (a thin full-width accent hairline),
   .takeaway (a FULL-WIDTH SOLID DARK band) + .takeaway-label (small ALL-CAPS in the accent), and
   .footer (a thin muted row, space-between).
+- The COVER classes: .brandmark (the "TBS" + label row), .eyebrow-pill (an uppercase letter-spaced
+  label on a SOLID accent-tint pill with radius — not bare text), and .meta (small muted metadata).
 - The content components: .kpi-tile (+ .tile-dark, .tile-accent), .delta (+ .delta-good, .delta-bad,
   .delta-warn — solid semantic pills), .panel (+ .panel-dark, and a --tint-2 variant), .stat-big,
   .chip, .pageno.
