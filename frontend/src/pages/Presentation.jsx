@@ -115,7 +115,7 @@ const Presentation = () => {
     const [providers, setProviders] = useState([]);
     const [provider, setProvider] = useState('deepseek');
     const [compareModels, setCompareModels] = useState([]);   // extra models to run the SAME deck on
-    const [pipeline, setPipeline] = useState('rendered');     // 'rendered' | 'single' | 'layered'
+    const [pipeline, setPipeline] = useState('single');       // 'single' | 'layered'
     const [layerModels, setLayerModels] = useState({ planner: '', insights: '', html: '' });
     const [creativity, setCreativity] = useState('balanced');
     const [themeMode, setThemeMode] = useState('tbs');        // 'tbs' | 'site' | 'custom' (deck colours)
@@ -815,7 +815,7 @@ const Presentation = () => {
                 {/* ── AI ── model, compare, pipeline ── */}
                 <Section title="AI model & pipeline" open={openSec.ai}
                     onToggle={() => setOpenSec(o => ({ ...o, ai: !o.ai }))}
-                    summary={`${providerLabel(provider)}${compareModels.length ? ` +${compareModels.length}` : ''} · ${pipeline === 'layered' ? '3-layer' : pipeline === 'rendered' ? 'Rendered' : 'Single-pass'}`}>
+                    summary={`${providerLabel(provider)}${compareModels.length ? ` +${compareModels.length}` : ''} · ${pipeline === 'layered' ? '3-layer' : 'Single-pass'}`}>
                     <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
                     <select value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls + ' mb-3'}>
                         {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
@@ -842,17 +842,9 @@ const Presentation = () => {
                     {/* Generation pipeline: single-pass vs 3-layer (per-layer model choice) */}
                     <label className="block text-sm font-bold text-slate-700 mb-2">Pipeline</label>
                     <select value={pipeline} onChange={(e) => setPipeline(e.target.value)} className={fieldCls + ' mb-2'}>
-                        <option value="rendered">Rendered — AI writes the analysis, we lay it out (fastest, most consistent)</option>
                         <option value="single">Single-pass — one model writes the whole deck (fast)</option>
                         <option value="layered">3-layer — plan → per-slide copy → per-slide design (slower)</option>
                     </select>
-                    {pipeline === 'rendered' && (
-                        <p className="mb-4 mt-1 text-xs text-slate-500 leading-relaxed">
-                            The model only picks a slide type and writes the words; the layout, charts and
-                            styling are built in code. Nothing can overflow, collide or render broken — and
-                            it costs a fraction of the other two. Design model choice doesn't apply.
-                        </p>
-                    )}
                     {pipeline === 'layered' ? (
                         <div className="mb-6 mt-2 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                             <p className="text-xs text-slate-400">Pick a model per layer (blank = the AI model above). 3× the calls, so notably slower.</p>
