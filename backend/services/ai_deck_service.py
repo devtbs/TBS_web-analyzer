@@ -1700,7 +1700,9 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
                              seed: Optional[str] = None, creativity: str = "balanced",
                              pipeline: str = "single", models: Optional[Dict[str, str]] = None,
                              style: Optional[str] = "tbs",
-                             artifacts: Optional[Dict] = None) -> str:
+                             artifacts: Optional[Dict] = None,
+                             ctx: Optional[Dict] = None,
+                             palette: Optional[Dict] = None) -> str:
     """Ask the chosen LLM provider to design the deck and return self-contained HTML.
 
     `artifacts`, when given, is filled with the per-slide {slides_md, slides_html} produced by the
@@ -1740,6 +1742,26 @@ async def generate_deck_html(data_brief: str, *, prompt: Optional[str] = None,
             await on_progress("Writing slides…")
         return await _call_llm(full_prompt, system_prompt=_DECK_SYSTEM_PROMPT, provider=provider,
                                on_progress=on_progress, temperature=temperature, on_delta=on_delta)
+
+    if pipeline == "rendered":
+        # Model writes content; Python renders it. Needs the real context (charts are built from
+        # the data, not from model JSON) — without it we cannot honour the contract, so fall back
+        # rather than silently produce a chartless deck.
+        if ctx is None:
+            logger.warning("rendered pipeline needs ctx — falling back to single-pass.")
+        else:
+            try:
+                return await _generate_rendered(
+                    data_brief, provider=provider,
+                    palette=palette or TBS_PALETTE, fonts=TBS_FONTS, ctx=ctx,
+                    temperature=temperature, on_progress=on_progress,
+                    with_photos=photos_on, artifacts=artifacts)
+            except Exception:
+                logger.exception("rendered pipeline failed — falling back to single-pass")
+        # Fall through to the normal model-authored path below rather than returning half-built
+        # output. The rendered deck needs no validation/repair pass: its HTML is ours, not the
+        # model's, so validate_deck_html (which exists to police model output) has nothing to say.
+        pipeline = "single"
 
     if pipeline == "layered":
         try:
@@ -2676,3 +2698,126 @@ async def generate_deck_from_pdf(
     file_bytes = await render_deck(html, fmt=fmt) if render else None
     return {"format": fmt, "html": html, "data_text": data_text, "file_bytes": file_bytes,
             "artifacts": artifacts}
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# THE RENDERED PIPELINE — the model writes CONTENT, Python writes the pixels.
+#
+# Everything above this line asks an LLM to author HTML/CSS/Plotly and then corrects the result.
+# That approach cost us an entire class of defects: clipped tables, sliced titles, a takeaway band
+# printed over a chart, a footer floating mid-slide, blank slides, invisible click bars. Every
+# durable fix turned out to be deterministic; every prompt rule eventually slipped.
+#
+# Here the model may only choose a template, name a chart kind, and write the words. deck_schema
+# truncates it to a size KNOWN to fit, deck_templates lays it out with hand-written CSS, and
+# deck_charts builds the Plotly specs from the real data. None of those can be talked out of it.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+
+_RENDERED_SYSTEM_PROMPT = (
+    "You are a senior performance-marketing analyst at TBS writing a client report. "
+    "You produce STRUCTURED CONTENT ONLY — never HTML, CSS, markdown or chart code. "
+    "Return exactly one JSON object and nothing else."
+)
+
+_RENDERED_PLAN_PROMPT = """Write the CONTENT for a client-ready deck from the DATA below.
+
+You do NOT design anything. A renderer owns every pixel: layout, type, colour, spacing and charts
+are already built and are not yours to influence. Your job is the ANALYSIS and the WORDS. Spend
+your effort on what the numbers MEAN and what the client should DO.
+
+Return STRICT JSON: {{"slides": [ ... ]}} — no prose, no code fences.
+
+Each slide:
+{{
+  "template": one of: {templates}
+  "section":  short section name, 2-3 words, e.g. "Executive summary"  (omit on cover/closing)
+  "title":    the slide's ONE claim, as a sentence a person would say out loud
+  "subtitle": one supporting line (optional)
+  "takeaway": the "so what" — one sentence, specific, containing a number (optional)
+  "chart":    {{"kind": one of: {charts}}}  or omit entirely
+  "callouts": [{{"kind":"see"|"opportunity"|"recommendation","text":"one sentence"}}] (optional)
+  "content":  the template's own fields, below
+}}
+
+TEMPLATE CONTENT FIELDS
+- cover      {{client, descriptor, meta, stats:[{{value,label}}], image_prompt}}
+- cards      {{cards:[{{title, body}}]}}                  — the workhorse
+- dark_split {{panel_note, cards:[{{title, body}}]}}      — a statement + supporting cards
+- table      {{columns:[...], rows:[[...], ...]}}         — rankings, top-N, anything listy
+- kpi_chart  {{kpis:[{{label, value, note, tone:"good"|"bad"|"warn"}}]}} + a chart
+- movers     {{rising:{{title,rows:[{{label,delta}}]}}, falling:{{title,rows:[...]}}}}
+- roadmap    {{phases:[{{title, meta, bullets:[...], outcome}}]}}  — exactly 3 phases
+- quote      (title + subtitle only) — one big statement slide
+- closing    {{stats:[{{value,label}}], image_prompt}}
+
+RULES
+- Slide 1 is `cover`; the last slide is `closing`. 10-14 slides total.
+- CHARTS: at most 2 in the WHOLE deck, chosen only from the list above — name the kind, never
+  describe or draw one. A chart is earned by a real time series. Rankings, top-N lists and
+  breakdowns are `table` or `cards`. Thin data drops the chart automatically.
+- BE BRIEF. Card bodies ~130 characters, card titles ~38, takeaways ~190. Longer text is
+  TRUNCATED mid-sentence by the renderer — write to the length rather than lose your point.
+- With `callouts` on a slide, only 4 cards fit. Without them, up to 8.
+- Every number you write must appear in the DATA. Never estimate, never invent.
+- Vary the templates — no two consecutive slides may share one.
+- `title` carries the claim; `takeaway` carries the insight. Neither restates a raw number
+  without saying what it means.
+
+=== DATA ===
+{brief}"""
+
+
+def _rendered_plan_prompt(brief: str) -> str:
+    from services.deck_schema import TEMPLATE_NAMES
+    from services.deck_charts import CHART_KINDS
+    return _RENDERED_PLAN_PROMPT.format(
+        templates=", ".join(TEMPLATE_NAMES),
+        charts=", ".join(CHART_KINDS),
+        brief=brief)
+
+
+async def _generate_rendered(data_brief: str, *, provider: str, palette: Dict, fonts: Dict,
+                             ctx: Dict, temperature: float, on_progress: ProgressCb,
+                             with_photos: bool, artifacts: Optional[Dict]) -> str:
+    """One content call -> validate/truncate -> charts from data -> render with coded templates."""
+    from services.deck_schema import normalize_plan
+    from services.deck_templates import render_deck
+    from services.deck_charts import build_chart
+
+    if on_progress:
+        await on_progress("Analysing the data…")
+    raw = await _call_llm(_rendered_plan_prompt(data_brief),
+                          system_prompt=_RENDERED_SYSTEM_PROMPT, provider=provider,
+                          on_progress=on_progress, temperature=temperature)
+    plan_json = _extract_json(raw)
+    if plan_json is None:
+        raise ValueError("the content call did not return usable JSON")
+
+    if on_progress:
+        await on_progress("Laying out slides…")
+    slides = normalize_plan(plan_json)
+    if not slides:
+        raise ValueError("the plan contained no renderable slides")
+
+    figs: Dict[int, Dict] = {}
+    for s in slides:
+        if s.get("chart"):
+            fig = build_chart(s["chart"]["kind"], ctx, palette)
+            if fig:
+                figs[s["n"]] = fig
+            else:
+                # The data cannot support an honest chart — drop it, keep the rest of the slide.
+                s["chart"] = None
+    if not with_photos:
+        for s in slides:
+            if isinstance(s.get("content"), dict):
+                s["content"]["image_prompt"] = ""
+
+    html = render_deck(slides, palette=palette, fonts=fonts, ctx=ctx, figs=figs)
+    if artifacts is not None:
+        import json as _json
+        artifacts["slide_plan"] = _json.dumps(slides, indent=2, ensure_ascii=False)
+        artifacts["charts_built"] = _json.dumps(sorted(figs))
+    if on_progress:
+        await on_progress(f"Rendered {len(slides)} slides ({len(figs)} charts).")
+    return html

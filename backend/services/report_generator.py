@@ -714,17 +714,26 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
     # concurrently with slide-writing instead of serially afterward.
     image_cache = {} if images else None
     artifacts = {}   # filled with per-slide md/html by the per-slide pipeline
+    # The rendered pipeline builds charts from the DATA and lays the deck out with coded
+    # templates, so it needs the context and the resolved palette — not just the text brief.
+    render_ctx = {**context,
+                  "client": context.get("domain", ""),
+                  "report_name": "Search Console Report",
+                  # _gsc_period already returns a human label ("16 Jun – 14 Jul 2026").
+                  "period_label": (context.get("period") or {}).get("label", "")}
     html = await generate_deck_html(brief, prompt=prompt, brand=brand,
                                     structure=GSC_STRUCTURE, provider=provider,
                                     on_progress=on_progress, image_cache=image_cache,
                                     seed=context["domain"], creativity=creativity,
                                     pipeline=pipeline, models=models, style=style,
-                                    artifacts=artifacts)
+                                    artifacts=artifacts, ctx=render_ctx, palette=palette)
     html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
             if images else _AI_IMG_RE.sub("", html))
     html = resolve_ai_icons(html)
-    # Deterministically force the resolved palette regardless of what the model emitted.
-    html = _apply_theme(html, palette["accent"], palette["accent2"])
+    if pipeline != "rendered":
+        # Force the resolved palette onto MODEL-authored HTML. The rendered pipeline already binds
+        # the palette to CSS variables, and re-writing its hex values would fight its own theming.
+        html = _apply_theme(html, palette["accent"], palette["accent2"])
     return {
         "property_url": property_url,
         "domain": context["domain"],
