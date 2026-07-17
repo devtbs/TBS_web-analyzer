@@ -1436,9 +1436,56 @@ def _fallback_slide(md: str, archetype: str, n: int, total: int) -> str:
             f'  <div class="pageno">{n:02d} / {total:02d}</div>\n</section>')
 
 
+def _is_empty_slide(section: str) -> bool:
+    """True when a content slide has chrome (pill/title/footer) but NO body.
+
+    This ships regularly: a section the brand filter emptied (every CTR opportunity for
+    jesseandson.com was branded) still gets planned, and the HTML stage dutifully renders a title
+    and a footer over a blank page. The brief tells the planner to skip it; the planner doesn't
+    always listen. A blank slide is strictly worse than a missing one, so drop it deterministically.
+    Posters are exempt — their whole point is to be mostly image and type.
+
+    Parsed, not regexed: chrome elements nest (.slide-header wraps a span and an h2), and a regex
+    stops at the FIRST closing tag, leaving the title behind and making a blank slide look full.
+    """
+    if not section or re.search(r"layout-(cover|section|closing)", section, re.I):
+        return False
+    # A chart slide carries its content in a <script class="plotly-spec"> plus an empty mount div,
+    # so it reads as textless. Check BEFORE stripping scripts or we would delete real chart slides.
+    if "plotly-spec" in section or "Plotly.newPlot" in section:
+        return False
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(section, "html.parser")
+    except Exception:
+        return False        # never drop a slide on a parser failure
+    for sel in ("slide-header", "footer", "takeaway", "pageno", "sectionpill", "eyebrow", "rule"):
+        for el in soup.select("." + sel):
+            el.decompose()
+    for el in soup.select("script, style"):
+        el.decompose()
+    # Anything that legitimately carries content counts, however terse. A real content COMPONENT
+    # is the signal — not the word count, which punishes a deliberately sparse slide.
+    if soup.find(["table", "img", "svg", "canvas"]):
+        return False
+    if soup.select_one(".card, .panel, .callout-row, .kpi-tile, .stat-big, ul, ol"):
+        return False
+    # What's left is chrome over a blank page. Deliberately conservative: a genuinely blank slide
+    # has ZERO body words. Dropping a real slide is far worse than keeping a thin one.
+    return len(soup.get_text(" ", strip=True).split()) < 4
+
+
 def _assemble_deck(shared_css: str, slides_html: List[str]) -> str:
     """Wrap the independently-generated slides in ONE document with the shared stylesheet, so the
     existing render/validate/theme path downstream sees a normal self-contained deck."""
+    kept = []
+    for s in slides_html:
+        if s and s.strip() and _is_empty_slide(s):
+            logger.warning("Dropping an empty content slide (no body — likely a section the brand "
+                           "filter emptied): %s", (s or "")[:120].replace("\n", " "))
+            continue
+        kept.append(s)
+    slides_html = kept
     body = "\n".join(s for s in slides_html if s and s.strip())
     return ('<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>Report</title>\n'
             "<style>\n" + shared_css + "\n</style>\n</head>\n<body>\n" + body + "\n</body>\n</html>")
@@ -2047,6 +2094,14 @@ _FILL_CSS = """<style>/* deterministic-fill */
 .slide > *:has(table){overflow:auto;}
 /* the footer already carries the page index — drop the duplicate pinned one */
 .slide:has(.footer) .pageno{display:none !important;}
+/* PIN THE BOTTOM BAND. Content is top-anchored and no longer grows to fill (by design), so nothing
+   was pushing the takeaway/footer down any more and they floated mid-slide right under the cards.
+   margin-top:auto absorbs the slack in the gap ABOVE the band instead of stretching the content —
+   content stays at the top, the band sits on the floor, and the whitespace lands between them
+   where it belongs. Only the topmost band takes it, or the two would fight over the slack. */
+.slide > .takeaway{margin-top:auto !important;}
+.slide:not(:has(> .takeaway)) > .callout-row{margin-top:auto !important;}
+.slide:not(:has(> .takeaway)):not(:has(> .callout-row)) > .footer{margin-top:auto !important;}
 /* covers/section/closing are posters — let them centre and fill edge to edge */
 .slide.layout-cover,.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
 /* ...but a CONTENT slide must never centre vertically. When its content exceeds the canvas,
