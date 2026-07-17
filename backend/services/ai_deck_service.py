@@ -293,53 +293,39 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    display 96-144px, h2 52-64px, kpi-number 64-84px, body 26-30px, caption 18-20px.
    Spacing in multiples of 12px. Border-radius consistent.
 
-2. SHARED COMPONENTS — define and reuse these classes (consistent on every slide).
+2. THE COMPONENT KIT — *** THESE CLASSES ALREADY EXIST. DO NOT REDEFINE THEM. ***
+   A measured stylesheet is injected into your deck automatically. It reads YOUR tokens above, so
+   it takes on the theme you chose. Every class below is already styled — correct padding, type
+   sizes, borders, radii, tints, semantics. WRITE THE MARKUP ONLY.
 
-   THE SLIDE CHROME (this is what makes the deck read as ONE designed system — every content
-   slide carries the header, and most carry the takeaway bar and footer):
-   - .slide-header : the header block = .eyebrow + h2 title + optional .subtitle + .rule.
-   - .eyebrow      : small ALL-CAPS letter-spaced kicker above the title (e.g. "BUDGET EFFICIENCY REVIEW").
-   - .subtitle     : ONE quiet line under the title (--muted, or --accent for emphasis).
-   - .rule         : a thin FULL-WIDTH accent hairline closing the header off from the content.
-   - .takeaway     : a FULL-WIDTH SOLID DARK band pinned near the bottom, containing
-                     .takeaway-label (small ALL-CAPS, in --accent) + the takeaway sentence in white.
-                     This carries the slide's key takeaway and is the deck's recurring motif.
-   - .footer       : a thin muted row at the very bottom — left: "<client> — <report name>",
-                     right: the period/date (and "Confidential" where appropriate).
+   Do NOT write CSS for any of these; a rule you add will be overridden and only makes the deck
+   inconsistent. Spend your effort on COMPOSITION (which parts, how many, in what grid) and on
+   the WORDS. You may add CSS ONLY for something the kit has no class for.
 
-   CONTENT COMPONENTS:
-   - .card      : ***THE PRIMARY CONTENT DEVICE OF THIS DECK.*** A WHITE block on the tinted page
-                  ground: background:var(--surface); border:1px solid var(--line) (all FOUR sides);
-                  border-radius:16px; padding:32px 28px. Inside: an optional .idx chip, a bold
-                  title (~30px), then 2-4 short lines of body (~22px, --muted). NO shadow needed —
-                  the border + the ground contrast carry it.
-   - .card-grid : the container. display:grid; gap:24px; align-items:stretch. Use
-                  grid-template-columns of 2, 3 or 4 equal 1fr columns, optionally over 2 rows.
-                  ALL cards in a grid are EQUAL WIDTH and EQUAL HEIGHT — never ad-hoc sizes.
-   - .idx       : a small SOLID rounded chip at the top of a card carrying its index or code
-                  ("1", "B", "TOF") in white/ink on --accent / --accent-2 / --accent-3 / --dark.
-                  Cycle those four colours across a grid — this is the deck's recurring motif.
-   - .sectionpill : the eyebrow, as a SOLID light-tint pill with radius, reading
-                  "07 · KEYWORD STRATEGY" — the section number then the section name. Every
-                  content slide carries one. It hugs its text; it is NOT a full-width bar.
-   - .callout-row : a row of 2-3 SOLID tint callouts closing a slide, each = a small ALL-CAPS
-                  coloured label + one sentence. The standard trio is
-                  "WHAT WE SEE" (blue tint) · "OPPORTUNITY" (amber tint) · "TBS RECOMMENDATION"
-                  (green tint). Use this INSTEAD of the .takeaway bar wherever the slide has three
-                  things to say; it is far stronger than a dark band and is the deck's signature.
-   - .kpi-tile  : a SOLID TINT tile = small label (--muted) + BIG number (--font-display) + a .delta
-                  chip. Variants .tile-dark (inverted, white text) and .tile-accent (solid accent/green)
-                  to spotlight ONE hero metric.
-   - .delta     : a small solid pill showing movement — .delta-good (green) for a win,
-                  .delta-bad (red) for a decline, .delta-warn (amber) for caution. ALWAYS semantic.
-   - .panel     : a SOLID tint block (--tint or --tint-2) with generous padding — the default grouping
-                  device. .panel-dark for an inverted panel. NO gradients, NO single-side accent stripes.
-   - .stat-big  : a very large hero number (with its label) used inside a panel — the "74.9%" moment.
-   - table      : dark header row (--dark bg, white text), zebra body rows (--tint-2 on alternate rows),
-                  right-aligned numerics, and CELL VALUES COLOURED SEMANTICALLY (a declining value is
-                  red, a winning value green). A final total row may be inverted dark.
-   - .chip      : small pill label for tags.
-   - .pageno    : small corner index "03 / 09".
+   CHROME (every content slide): .slide-header wrapping .sectionpill (or .eyebrow) + h2 + optional
+     .subtitle + .rule ; then the content ; then optional .callout-row / .takeaway ; then .footer.
+     .takeaway = <div class=takeaway><span class=takeaway-label>KEY TAKEAWAY</span><p>…</p></div>
+     .footer   = two spans: "<client> — <report name>" and the period.
+   CARDS (the primary device): .card-grid > .card × N, each .card = optional
+     <span class="idx">1</span> (add .alt / .dark to cycle colour) + <h3> + <p>.
+     YOU choose the grid: set grid-template-columns on .card-grid (2/3/4 × 1fr, one or two rows).
+   CALLOUTS: .callout-row > .callout.see / .callout.opportunity / .callout.recommendation,
+     each = <span class="k">WHAT WE SEE</span> + <p>. The signature trio; stronger than a takeaway.
+   METRICS: .kpi-row > .kpi-tile (add .tile-dark or .tile-accent to spotlight ONE hero), each =
+     <span class="l">label</span> + <span class="v">number</span> + a .delta chip.
+   SEMANTIC CHIPS: .delta-good / .delta-bad / .delta-warn (also .pill.good/.bad/.warn, and
+     class="good"/"bad"/"warn" on a <td>). Green = a win, red = a decline, amber = caution. ALWAYS.
+   PANELS: .panel (tint) or .panel.panel-dark (inverted); .stat-big for the hero number inside one.
+   TABLE: a plain <table><thead><tr><th>…  — dark header, zebra rows, right-aligned numerics and
+     ellipsis overflow are already handled. Add class="total" to a final <tr> to invert it.
+   MOVERS: .movers > .mover-col.up / .mover-col.down, each <h3> + .mover rows (.lbl + a value).
+   PRIORITIES: .prio (add .top for rank 1) = .rank + .mid (h3 + p) + .impact (.v + .l).
+   ROADMAP: .phases > .phase × 3, each .cap (.m + h3) + .bd (ul) + .out.
+   CHART: put the plot div inside an element with class="chart".
+   POSTERS: .layout-cover uses .cover-left (.brandmark + h1 + .subtitle + .meta) and .cover-right
+     (img.ai-img + .cover-card > .k + h3 + .d + .cover-stats). .layout-closing uses img.ai-img +
+     .scrim + .closing-in. .layout-dark-split uses .dark-panel + .split-body. .layout-quote uses
+     .quote-in. These are laid out for you — just fill them in.
 
 3. THE SLIDE SKELETON (every content slide, no exceptions):
    Make every .slide a full-height column: display:flex; flex-direction:column; height:1080px;
@@ -2063,8 +2049,13 @@ def _polish_plotly_specs(html: str) -> str:
 # instead of clustering at the top. Charts that sit in a growing flex region are stretched to
 # fill — but fixed-aspect charts (pie/choropleth) keep their own height so they don't distort.
 _FILL_CSS = """<style>/* deterministic-fill */
-.slide{display:flex !important;flex-direction:column !important;height:1080px !important;
-  justify-content:flex-start !important;overflow:hidden !important;position:relative !important;}
+.slide{display:flex !important;height:1080px !important;overflow:hidden !important;
+  position:relative !important;}
+/* Column-forcing applies to CONTENT slides only. The posters are laid out by the deck-kit and are
+   ROW-based (cover, dark-split) or centred (section, closing); forcing a column on them is what
+   collapsed the cover's photo column to zero width and threw the Prepared-for card over the title. */
+.slide:not([class*="layout-cover"]):not([class*="layout-closing"]):not([class*="layout-section"]):not([class*="layout-dark-split"]):not(.cover):not(.closing):not(.dark-split){
+  flex-direction:column !important;justify-content:flex-start !important;}
 /* NOTE ON SELECTORS: the autofit script (below) may wrap a slide's children in a .autofit
    div to scale an overflowing slide. That makes the chrome a GRANDCHILD of .slide, which
    silently killed every `.slide > X` rule here — the takeaway lost its pin and printed over
@@ -2081,7 +2072,7 @@ _FILL_CSS = """<style>/* deterministic-fill */
   display:flex !important;justify-content:space-between !important;align-items:center !important;}
 /* Content children size to their content and may SHRINK, but must not grow — giving every child
    flex:1 stretched KPI strips halfway down the slide into empty space. */
-:is(.slide,.slide > .autofit) > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
+:is(.slide:not([class*="layout-cover"]):not([class*="layout-closing"]):not([class*="layout-section"]):not([class*="layout-dark-split"]),.slide > .autofit) > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
   flex:0 1 auto;min-height:0;}
 /* ...except a chart or table region, which grows to absorb the slack. NOTE: card grids and KPI
    strips deliberately do NOT grow. Chasing a 100%-filled canvas is what produced stretched tiles,
@@ -2114,7 +2105,6 @@ _FILL_CSS = """<style>/* deterministic-fill */
    bottom where the takeaway/footer keep it visible and the QA word-count can catch it. */
 .slide:not(.layout-cover):not(.layout-section):not(.layout-closing){
   justify-content:flex-start !important;align-content:flex-start !important;}
-.slide.layout-cover > *{flex:none;min-height:0;}
 /* Closing poster: force the photo full-bleed behind the type whatever the model emitted, so the
    deck reliably closes on an image the way it opens on one. */
 .slide.layout-closing{position:relative;overflow:hidden;}
@@ -2237,11 +2227,18 @@ def _inject_autofit(html: str) -> str:
     return html + _AUTOFIT_JS
 
 
+from services.deck_kit import inject_kit  # noqa: E402  (kept beside its only use)
+
+
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
     # Inline fonts first so typography is offline-safe even for text-only (chart-less) decks.
     html = _inline_fonts(html)
+    # The component kit: measured CSS for the parts the prompt asks the model to compose with.
+    # Injected at the end of <head>, so where the model wrote its own .card/.callout/table rules
+    # (guessing every number from a prose description), the measured ones win on source order.
+    html = inject_kit(html)
     # Deterministic full-height backstop — applies to every deck (incl. chart-less) so a
     # model that under-fills a slide still produces a balanced, full-canvas page.
     html = _enforce_fill(html)
