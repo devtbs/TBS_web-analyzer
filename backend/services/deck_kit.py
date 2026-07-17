@@ -104,9 +104,13 @@ html,body{background:var(--k-bg);color:var(--k-ink);
 .pageno{font-size:17px;color:var(--k-muted);letter-spacing:.08em}
 
 /* ── cards — the primary content device ─────────────────────────────────────────
-   The kit does NOT set grid-template-columns: how many cards, over how many rows, is the
-   model's composition to make. It only guarantees they are equal, stretched and never orphaned. */
-.card-grid{display:grid;gap:24px;align-items:stretch;min-height:0}
+   How many cards, over how many rows, is the model's composition to make — it sets
+   grid-template-columns and that wins. But the DEFAULT must be sane: a CSS grid with no columns
+   is a ONE-column grid, so an omitted grid-template-columns stacked three cards full-width, blew
+   past the canvas and collided with the callouts. auto-fit means the cards spread across the row
+   on their own, and the model's own column count still overrides this. */
+.card-grid{display:grid;gap:24px;align-items:stretch;min-height:0;
+  grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 .card{background:var(--k-surface);border:1px solid var(--k-line);border-radius:16px;
   padding:30px 28px;display:flex;flex-direction:column;align-items:flex-start;min-width:0}
 .card .idx{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:44px;
@@ -140,7 +144,7 @@ html,body{background:var(--k-bg);color:var(--k-ink);
 .stat-big + .l,.stat-big ~ .l{font-size:20px;color:var(--k-muted)}
 
 /* ── kpi tiles ──────────────────────────────────────────────────────────────────── */
-.kpi-row{display:grid;gap:22px}
+.kpi-row{display:grid;gap:22px;grid-auto-flow:column;grid-auto-columns:1fr}
 .kpi-tile,.kpi{background:var(--k-tint2);border:1px solid var(--k-line);border-radius:16px;
   padding:24px 26px;min-width:0}
 .kpi-tile .l,.kpi .l{font-size:18px;color:var(--k-muted);letter-spacing:.06em;text-transform:uppercase}
@@ -244,7 +248,7 @@ tbody tr.total{background:var(--k-dark)} tbody tr.total td{color:#fff;font-weigh
   font-weight:700;letter-spacing:-.03em;margin:22px 0;color:var(--k-ink)}
 .cover-left .subtitle{font-size:27px;color:var(--k-ink)}
 .cover-left .meta{margin-top:12px;font-size:20px;color:var(--k-muted)}
-.cover-right{flex:1 1 auto;position:relative;min-width:0}
+.cover-right{flex:1 1 0;position:relative;min-width:0}
 .cover-right img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .cover-card{position:absolute;left:44px;right:44px;bottom:52px;background:var(--k-surface);
   border:1px solid var(--k-line);border-radius:18px;padding:30px 32px;

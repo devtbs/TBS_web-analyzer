@@ -740,9 +740,18 @@ def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
     return "\n\n".join(parts)
 
 
+_STRAY_FENCE_RE = re.compile(r'```[a-zA-Z]*')
+
+
 def _clean_html(text: str) -> str:
-    """Strip any stray markdown fences the model may wrap around the HTML."""
-    t = text.strip()
+    """Strip any stray markdown fences the model may wrap around the HTML.
+
+    Both the wrapping fence AND fences MID-document: the model closed a slide, emitted an
+    unprompted "```html" and carried on, which this function used to walk straight past because it
+    only looked at the start. The fence then rendered as literal text on the slide. A backtick run
+    is never legitimate content in a deck, so they all go.
+    """
+    t = _STRAY_FENCE_RE.sub("", text).strip()
     if t.startswith("```"):
         t = t.split("\n", 1)[1] if "\n" in t else t
         if t.endswith("```"):
@@ -1975,18 +1984,54 @@ def _enforce_axis_scale(html: str) -> str:
             return m.group(0)                   # invalid JSON is deck_validation's problem
         data = spec.get("data")
         layout = spec.get("layout") or {}
-        if not isinstance(data, list) or len(data) != 2:
-            return m.group(0)                   # only the unambiguous two-series case
-        if any(not isinstance(t, dict) for t in data):
+        if not isinstance(data, list) or len(data) < 2:
             return m.group(0)
-        # Already split by the model? Then it got it right — leave it alone.
-        if any(t.get("yaxis") == "y2" for t in data) or "yaxis2" in layout:
+        if any(not isinstance(t, dict) for t in data):
             return m.group(0)
         if not all(isinstance(t.get("y"), list) for t in data):
             return m.group(0)
         if not all(str(t.get("type", "bar")).lower() in ("bar", "scatter", "scattergl", "")
                    for t in data):
             return m.group(0)                   # pies/heatmaps have no shared magnitude to compare
+
+        def _is_bar(t):
+            return str(t.get("type", "bar")).lower() == "bar"
+
+        def _axis_of(t):
+            return t.get("yaxis") or "y"
+
+        # FIRST: bars on DIFFERENT axes. Plotly cannot group bars across two y-axes, so they
+        # simply overlay at the same x and the shorter one hides behind the taller — the deck
+        # shipped a clicks series completely invisible behind impressions. The model had already
+        # split the axes correctly here; the bar/bar pairing is the defect, not the scaling. So
+        # this runs even on a spec that "looks" split, which an early-return on yaxis2 missed.
+        bars = [t for t in data if _is_bar(t)]
+        axes = {_axis_of(t) for t in bars}
+        if len(bars) >= 2 and len(axes) >= 2:
+            main = max(axes, key=lambda ax: _typical(
+                [v for t in bars if _axis_of(t) == ax for v in _floats(t["y"])]))
+            changed = False
+            for t in bars:
+                if _axis_of(t) == main:
+                    continue
+                t["type"] = "scatter"           # the overlaid bar becomes a legible line
+                t["mode"] = "lines+markers"
+                t.pop("width", None)
+                ln = t.get("line") if isinstance(t.get("line"), dict) else {}
+                ln.setdefault("width", 3)
+                t["line"] = ln
+                changed = True
+            if changed:
+                spec["layout"] = layout
+                return m.group(1) + json.dumps(spec) + m.group(3)
+            return m.group(0)
+
+        # OTHERWISE: two series sharing ONE axis with mismatched magnitudes.
+        if len(data) != 2:
+            return m.group(0)                   # only the unambiguous two-series case
+        # Already split by the model? Then it got it right — leave it alone.
+        if any(t.get("yaxis") == "y2" for t in data) or "yaxis2" in layout:
+            return m.group(0)
 
         ys = [_floats(t["y"]) for t in data]
         if not _needs_secondary_axis(ys[0], ys[1]):
@@ -2203,8 +2248,10 @@ _FILL_CSS = """<style>/* deterministic-fill */
 :is(.slide,.slide > .autofit) > .takeaway{margin-top:auto !important;}
 .slide:not(:has(> .takeaway)) > .callout-row{margin-top:auto !important;}
 .slide:not(:has(> .takeaway)):not(:has(> .callout-row)) > .footer{margin-top:auto !important;}
-/* covers/section/closing are posters — let them centre and fill edge to edge */
-.slide.layout-cover,.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
+/* section/closing are COLUMN posters — centring stacks them nicely. The cover is a ROW (kit),
+   and centring a row whose children overflow pushes content off BOTH edges: it sliced the cover
+   headline on the left and the Prepared-for card on the right. Its columns are already sized. */
+.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
 /* ...but a CONTENT slide must never centre vertically. When its content exceeds the canvas,
    centring overflows BOTH ends and silently slices the title off the top of the page (the deck
    shipped two slides whose eyebrow+title were cut in half). Top-anchored, the overflow is at the
