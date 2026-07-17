@@ -263,8 +263,10 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
     # `brand_terms`) from every surface that drives a RECOMMENDATION — the table, CTR opportunities,
     # striking distance, the bubble chart and the per-query movers. Otherwise the deck keeps telling
     # the client to "rank better for <their own name>", which they already own.
-    # keyword_mix and the headline totals deliberately still count every query: those are volume
-    # facts, not advice, and under-reporting them would be dishonest.
+    # keyword_mix follows the same filter so the deck's "unique keywords" story is the non-branded
+    # one. The headline totals (clicks/impressions/CTR/position) still cover EVERY query — they're
+    # the site's real performance, and restating them net of brand would be dishonest. `brand_split`
+    # below reconciles the two.
     cores = _brand_cores(domain, brand_terms)
 
     def _nb(rows, key="query"):
@@ -277,6 +279,28 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
     if insights and insights.get("queries"):
         insights = {**insights, "queries": _nb(insights["queries"])}
 
+    # The one place brand is allowed to appear: a single honest split, so the deck can say
+    # "X% of clicks are branded, here's the other Y%" once and then spend itself on non-branded
+    # demand. Without this the reader can't tell why the query counts don't reconcile.
+    brand_split = None
+    if cores and len(nonbrand) < len(queries):
+        branded = [q for q in queries if _is_brand_query(q.get("query", ""), cores)]
+
+        def _sum(rows, key):
+            return sum(r.get(key) or 0 for r in rows)
+
+        b_clicks, n_clicks = _sum(branded, "clicks"), _sum(nonbrand, "clicks")
+        b_impr, n_impr = _sum(branded, "impressions"), _sum(nonbrand, "impressions")
+        total_clicks, total_impr = b_clicks + n_clicks, b_impr + n_impr
+        brand_split = {
+            "branded_queries": len(branded),
+            "nonbranded_queries": len(nonbrand),
+            "branded_clicks": b_clicks,
+            "nonbranded_clicks": n_clicks,
+            "branded_click_share": round(100 * b_clicks / total_clicks, 1) if total_clicks else 0,
+            "branded_impression_share": round(100 * b_impr / total_impr, 1) if total_impr else 0,
+        }
+
     return {
         "property_url": property_url,
         "domain": domain,
@@ -288,7 +312,8 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "top_queries": nonbrand[:15],
         "brand_excluded": bool(cores and len(nonbrand) < len(queries)),
         "bubble_queries": sorted(nonbrand, key=lambda q: q.get("impressions", 0), reverse=True)[:30],
-        "keyword_mix": _keyword_mix(queries),
+        "keyword_mix": _keyword_mix(nonbrand),
+        "brand_split": brand_split,
         "query_insights": insights or {},
         "top_pages": pages[:10],
         "devices": devices,
@@ -361,13 +386,24 @@ def _gsc_data_brief(ctx: Dict) -> str:
         if ctx.get("brand_excluded")
         else "TOP QUERIES (by clicks):"
     )
+    bs = ctx.get("brand_split") or {}
     brand_rule = (
-        "\nBRAND RULE: branded/navigational queries have ALREADY been removed from the query "
-        "table, CTR opportunities, striking distance, the query bubble chart and the movers "
-        "list. The client already ranks for their own name — never recommend improving rank, "
-        "CTR or content for a branded query, never make brand visibility a theme, insight or "
-        "recommendation, and never note that brand terms are missing. Every recommendation must "
-        "target non-branded demand.\n"
+        "\nBRAND RULE — THIS DECK IS ABOUT NON-BRANDED SEARCH:\n"
+        "Branded/navigational queries have ALREADY been removed from the query table, CTR "
+        "opportunities, striking distance, the query bubble chart, the movers list and the unique-"
+        "keyword mix. The client already ranks for their own name; it is not an opportunity.\n"
+        f"- Branded share of query clicks: {bs.get('branded_click_share', 0)}% "
+        f"({bs.get('branded_queries', 0)} branded queries vs {bs.get('nonbranded_queries', 0)} "
+        f"non-branded). State this ONCE, as context, on the overview slide only.\n"
+        "- After that one mention, EVERY theme, insight, chart, opportunity and recommendation "
+        "must be about NON-BRANDED demand.\n"
+        "- NEVER recommend improving rank, CTR, or content for a branded query. NEVER make brand "
+        "visibility a theme or a recommendation. NEVER say brand terms are missing or "
+        "under-performing — they were removed on purpose.\n"
+        "- The headline totals above cover ALL queries (branded included) because they are the "
+        f"site's true performance. Query-level lists cover the {bs.get('nonbranded_queries', 0)} "
+        "non-branded queries only, so they will not add up to the totals. That is expected — do "
+        "not reconcile them, apologise for them, or call it a data gap.\n"
         if ctx.get("brand_excluded") else ""
     )
     p_lines = "\n".join(
@@ -544,7 +580,7 @@ MONTHLY PERFORMANCE (last 12 months; use for the clicks+impressions bar + avg-po
 KEYWORD POSITION vs IMPRESSIONS (top queries; use for a bubble/scatter chart — x = avg position, y = impressions, bubble size ∝ impressions):
 {bubble_lines}
 
-KEYWORD MIX (distinct queries tracked this period + how their average rank is distributed; use for a "Unique Keywords" metric + a ranking-distribution donut):
+KEYWORD MIX ({"non-branded " if ctx.get("brand_excluded") else ""}distinct queries tracked this period + how their average rank is distributed; use for a "Unique Keywords" metric + a ranking-distribution donut):
 - Unique keywords (distinct queries): {km.get('unique', 0)}
 - In positions 1-3 (page-1 top): {km.get('top3', 0)}
 - In positions 4-10 (page-1 lower): {km.get('mid', 0)}
