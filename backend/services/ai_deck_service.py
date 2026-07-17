@@ -1026,8 +1026,13 @@ must be complete and self-sufficient. Define, exactly once:
 - The SLIDE CHROME classes: .slide-header .eyebrow .subtitle .rule (a thin full-width accent hairline),
   .takeaway (a FULL-WIDTH SOLID DARK band) + .takeaway-label (small ALL-CAPS in the accent), and
   .footer (a thin muted row, space-between).
-- The COVER classes: .brandmark (the "TBS" + label row), .eyebrow-pill (an uppercase letter-spaced
-  label on a SOLID accent-tint pill with radius — not bare text), and .meta (small muted metadata).
+- The COVER classes: .brandmark, .eyebrow-pill (an uppercase letter-spaced label on a SOLID
+  accent-tint pill with radius — not bare text; it hugs its text, it is NOT a full-width bar), and
+  .meta (small muted metadata).
+- THE BRAND MARK IS ALWAYS THE LITERAL WORD "TBS". TBS is the agency that WRITES this report; the
+  client is the SUBJECT of it. Never replace it with the client's name, initials or monogram (not
+  "J&S", not "JS") — that would put the client's logo on TBS's report. The client's name belongs in
+  "Prepared by TBS for <client>", the Prepared-for card, and the footer. Nowhere else.
 - The content components: .kpi-tile (+ .tile-dark, .tile-accent), .delta (+ .delta-good, .delta-bad,
   .delta-warn — solid semantic pills), .panel (+ .panel-dark, and a --tint-2 variant), .stat-big,
   .chip, .pageno.
@@ -1221,6 +1226,14 @@ def _check_slide(section: str, *, with_photos: bool, wants_image: bool) -> List[
         probs.append("This deck has photos disabled — remove the <img class=\"ai-img\"> placeholder.")
     elif has_img and not wants_image:
         probs.append("This slide has no planned image — remove the <img class=\"ai-img\"> placeholder.")
+    # ...and the two poster slides must HAVE one. The check only ever caught surplus images, so a
+    # cover that silently shipped with no photo passed QA — which is exactly what happened.
+    if with_photos and not has_img and re.search(r"layout-(cover|closing)", section, re.I):
+        which = "cover" if re.search(r"layout-cover", section, re.I) else "closing"
+        probs.append(
+            f"The {which} slide has NO photo. It must carry an <img class=\"ai-img\" "
+            f"data-prompt=\"…\"> — the deck opens and closes on an image. Add it as the "
+            f"{'right column, full-height, object-fit:cover' if which == 'cover' else 'full-bleed background behind the flat scrim'}.")
     return probs
 
 
@@ -1284,6 +1297,20 @@ def _clean_css(text: str) -> str:
 _SECTION_RE = re.compile(r"<section\b.*</section>", re.IGNORECASE | re.DOTALL)
 
 
+# The brand mark is the AGENCY's, not the client's. Models reliably "helpfully" swap in the client's
+# initials (a Jesse & Son deck came back marked "J&S"), which puts the client's logo on TBS's report.
+# Prompting alone can't be trusted with this, so it's rewritten deterministically at assembly.
+_BRANDMARK_RE = re.compile(
+    r'(<p[^>]*class=["\'][^"\']*\bbrandmark\b[^"\']*["\'][^>]*>\s*<strong[^>]*>)(.*?)(</strong>)',
+    re.I | re.S)
+
+
+def _force_agency_brandmark(section: str) -> str:
+    """Force the .brandmark word to 'TBS'. The deck is TBS's report ABOUT the client; the client's
+    name belongs in 'Prepared by TBS for <client>' and the Prepared-for card, never in the mark."""
+    return _BRANDMARK_RE.sub(lambda m: m.group(1) + "TBS" + m.group(3), section)
+
+
 def _clean_slide(text: str) -> str:
     """Extract exactly the <section>…</section> a per-slide call should have returned."""
     t = (text or "").strip()
@@ -1292,7 +1319,7 @@ def _clean_slide(text: str) -> str:
         if t.endswith("```"):
             t = t[: t.rfind("```")]
     m = _SECTION_RE.search(t)
-    return m.group(0).strip() if m else ""
+    return _force_agency_brandmark(m.group(0).strip()) if m else ""
 
 
 def _fallback_slide(md: str, archetype: str, n: int, total: int) -> str:
@@ -1917,6 +1944,12 @@ _FILL_CSS = """<style>/* deterministic-fill */
 .slide:has(.footer) .pageno{display:none !important;}
 /* covers/section/closing are posters — let them centre and fill edge to edge */
 .slide.layout-cover,.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
+/* ...but a CONTENT slide must never centre vertically. When its content exceeds the canvas,
+   centring overflows BOTH ends and silently slices the title off the top of the page (the deck
+   shipped two slides whose eyebrow+title were cut in half). Top-anchored, the overflow is at the
+   bottom where the takeaway/footer keep it visible and the QA word-count can catch it. */
+.slide:not(.layout-cover):not(.layout-section):not(.layout-closing){
+  justify-content:flex-start !important;align-content:flex-start !important;}
 .slide.layout-cover > *{flex:none;min-height:0;}
 /* Closing poster: force the photo full-bleed behind the type whatever the model emitted, so the
    deck reliably closes on an image the way it opens on one. */
