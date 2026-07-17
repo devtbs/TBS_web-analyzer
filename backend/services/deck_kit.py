@@ -174,6 +174,11 @@ tbody td{padding:14px 18px;text-align:right;color:var(--k-ink);border-bottom:1px
 tbody td:first-child{text-align:left}
 tbody tr:nth-child(even){background:var(--k-tint2)}
 tbody tr.total{background:var(--k-dark)} tbody tr.total td{color:#fff;font-weight:700}
+/* "+N more" — added by the table-fit pass when rows had to be dropped. Quiet, but present: the
+   reader must be able to tell the table was truncated rather than silently shortened. */
+tbody tr.more{background:transparent}
+tbody tr.more td{text-align:left;font-size:18px;font-style:italic;color:var(--k-muted);
+  border-bottom:0;padding-top:12px}
 
 /* ── charts ─────────────────────────────────────────────────────────────────────── */
 .chart{flex:1 1 auto;min-height:0;width:100%}

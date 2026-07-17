@@ -2371,6 +2371,44 @@ _AUTOFIT_JS = (
 )
 
 
+_TABLE_FIT_JS = (
+    "<script>(function(){"
+    # A clipped table is a LIE: the slide said "Top 15", showed 8 and a half rows, and the reader
+    # had no way to know the rest existed — the last row was sliced through the middle by the
+    # container's overflow:hidden. Dropping rows silently would be the same lie with a tidier edge,
+    # so every row removed is counted and declared in a "+N more" row. Only the browser knows what
+    # actually fits (font metrics, column wrapping), so this is measured after layout, not guessed.
+    "function clipBox(el){var n=el.parentElement;"
+    "while(n&&!n.classList.contains('slide')){var o=getComputedStyle(n).overflowY;"
+    "if(o==='hidden'||o==='auto'||o==='scroll')return n;n=n.parentElement;}return n;}"
+    "document.querySelectorAll('.slide table').forEach(function(t){"
+    "var tb=t.tBodies&&t.tBodies[0];if(!tb||!tb.rows.length)return;"
+    "var box=clipBox(t);if(!box)return;"
+    "var limit=box.getBoundingClientRect().bottom-6;"
+    "var note=null,dropped=0,guard=0;"
+    "function lastData(){for(var i=tb.rows.length-1;i>=0;i--){if(tb.rows[i]!==note)return tb.rows[i];}return null;}"
+    "function bottom(){var r=tb.rows[tb.rows.length-1];return r?r.getBoundingClientRect().bottom:0;}"
+    "while(bottom()>limit&&guard++<300){"
+    "var r=lastData();if(!r||tb.rows.length<=1)break;"
+    "tb.removeChild(r);dropped++;"
+    "if(!note){note=document.createElement('tr');note.className='more';"
+    "var td=document.createElement('td');"
+    "td.colSpan=(t.rows[0]?t.rows[0].cells.length:1);note.appendChild(td);tb.appendChild(note);}"
+    "note.cells[0].textContent='+'+dropped+' more';}"
+    "});})();</script>"
+)
+
+
+def _fit_tables(html: str) -> str:
+    """Trim table rows that cannot fit, and SAY SO. Runs before autofit so it measures the real
+    layout and autofit sees the trimmed table."""
+    if "<table" not in html:
+        return html
+    if "</body>" in html:
+        return html.replace("</body>", _TABLE_FIT_JS + "</body>", 1)
+    return html + _TABLE_FIT_JS
+
+
 def _inject_autofit(html: str) -> str:
     """Scale-to-fit any content slide whose content overflows the 1080px canvas."""
     if "slide" not in html:
@@ -2399,6 +2437,9 @@ def _prepare_html_for_render(html: str) -> str:
     html = _inject_leak_cleanup(html)
     # Scale-to-fit overflowing slides. Injected before </body> so it runs after the inline
     # Plotly.newPlot calls, and re-runs on a rAF chain to catch charts that resize after paint.
+    # Drop table rows that don't fit and declare the count — before autofit, so it
+    # measures the real layout and autofit then sees the trimmed table.
+    html = _fit_tables(html)
     html = _inject_autofit(html)
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
