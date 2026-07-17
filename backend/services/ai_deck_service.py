@@ -111,7 +111,7 @@ Output ONE complete, self-contained HTML document and NOTHING ELSE: no markdown,
 - Start with <!DOCTYPE html>.
 - All CSS inline in a single <style> tag. Fonts may load from fonts.googleapis.com.
 - Each slide is exactly: <section class="slide"> ... </section>. Every .slide is 1920px wide and 1080px tall, overflow hidden.
-- FILL THE CANVAS — this is critical. Every slide MUST use the full 1920x1080 height; NO slide may leave a large empty band (no more than ~12% blank vertical space). Make each .slide a vertical flex container (display:flex; flex-direction:column; justify-content:center; gap:40px; padding:88px 108px) so content is balanced over the whole height — never dump everything in the top third. To fill space meaningfully: pair every data TABLE or KPI-card row with a relevant Plotly chart beside or below it (two-column or stacked grid), enlarge cards, and use generous spacing. A data slide that is only a small table at the top is NOT acceptable — add a chart or distribute the layout to fill the slide.
+- USE THE CANVAS, DON'T CRAM IT. Make each .slide a vertical flex container (display:flex; flex-direction:column; justify-content:flex-start; gap:40px; padding:88px 108px) — TOP-ANCHORED, never justify-content:center (centring silently slices the title off the top when content is tall). Compose at a generous scale: big type, roomy cards, real gutters. But a slide whose card grid ends two-thirds down the page is CORRECT and premium — do NOT invent filler to reach the bottom edge, and NEVER add a chart just to occupy space. The ONLY hard failure is content OVERFLOWING 1080px.
 - Include this CSS so it paginates when printed:
     @page { size: 1920px 1080px; margin: 0; }
     * { box-sizing: border-box; }
@@ -308,6 +308,25 @@ per-slide colours, fonts or spacing — everything references the tokens below.
                      right: the period/date (and "Confidential" where appropriate).
 
    CONTENT COMPONENTS:
+   - .card      : ***THE PRIMARY CONTENT DEVICE OF THIS DECK.*** A WHITE block on the tinted page
+                  ground: background:var(--surface); border:1px solid var(--line) (all FOUR sides);
+                  border-radius:16px; padding:32px 28px. Inside: an optional .idx chip, a bold
+                  title (~30px), then 2-4 short lines of body (~22px, --muted). NO shadow needed —
+                  the border + the ground contrast carry it.
+   - .card-grid : the container. display:grid; gap:24px; align-items:stretch. Use
+                  grid-template-columns of 2, 3 or 4 equal 1fr columns, optionally over 2 rows.
+                  ALL cards in a grid are EQUAL WIDTH and EQUAL HEIGHT — never ad-hoc sizes.
+   - .idx       : a small SOLID rounded chip at the top of a card carrying its index or code
+                  ("1", "B", "TOF") in white/ink on --accent / --accent-2 / --accent-3 / --dark.
+                  Cycle those four colours across a grid — this is the deck's recurring motif.
+   - .sectionpill : the eyebrow, as a SOLID light-tint pill with radius, reading
+                  "07 · KEYWORD STRATEGY" — the section number then the section name. Every
+                  content slide carries one. It hugs its text; it is NOT a full-width bar.
+   - .callout-row : a row of 2-3 SOLID tint callouts closing a slide, each = a small ALL-CAPS
+                  coloured label + one sentence. The standard trio is
+                  "WHAT WE SEE" (blue tint) · "OPPORTUNITY" (amber tint) · "TBS RECOMMENDATION"
+                  (green tint). Use this INSTEAD of the .takeaway bar wherever the slide has three
+                  things to say; it is far stronger than a dark band and is the deck's signature.
    - .kpi-tile  : a SOLID TINT tile = small label (--muted) + BIG number (--font-display) + a .delta
                   chip. Variants .tile-dark (inverted, white text) and .tile-accent (solid accent/green)
                   to spotlight ONE hero metric.
@@ -329,9 +348,21 @@ per-slide colours, fonts or spacing — everything references the tokens below.
      MAIN content region — flex:1; min-height:0 — this GROWS to fill all remaining height
      .takeaway  (the dark band, on content slides that have a key takeaway)
      .footer
-   The main region's chart/panels/table MUST stretch to consume that space — size charts large
-   (~640-780px tall), enlarge panels and spacing. No slide may leave more than ~10% empty vertical
-   space. Cover / section / closing slides are the exception: they are posters and skip the chrome.
+   Fill that space with a CARD GRID (or a table, or — rarely — one chart), sized generously.
+   DO NOT chase 100% coverage. Whitespace INSIDE a card, and a comfortable margin below the grid,
+   are correct and premium: the reference deck leaves the bottom third of several slides empty and
+   looks better than ours for it, because the cards give the space a shape. An earlier rule here
+   demanded "no more than ~10% empty vertical space" and it was actively harmful — it produced
+   stretched tiles, inflated bands and stranded text. What must never happen is content OVERFLOWING
+   the 1080px canvas; empty space is fine.
+   Cover / section / closing slides are the exception: they are posters and skip the chrome.
+
+   *** THE DEFAULT SLIDE IS A CARD GRID, NOT A CHART. ***
+   The reference deck this style is derived from contains NINETEEN slides and ZERO charts — every
+   one is a card grid, a table, or big type, and it looks materially better than a chart-heavy deck.
+   Charts are the least reliable thing in this pipeline and the ugliest when they miss. So: reach
+   for a card grid or a table FIRST, every time. A chart must EARN its slide (see the chart budget
+   in the plan prompt).
 
 4. LAYOUT ARCHETYPES — EVERY <section class="slide"> must ALSO carry one archetype class and follow
    its structure. The archetype describes the MAIN CONTENT REGION (the chrome above stays constant).
@@ -362,6 +393,17 @@ per-slide colours, fonts or spacing — everything references the tokens below.
                           .panel callout (bullets or a .stat-big) and an optional quiet note panel.
    - .layout-chart-table: a chart on one side and a data TABLE on the other (dark header, zebra rows,
                           semantic cell colours) — use for before/after and ranked breakdowns.
+   - .layout-cards      : *** THE WORKHORSE — REACH FOR THIS FIRST. *** .sectionpill + big title +
+                          optional one-line subtitle, then a .card-grid of 3, 4, 6 or 8 EQUAL white
+                          cards (3-up / 4-up / 2x3 / 2x4), each = an .idx chip (cycling the four
+                          accent colours) + a bold title + 2-4 muted lines. Optionally close with a
+                          .callout-row. Most content in a report is 4-8 short parallel points — this
+                          layout carries them better than any chart.
+   - .layout-dark-split : a full-height SOLID NAVY panel on the LEFT (~38%) carrying a .sectionpill,
+                          a huge white statement headline, a short accent rule and one muted line;
+                          and a .card-grid (2x2 / 2x3) on the tinted ground to the RIGHT. Use this
+                          2-3 times across the deck as the change of pace — it is what stops a
+                          card deck feeling repetitive.
    - .layout-stat-panel : a solid DARK or ACCENT panel on one side carrying a giant number/short claim
                           + 2-3 mini-stats, and a chart (plus a small panel) on the other.
    - .layout-two-chart  : two charts side by side, each with its own small heading, plus a row of 2-4
@@ -459,9 +501,35 @@ accent-tinted word in the title, and the brand mark. NO performance KPIs on the 
     </div>
   </div>
 </section>
-Every real slide must fill all 1920x1080 (no bottom band), use the tokens/components above, put a
-relevant icon on every KPI and list bullet, and use ai-img photos liberally — ALWAYS a full-bleed
-hero photo on the cover, and photo backgrounds/side-panels on most content slides."""
+=== EXEMPLAR 2 — .layout-cards, THE WORKHORSE (copy this SHAPE for most content slides) ===
+<section class="slide layout-cards">
+  <div class="slide-header">
+    <span class="sectionpill">03 · KEYWORD THEMES</span>
+    <h2>Four themes carry the non-branded demand</h2>
+    <p class="subtitle">Grouped from 74 non-branded queries.</p>
+  </div>
+  <div class="card-grid" style="grid-template-columns:repeat(4,1fr);gap:24px">
+    <div class="card"><span class="idx" style="background:var(--accent)">1</span>
+      <h3>Theme name</h3><p>Two short muted lines saying what it is and what it earns.</p></div>
+    <div class="card"><span class="idx" style="background:var(--accent-3)">2</span>
+      <h3>Theme name</h3><p>Two short muted lines.</p></div>
+    <div class="card"><span class="idx" style="background:var(--accent-2)">3</span>
+      <h3>Theme name</h3><p>Two short muted lines.</p></div>
+    <div class="card"><span class="idx" style="background:var(--dark)">4</span>
+      <h3>Theme name</h3><p>Two short muted lines.</p></div>
+  </div>
+  <div class="callout-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:24px">
+    <div class="panel" style="background:var(--tint)"><span class="eyebrow" style="color:var(--accent)">WHAT WE SEE</span><p>One sentence.</p></div>
+    <div class="panel" style="background:#FDF6E3"><span class="eyebrow" style="color:#8A6D1F">OPPORTUNITY</span><p>One sentence.</p></div>
+    <div class="panel" style="background:#EDF7E9"><span class="eyebrow" style="color:#4A7A2B">TBS RECOMMENDATION</span><p>One sentence.</p></div>
+  </div>
+  <div class="footer"><span>Client — Report name</span><span>15 Jun – 13 Jul 2026</span></div>
+</section>
+
+Notes on the exemplars: the cover carries a photo and the closing carries a photo — NO other slide
+does. Content slides are card grids, tables, or (at most twice in the deck) a chart. Cards are equal
+width AND equal height; the .idx chips cycle accent / amber / green / navy. Leaving the bottom of a
+slide empty is FINE — do not stretch things to fill it."""
 
 
 _PRESET_LETTERS = "ABCDEFGHIJKL"  # the 12 THEME_PRESETS entries
@@ -474,13 +542,17 @@ TBS_PALETTE = {
     "accent2": "#79B84B",   # TBS green (wins / secondary series)
     "accent3": "#F4B740",   # TBS amber (caution)
     "bad": "#C4553B",       # terracotta red — declines / losing ground
-    "ink": "#1F2937",       # near-black navy ink
-    "dark": "#23262B",      # solid dark panel (inverted tiles, table headers, takeaway bar)
-    "muted": "#6E7075",
+    "ink": "#0F1B2D",       # near-black navy ink
+    "dark": "#0F1B2D",      # solid navy panel (dark side panels, table headers, inverted tiles)
+    "muted": "#6B7A90",
     "tint": "#E8F4FB",      # solid light-blue tint panel
     "tint2": "#F2F3EC",     # solid light-neutral tint panel
-    "bg": "#FFFFFF",        # clean white ground
-    "surface": "#FFFFFF",
+    # The page is a soft blue-grey and CARDS are pure white. This is where the reference deck's
+    # depth comes from: white-on-white (what we shipped) reads flat and cheap no matter how good
+    # the composition is. The 1-step contrast between ground and card does most of the work.
+    "bg": "#F5F7FA",        # soft blue-grey page ground
+    "surface": "#FFFFFF",   # white card on top of it
+    "line": "#E3E8EF",      # hairline card border
 }
 # A BOLD GEOMETRIC SANS is correct here — the agency reference decks are exactly this on white and
 # read as premium. (An earlier switch to a display serif on cream was a misdiagnosis: the flatness
@@ -489,9 +561,12 @@ TBS_FONTS = {"display": "Poppins", "body": "Inter"}
 
 _TBS_STYLE_DIRECTIVE = (
     "=== ASSIGNED HOUSE STYLE — TBS MARKETING (use THIS exactly) ===\n"
-    "A modern, confident CONSULTING house style: clean white ground, bold geometric type, solid tint "
-    "panels, and colour used to carry MEANING. Never a generic corporate slide template.\n"
-    f"- GROUND: --bg {TBS_PALETTE['bg']} (white), --surface {TBS_PALETTE['surface']}, "
+    "A modern, confident CONSULTING house style: a soft blue-grey ground carrying WHITE CARDS, bold "
+    "geometric type, solid tint panels, and colour used to carry MEANING. The deck is built from "
+    "CARD GRIDS and TABLES, not charts. Never a generic corporate slide template.\n"
+    f"- GROUND: --bg {TBS_PALETTE['bg']} (soft blue-grey — the page is NOT white; white is reserved "
+    f"for cards, which is what gives the deck depth), --surface {TBS_PALETTE['surface']} (cards), "
+    f"--line {TBS_PALETTE['line']} (hairline card borders), "
     f"--ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}.\n"
     f"- PANELS are SOLID tints — never gradients: --tint {TBS_PALETTE['tint']} (light blue), "
     f"--tint-2 {TBS_PALETTE['tint2']} (light neutral), and --dark {TBS_PALETTE['dark']} for inverted "
@@ -913,6 +988,20 @@ Rules:
 - LAYOUT IS YOUR JOB. Design each slide's composition explicitly in "layout" — the downstream designer
   EXECUTES your composition rather than improvising it. Vary it every slide; no two consecutive slides
   may share a structure. Obey the DESIGN GUIDELINES' layout principles and export-safety rules.
+- CHART BUDGET (READ THIS TWICE — it is the single biggest quality lever in this deck):
+  AT MOST **2** slides in the whole deck may carry a chart, and each must EARN it. A chart is only
+  justified for a REAL TIME SERIES over many periods (the 12-month trend) or a distribution that is
+  genuinely visual. Everything else — rankings, top-N lists, comparisons, breakdowns by device /
+  country / page, opportunities, recommendations, themes — is a TABLE or a .layout-cards CARD GRID.
+  Rules of thumb that mean "NOT a chart":
+    * fewer than ~6 data points  -> a card grid or a table (a 3-bar chart is a waste of a slide);
+    * the numbers are tiny (single-digit clicks) -> a table; a bar chart of 1,1,1 says nothing;
+    * you are ranking things -> a table;
+    * the point is the WORDS, not the shape -> cards.
+  This is not a stylistic preference. The reference deck for this house style has NINETEEN slides
+  and ZERO charts, and it looks better than a chart-heavy deck. Our own chart slides are the ones
+  that keep shipping broken (a bubble chart rendered as one giant bar; a 3-bar "clicks by query"
+  that carried no information). A clean card grid always beats a doubtful chart.
 - IMAGE BUDGET: this is a DATA-LED deck. At most {max_images} images in the WHOLE deck. The cover
   always has one, and the CLOSING slide always has one (full-bleed, behind a flat scrim) so the deck
   opens and closes on an image. Otherwise set "image":{"needed":false,...} — only use a photo where a
@@ -1033,14 +1122,26 @@ must be complete and self-sufficient. Define, exactly once:
   client is the SUBJECT of it. Never replace it with the client's name, initials or monogram (not
   "J&S", not "JS") — that would put the client's logo on TBS's report. The client's name belongs in
   "Prepared by TBS for <client>", the Prepared-for card, and the footer. Nowhere else.
+- THE CARD SYSTEM (the most important classes in this stylesheet — the deck is built from them):
+  .card       = background var(--surface) (WHITE) on the tinted page ground, border 1px solid
+                var(--line) on all FOUR sides, border-radius 16px, padding 32px 28px, and a flex
+                column so its content sits top-aligned. Its h3 ~30px bold; its p ~22px var(--muted).
+  .card-grid  = display:grid; gap:24px; align-items:stretch (equal-height cards).
+  .idx        = inline-flex, ~44x44px, border-radius 12px, bold, centred, white text on a solid
+                background set per-card (accent / accent-3 / accent-2 / dark).
+  .sectionpill= inline-flex, SOLID var(--tint) background, var(--accent) text, uppercase, letter-
+                spaced, ~20px, border-radius 999px, padding 8px 20px. Hugs its text.
+  .callout-row= a grid of solid tint .panel callouts; each has a small ALL-CAPS coloured label.
 - The content components: .kpi-tile (+ .tile-dark, .tile-accent), .delta (+ .delta-good, .delta-bad,
   .delta-warn — solid semantic pills), .panel (+ .panel-dark, and a --tint-2 variant), .stat-big,
   .chip, .pageno.
 - TABLE styling: dark header row (white text), zebra body rows, right-aligned numerics, and helper
   classes so individual cells can take the semantic colours.
-- EVERY layout archetype as a class that makes its slide a FULL-HEIGHT 1080px composition (no empty
-  bands): .layout-cover .layout-section .layout-kpi-strip .layout-split .layout-list .layout-comparison
-  .layout-roadmap .layout-quote .layout-closing — each following its structure in the DESIGN SYSTEM.
+- EVERY layout archetype as a class laying out its 1080px slide: .layout-cards (the workhorse)
+  .layout-dark-split .layout-cover .layout-section .layout-kpi-strip .layout-split .layout-list
+  .layout-comparison .layout-roadmap .layout-quote .layout-closing — each following its structure in
+  the DESIGN SYSTEM. Do NOT force every slide to consume the full height: a card grid that ends
+  two-thirds down the page is correct and premium. Only OVERFLOW is a defect.
 - .ai-img sizing helpers and a .photo-overlay scrim utility for text over photos (the ONLY place a
   gradient is permitted).
 Make it genuinely designed — editorial, confident, generous whitespace — not a generic template.
@@ -1085,7 +1186,8 @@ RULES:
 - Use ONLY the shared stylesheet's tokens/classes (below). Do NOT emit a <style> tag and do NOT invent or
   redefine classes. Inline style="..." is allowed ONLY for per-slide geometry (grid/flex sizing, chart box
   dimensions, photo positioning).
-- FILL the entire 1920x1080 canvas — a balanced, full-height composition with no empty band.
+- Compose generously within the 1920x1080 canvas, TOP-ANCHORED. Empty space below the content is
+  fine; overflowing the canvas is not. Never add filler (or a chart) purely to reach the bottom.
 - COLOUR SEMANTICS (from the guidelines): a declining/at-risk number uses the BAD colour, a win uses the
   GOOD colour, a caution uses the AMBER, neutral emphasis uses the accent. Never colour a decline green.
 - EXPORT-SAFETY (this deck is exported to PowerPoint — STRICT): no single-side borders (use a full 4-side
@@ -1930,13 +2032,16 @@ _FILL_CSS = """<style>/* deterministic-fill */
    flex:1 stretched KPI strips halfway down the slide into empty space. */
 .slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
   flex:0 1 auto;min-height:0;}
-/* ...except the slide's body region, which grows to absorb the slack. Restricting this to
-   chart/table/image regions left slides whose body is panels or a bullet list stranded with a
-   dead band above the takeaway (the "half-empty slide" look). So: grow any body region EXCEPT a
-   KPI strip (the thing that caused the original stretch bug) and bare headings/paragraphs, which
-   inflate into whitespace rather than filling. */
-.slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style):not(p):not(h1):not(h2):not(h3):not(:has(> .kpi-tile)){
-  flex:1 1 auto;min-height:0;}
+/* ...except a chart or table region, which grows to absorb the slack. NOTE: card grids and KPI
+   strips deliberately do NOT grow. Chasing a 100%-filled canvas is what produced stretched tiles,
+   inflated bands and stranded text; the reference house style leaves the lower third of many
+   slides empty and reads better for it, because the cards give the space a shape. Only overflow
+   is a defect here — emptiness is not. */
+.slide > *:has(.js-plotly-plot),.slide > *:has(table){flex:1 1 auto;min-height:0;}
+/* Cards: equal height within a row, content top-aligned, and never stretched vertically by the
+   column. The grid sizes to its content and the slack falls to the bottom of the slide. */
+.slide .card-grid{align-items:stretch !important;}
+.slide .card{display:flex;flex-direction:column;align-items:flex-start;}
 /* A table must shrink to fit rather than be sliced off by the clip (slide 5 lost 9 of 10 rows). */
 .slide table{max-height:100%;}
 .slide > *:has(table){overflow:auto;}
