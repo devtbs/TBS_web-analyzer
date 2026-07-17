@@ -139,20 +139,42 @@ def _brand_core(domain: str) -> str:
     return core if len(core) >= 4 else ""
 
 
-def _is_brand_query(query: str, core: str) -> bool:
-    """True when a query is branded/navigational for `core` (from _brand_core). Matches the
-    '&' / 'and' / concatenated-domain variants that dominate branded searches, e.g. for core
-    'jesseandson': 'jesse and sons', 'jesse & son', 'jesse & son custom tailors' -> True;
-    'custom tailors bangkok' -> False."""
-    if not core:
+def _brand_cores(domain: str, extra_terms=None) -> List[str]:
+    """Every brand core to filter on: the domain-derived one plus any operator-supplied
+    terms (free text, comma/newline separated). Terms shorter than 4 chars after
+    normalisation are dropped — they'd match unrelated queries as substrings."""
+    import re
+    cores = []
+    auto = _brand_core(domain)
+    if auto:
+        cores.append(auto)
+    for term in re.split(r"[,\n]", (extra_terms or "") if isinstance(extra_terms, str)
+                         else ",".join(extra_terms or [])):
+        core = re.sub(r"[^a-z0-9]", "", term.strip().lower())
+        if len(core) >= 4 and core not in cores:
+            cores.append(core)
+    return cores
+
+
+def _is_brand_query(query: str, cores) -> bool:
+    """True when a query is branded/navigational for any core in `cores` (from _brand_cores).
+    Matches the '&' / 'and' / concatenated-domain variants that dominate branded searches,
+    e.g. for core 'jesseandson': 'jesse and sons', 'jesse & son', 'jesse & son custom tailors'
+    -> True; 'custom tailors bangkok' -> False."""
+    if isinstance(cores, str):
+        cores = [cores] if cores else []
+    if not cores:
         return False
     import re
     qn = re.sub(r"[^a-z0-9]", "", (query or "").lower())
     if not qn:
         return False
-    core2 = core.replace("and", "")
     qn2 = qn.replace("and", "")
-    return (core in qn) or (bool(core2) and core2 in qn2)
+    for core in cores:
+        core2 = core.replace("and", "")
+        if (core in qn) or (bool(core2) and core2 in qn2):
+            return True
+    return False
 
 
 def _keyword_mix(queries: List[Dict]) -> Dict:
@@ -178,7 +200,7 @@ def _keyword_mix(queries: List[Dict]) -> Dict:
 
 
 async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
-                               ga4_service=None) -> Dict:
+                               ga4_service=None, brand_terms: Optional[str] = None) -> Dict:
     """Gather GSC search performance + top queries/pages + device/country/quick-win
     breakdowns and the time-series trend for one property. Each optional block degrades
     gracefully so one failed sub-fetch can't break the whole deck.
@@ -237,11 +259,23 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         except Exception as e:
             logger.warning("GA4 property match failed (non-fatal): %s", e)
 
-    # Top Queries TABLE only: drop branded/navigational queries (auto-detected from the domain)
-    # so the table surfaces actionable non-branded terms. bubble_queries / keyword_mix / movers
-    # deliberately keep every query.
-    core = _brand_core(domain)
-    nonbrand = [q for q in queries if not _is_brand_query(q.get("query", ""), core)]
+    # Drop branded/navigational queries (auto-detected from the domain, plus any operator-supplied
+    # `brand_terms`) from every surface that drives a RECOMMENDATION — the table, CTR opportunities,
+    # striking distance, the bubble chart and the per-query movers. Otherwise the deck keeps telling
+    # the client to "rank better for <their own name>", which they already own.
+    # keyword_mix and the headline totals deliberately still count every query: those are volume
+    # facts, not advice, and under-reporting them would be dishonest.
+    cores = _brand_cores(domain, brand_terms)
+
+    def _nb(rows, key="query"):
+        kept = [r for r in (rows or []) if not _is_brand_query(r.get(key, ""), cores)]
+        return kept or (rows or [])      # never blank a section out entirely
+
+    nonbrand = _nb(queries)
+    ctr_opps = _nb(ctr_opps)
+    striking = _nb(striking)
+    if insights and insights.get("queries"):
+        insights = {**insights, "queries": _nb(insights["queries"])}
 
     return {
         "property_url": property_url,
@@ -251,9 +285,9 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "analytics": analytics,
         "trend": (analytics or {}).get("chart_data") or [],
         "monthly_trend": (monthly or {}).get("chart_data") or [],
-        "top_queries": (nonbrand or queries)[:15],
-        "brand_excluded": bool(core and len(nonbrand) < len(queries)),
-        "bubble_queries": sorted(queries, key=lambda q: q.get("impressions", 0), reverse=True)[:30],
+        "top_queries": nonbrand[:15],
+        "brand_excluded": bool(cores and len(nonbrand) < len(queries)),
+        "bubble_queries": sorted(nonbrand, key=lambda q: q.get("impressions", 0), reverse=True)[:30],
         "keyword_mix": _keyword_mix(queries),
         "query_insights": insights or {},
         "top_pages": pages[:10],
@@ -326,6 +360,15 @@ def _gsc_data_brief(ctx: Dict) -> str:
         "excluded as they aren't a priority for this client. Do NOT say brand queries dominate):"
         if ctx.get("brand_excluded")
         else "TOP QUERIES (by clicks):"
+    )
+    brand_rule = (
+        "\nBRAND RULE: branded/navigational queries have ALREADY been removed from the query "
+        "table, CTR opportunities, striking distance, the query bubble chart and the movers "
+        "list. The client already ranks for their own name — never recommend improving rank, "
+        "CTR or content for a branded query, never make brand visibility a theme, insight or "
+        "recommendation, and never note that brand terms are missing. Every recommendation must "
+        "target non-branded demand.\n"
+        if ctx.get("brand_excluded") else ""
     )
     p_lines = "\n".join(
         f"  - {p.get('url','')}: {p.get('clicks',0)} clicks, "
@@ -480,7 +523,7 @@ def _gsc_data_brief(ctx: Dict) -> str:
         f"Organic search (Google Search Console) report for {ctx['domain']}."
     )
     return f"""{intro}
-Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+{brand_rule}Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 OVERALL SEARCH PERFORMANCE (current value, change vs previous period):
@@ -596,9 +639,12 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
                                ga4_service=None, creativity: str = "balanced",
                                pipeline: str = "single", models: Optional[dict] = None,
                                theme_mode: str = "tbs", custom_color: Optional[str] = None,
-                               style: str = "tbs") -> Dict:
+                               style: str = "tbs", brand_terms: Optional[str] = None) -> Dict:
     """AI-designed organic-search deck for a GSC property (from My Sites), using the
     chosen prompt + provider. Returns the HTML only — the file is rendered on download.
+
+    `brand_terms` is free text (comma/newline separated) naming this client's brand
+    variants; they're dropped from the query surfaces on top of the domain-derived core.
 
     If `ga4_service` is given, the country map uses real GA4 sessions matched to the site's
     GA4 property (falling back to GSC clicks-by-country when there's no match)."""
@@ -607,7 +653,8 @@ async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
     from services.highlights import to_brief_block
     if on_progress:
         await on_progress("Gathering Search Console data…")
-    context = await assemble_gsc_context(service, property_url, days, ga4_service=ga4_service)
+    context = await assemble_gsc_context(service, property_url, days, ga4_service=ga4_service,
+                                         brand_terms=brand_terms)
     brief = _gsc_data_brief(context) + to_brief_block(notes)
     # Resolve the deck palette by colour mode (TBS house by default; site brand or custom on request).
     palette = await resolve_deck_palette(theme_mode, custom_color, context["domain"])

@@ -125,6 +125,7 @@ const Presentation = () => {
     const [openSec, setOpenSec] = useState({ ai: false, design: false, notes: false });
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
+    const [brandTerms, setBrandTerms] = useState('');   // extra brand names to keep out of the deck
     const [generating, setGenerating] = useState(false);      // transient: only while dispatching requests
     const [downloading, setDownloading] = useState('');
     // Concurrent background jobs — each entry: {localId, job_id, provider, label, status, message, result}
@@ -398,6 +399,7 @@ const Presentation = () => {
         const models = pipeline === 'layered' ? resolvedLayerModels(prov) : undefined;
         const body = {
             notes, creativity, pipeline, theme_mode: themeMode, style,
+            ...(brandTerms.trim() ? { brand_terms: brandTerms } : {}),
             ...(themeMode === 'custom' ? { custom_color: customColor } : {}),
             ...(models ? { models } : {}),
         };
@@ -933,10 +935,26 @@ const Presentation = () => {
                 {/* ── Notes ── */}
                 <Section title="Notes / highlights" open={openSec.notes}
                     onToggle={() => setOpenSec(o => ({ ...o, notes: !o.notes }))}
-                    summary={notes.trim() ? `${notes.trim().split('\n').length} line(s)` : 'None'}>
+                    summary={[notes.trim() ? `${notes.trim().split('\n').length} line(s)` : null,
+                              brandTerms.trim() ? `${brandTerms.split(',').filter(t => t.trim()).length} brand term(s)` : null]
+                              .filter(Boolean).join(' · ') || 'None'}>
                     <textarea value={notes} onChange={(e) => setNotes(e.target.value)} disabled={generating} rows={3}
                         placeholder={"Lines starting with /on <date> are added verbatim to a Key Dates slide, e.g.\n/on 26 may product launch at 9 AM\n/on 30 may final client sign-off"}
                         className={fieldCls + ' text-sm font-mono'} />
+
+                    {mode === 'gsc' && (
+                        <div className="mt-4 pt-4 border-t border-slate-200">
+                            <label className="block text-sm font-semibold text-slate-700">Branded queries to exclude</label>
+                            <p className="text-xs text-slate-500 mt-0.5 mb-2">
+                                The client's own name is detected from the domain automatically. Add any other brand
+                                spellings, nicknames or product names here — comma separated — and the deck won't
+                                report on them or recommend ranking for them.
+                            </p>
+                            <input value={brandTerms} onChange={(e) => setBrandTerms(e.target.value)} disabled={generating}
+                                placeholder="jesse and sons, jesse & son, jessies"
+                                className={fieldCls + ' text-sm'} />
+                        </div>
+                    )}
                 </Section>
 
 

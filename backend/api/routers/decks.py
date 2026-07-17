@@ -269,6 +269,7 @@ async def presentation_ai_deck_gsc(
     theme_mode = (body or {}).get("theme_mode", "tbs")
     custom_color = (body or {}).get("custom_color")
     style = (body or {}).get("style", "tbs")
+    brand_terms = (body or {}).get("brand_terms") or ""
     place_label = _domain_of(property)
 
     async def run(on_progress, set_doc_id):
@@ -279,7 +280,7 @@ async def presentation_ai_deck_gsc(
                                             notes=notes, creativity=creativity,
                                             pipeline=pipeline, models=models,
                                             theme_mode=theme_mode, custom_color=custom_color, style=style,
-                                            on_progress=on_progress)
+                                            brand_terms=brand_terms, on_progress=on_progress)
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
                                               artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
