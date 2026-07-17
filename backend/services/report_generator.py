@@ -270,8 +270,13 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
     cores = _brand_cores(domain, brand_terms)
 
     def _nb(rows, key="query"):
-        kept = [r for r in (rows or []) if not _is_brand_query(r.get(key, ""), cores)]
-        return kept or (rows or [])      # never blank a section out entirely
+        # NO fallback to the unfiltered rows when everything is branded. An earlier version did
+        # `kept or rows`, which inverted the whole feature exactly where it mattered most: the CTR
+        # opportunities for jesseandson.com were 100% branded, so the filter emptied them and the
+        # fallback handed all three brand terms straight back — the deck then recommended rewriting
+        # titles for "jesse and sons". An empty section is the correct, honest answer; the brief
+        # tells the planner to drop the slide rather than fill it with brand.
+        return [r for r in (rows or []) if not _is_brand_query(r.get(key, ""), cores)]
 
     nonbrand = _nb(queries)
     ctr_opps = _nb(ctr_opps)
@@ -366,6 +371,16 @@ TRAFFIC BY CHANNEL (by sessions — organic, direct, paid, referral, social, etc
 {channel_lines}"""
 
 
+def _empty_note(ctx: Dict) -> str:
+    """Placeholder for a query section the brand filter emptied. Says WHY it's empty and that the
+    slide must be dropped — otherwise the planner keeps the slide and pads it with brand terms."""
+    if ctx.get("brand_excluded"):
+        return ("  (none — every query here was branded and was removed. This is a real, valid "
+                "result: SKIP this slide entirely. Do NOT re-introduce branded queries to fill it, "
+                "do NOT invent queries, and do NOT present it as a data problem.)")
+    return "  (none — SKIP this slide; do not invent data to fill it.)"
+
+
 def _gsc_data_brief(ctx: Dict) -> str:
     a = ctx.get("analytics") or {}
     totals = a.get("totals") or {}
@@ -435,12 +450,12 @@ def _gsc_data_brief(ctx: Dict) -> str:
         f"{o.get('actual_ctr','?')}% actual CTR vs {o.get('expected_ctr','?')}% expected "
         f"(~{o.get('missed_clicks',0)} missed clicks)"
         for o in ctx.get("ctr_opportunities", [])
-    ) or "  (none)"
+    ) or _empty_note(ctx)
     sd_lines = "\n".join(
         f"  - \"{s.get('query','')}\" at pos {s.get('position','?')} ({s.get('impressions',0)} impressions, "
         f"~{s.get('potential_clicks',0)} extra clicks if pushed to top 3) — {s.get('page','')}"
         for s in ctx.get("striking_distance", [])
-    ) or "  (none)"
+    ) or _empty_note(ctx)
     country_lines = "\n".join(
         f"  - {c.get('name','')}: {c.get('clicks',0)} clicks, {c.get('impressions',0)} impressions"
         for c in ctx.get("top_countries", [])

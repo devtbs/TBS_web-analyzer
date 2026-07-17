@@ -380,7 +380,15 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    - .layout-list       : icon bullets spread over the full height — .ai-icon + bold lead-in + one line.
    - .layout-comparison : two/three panels compared side by side, full height.
    - .layout-quote      : one large pull-quote / single headline insight, vertically centred.
-   - .layout-closing    : closing poster — big type on a solid field + the period in a slim footer.
+   - .layout-closing    : closing poster — a FULL-BLEED photo covering the whole slide (img.ai-img,
+                          position:absolute, inset:0, width/height 100%, object-fit:cover), with a
+                          solid dark scrim over it (position:absolute, inset:0, background:
+                          rgba(20,22,26,.72) — a FLAT colour, never a gradient) and the closing
+                          type centred on top (position:relative, z-index:1): the big statement
+                          headline, a one-line subtitle, an optional slim stat row, and the period
+                          in a slim footer. This mirrors the cover so the deck opens and closes on
+                          an image. It is the ONE content slide that carries a photo besides the
+                          cover — it costs one of the deck's images, so budget for it.
    Vary archetypes across the deck; NEVER repeat the same layout on consecutive content slides."""
 
 
@@ -836,6 +844,16 @@ axis-label colour, ALWAYS include units in axis labels (%, x, currency), colour 
 declining series uses the red, a winning series the green), and annotate the peak and the low point of any
 trend.
 
+MIXED MAGNITUDES (mandatory): never plot two series whose typical values differ by more than ~10x on the
+SAME axis — the small one flattens into an invisible line along the baseline. Clicks (tens) against
+impressions (tens of thousands) is the classic case: the clicks bars vanish and the slide says nothing.
+Either (a) put the small series on a secondary axis (yaxis2 with overlaying:'y', side:'right', and its own
+titled units), or (b) split it into two stacked charts, or (c) index both to 100 at the first period and
+say so in the axis title. Check the actual numbers in the DATA before choosing — if the ratio is under
+~10x, one axis is fine and simpler.
+Every axis appears ONCE: never emit a duplicate x-axis, and never let two series silently share an axis
+whose title only describes one of them.
+
 ## Export-safety (STRICT — this deck is exported to PowerPoint)
 - NO single-side borders (no left/top accent stripes). Use a full 4-side border OR a solid tint panel.
 - NO gradient backgrounds or gradient panels (a scrim over a cover photo is the only exception).
@@ -895,10 +913,11 @@ Rules:
 - LAYOUT IS YOUR JOB. Design each slide's composition explicitly in "layout" — the downstream designer
   EXECUTES your composition rather than improvising it. Vary it every slide; no two consecutive slides
   may share a structure. Obey the DESIGN GUIDELINES' layout principles and export-safety rules.
-- IMAGE BUDGET: this is a DATA-LED deck. At most {max_images} images in the WHOLE deck. The cover always
-  has one. Otherwise set "image":{"needed":false,...} — only use a photo where a real product/context
-  shot genuinely adds meaning. NEVER an image of a chart, table, graph or diagram: those are
-  code-rendered. Charts/tables are blocks of type "chart"/"table", never "image".
+- IMAGE BUDGET: this is a DATA-LED deck. At most {max_images} images in the WHOLE deck. The cover
+  always has one, and the CLOSING slide always has one (full-bleed, behind a flat scrim) so the deck
+  opens and closes on an image. Otherwise set "image":{"needed":false,...} — only use a photo where a
+  real product/context shot genuinely adds meaning. NEVER an image of a chart, table, graph or
+  diagram: those are code-rendered. Charts/tables are blocks of type "chart"/"table", never "image".
 
 SEMANTIC ANALYSIS (YOU decide which lens earns a slide — add the one(s) the data genuinely supports,
 and skip any that would be thin):
@@ -1884,9 +1903,12 @@ _FILL_CSS = """<style>/* deterministic-fill */
    flex:1 stretched KPI strips halfway down the slide into empty space. */
 .slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
   flex:0 1 auto;min-height:0;}
-/* ...except the region that actually carries the hero visual: that one grows to absorb the slack,
-   which is what fills the canvas without inflating text blocks. */
-.slide > *:has(.js-plotly-plot),.slide > *:has(table),.slide > *:has(> img.ai-img){
+/* ...except the slide's body region, which grows to absorb the slack. Restricting this to
+   chart/table/image regions left slides whose body is panels or a bullet list stranded with a
+   dead band above the takeaway (the "half-empty slide" look). So: grow any body region EXCEPT a
+   KPI strip (the thing that caused the original stretch bug) and bare headings/paragraphs, which
+   inflate into whitespace rather than filling. */
+.slide > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style):not(p):not(h1):not(h2):not(h3):not(:has(> .kpi-tile)){
   flex:1 1 auto;min-height:0;}
 /* A table must shrink to fit rather than be sliced off by the clip (slide 5 lost 9 of 10 rows). */
 .slide table{max-height:100%;}
@@ -1896,6 +1918,12 @@ _FILL_CSS = """<style>/* deterministic-fill */
 /* covers/section/closing are posters — let them centre and fill edge to edge */
 .slide.layout-cover,.slide.layout-section,.slide.layout-closing{justify-content:center !important;}
 .slide.layout-cover > *{flex:none;min-height:0;}
+/* Closing poster: force the photo full-bleed behind the type whatever the model emitted, so the
+   deck reliably closes on an image the way it opens on one. */
+.slide.layout-closing{position:relative;overflow:hidden;}
+.slide.layout-closing > img.ai-img{position:absolute !important;inset:0 !important;width:100% !important;
+  height:100% !important;object-fit:cover !important;z-index:0 !important;flex:none !important;}
+.slide.layout-closing > *:not(img){position:relative;z-index:2;flex:none;}
 /* pin the page index to the bottom-right so centering the content can't displace it */
 .slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;z-index:5;}
 /* let a chart that is the slide's direct hero grow to fill the column */
