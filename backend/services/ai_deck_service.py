@@ -2224,7 +2224,12 @@ _FILL_CSS = """<style>/* deterministic-fill */
 /* Content children size to their content and may SHRINK, but must not grow — giving every child
    flex:1 stretched KPI strips halfway down the slide into empty space. */
 :is(.slide:not([class*="layout-cover"]):not([class*="layout-closing"]):not([class*="layout-section"]):not([class*="layout-dark-split"]),.slide > .autofit) > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
-  flex:0 1 auto;min-height:0;}
+  flex:0 1 auto;min-height:0;overflow:hidden;}
+/* overflow:hidden above is STRUCTURAL, keyed on a child's position rather than its class. The kit
+   clips .slide-body, but the model routinely invents its own wrapper — one deck put two charts in
+   a bare <div style="flex:1;min-height:0">, which shrank while its 320px-min children did not, so
+   the charts painted straight over the takeaway band. Class-based rules only protect the slides
+   that happen to use our class names; this protects every slide. */
 /* ...except a chart or table region, which grows to absorb the slack. NOTE: card grids and KPI
    strips deliberately do NOT grow. Chasing a 100%-filled canvas is what produced stretched tiles,
    inflated bands and stranded text; the reference house style leaves the lower third of many
@@ -2261,13 +2266,13 @@ _FILL_CSS = """<style>/* deterministic-fill */
 /* Closing poster: force the photo full-bleed behind the type whatever the model emitted, so the
    deck reliably closes on an image the way it opens on one. */
 .slide.layout-closing{position:relative;overflow:hidden;}
-.slide.layout-closing > img.ai-img{position:absolute !important;inset:0 !important;width:100% !important;
+.slide.layout-closing > img{position:absolute !important;inset:0 !important;width:100% !important;
   height:100% !important;object-fit:cover !important;z-index:0 !important;flex:none !important;}
 /* Force the scrim. Without it the closing type sits straight on a busy photo and is unreadable —
    which is exactly what shipped. ::after guarantees one even when the model omitted the element,
    and a flat rgba fill keeps it export-safe (no gradient). */
-.slide.layout-closing::after{content:"";position:absolute;inset:0;background:rgba(15,27,45,.72);
-  z-index:1;pointer-events:none;}
+.slide.layout-closing:not(:has(.scrim))::after{content:"";position:absolute;inset:0;
+  background:rgba(15,27,45,.72);z-index:1;pointer-events:none;}
 .slide.layout-closing > *:not(img){position:relative;z-index:2;flex:none;}
 /* pin the page index to the bottom-right so centering the content can't displace it */
 .slide .pageno{position:absolute !important;right:64px;bottom:30px;margin:0 !important;z-index:5;}
@@ -2421,11 +2426,80 @@ def _inject_autofit(html: str) -> str:
 from services.deck_kit import inject_kit  # noqa: E402  (kept beside its only use)
 
 
+_CTRL_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+
+
+def _parse_spec(raw: str):
+    """Parse a chart spec, repairing what is safely repairable. None = unrecoverable."""
+    import json
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    # A raw control character inside a JSON string is illegal but harmless to remove.
+    try:
+        return json.loads(_CTRL_CHARS_RE.sub("", raw.replace("\n", " ").replace("\r", " ")))
+    except Exception:
+        return None
+
+
+def _drop_broken_charts(html: str) -> str:
+    """Remove charts whose spec cannot be parsed — and the slide, if the chart WAS the slide.
+
+    A deck shipped a slide reading "Position vs Impressions / Bubble size = impressions" over an
+    entirely blank page. The model had written a literal newline inside a JSON string and dropped
+    the closing quote ("tailor made suits\n,"custom tuxedo bangkok"), so Plotly threw and mounted
+    nothing. Nobody downstream noticed: _is_empty_slide deliberately treats the presence of a
+    plotly-spec as proof of content, which is true only when the spec actually parses.
+
+    A blank slide is strictly worse than a missing one, so an unrenderable chart takes its slide
+    with it rather than leaving a title floating over nothing.
+    """
+    if "plotly-spec" not in html:
+        return html
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        return html                      # never mangle the deck on a parser failure
+    import json
+    broken = 0
+    for sc in soup.select("script.plotly-spec"):
+        raw = sc.string or ""
+        spec = _parse_spec(raw)
+        if spec is not None:
+            if raw.strip() != json.dumps(spec):
+                sc.string = json.dumps(spec)   # persist the repair
+            continue
+        target = sc.get("data-target")
+        if target:
+            mount = soup.find(id=target)
+            if mount:
+                mount.decompose()
+        sc.decompose()
+        broken += 1
+        logger.warning("Unparseable chart spec dropped (data-target=%s).", target)
+    if not broken:
+        return str(soup)
+    for sec in soup.select("section.slide"):
+        if _is_empty_slide(str(sec)):
+            logger.warning("Dropping a slide left blank by an unrenderable chart: %s",
+                           sec.get_text(" ", strip=True)[:80])
+            sec.decompose()
+    return str(soup)
+
+
 def _prepare_html_for_render(html: str) -> str:
     """Inline the bundled Plotly so charts render with NO internet access — the VPS
     may not reach cdn.plot.ly. Strips the CDN <script> and injects the local copy."""
     # Inline fonts first so typography is offline-safe even for text-only (chart-less) decks.
     html = _inline_fonts(html)
+    # Before anything measures or styles the deck: a chart that cannot render must not
+    # leave a blank slide behind.
+    html = _drop_broken_charts(html)
     # The component kit: measured CSS for the parts the prompt asks the model to compose with.
     # Injected at the end of <head>, so where the model wrote its own .card/.callout/table rules
     # (guessing every number from a prose description), the measured ones win on source order.

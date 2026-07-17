@@ -267,7 +267,14 @@ tbody tr.more td{text-align:left;font-size:18px;font-style:italic;color:var(--k-
   color:var(--k-accent);line-height:1}
 .cover-stats .l{font-size:17px;color:var(--k-muted)}
 
-/* closing — mirrors the cover so the deck opens and closes on an image. */
+/* closing — mirrors the cover so the deck opens and closes on an image.
+   Everything here is defensive: one deck's closing slide used NO .closing-in, NO .scrim and a bare
+   <img> with no .ai-img, so every rule below missed and the headline rendered in dark ink over a
+   dark photo — unreadable. So: any direct <img> goes full-bleed, and all text defaults to white
+   via :where() (zero specificity, so .closing-stats .v and friends still win). */
+.slide.layout-closing :where(h1,h2,h3,h4,p,span,div,li){color:#fff}
+.slide.layout-closing > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+  z-index:0}
 .slide.layout-closing,.slide.closing{padding:0;align-items:center;justify-content:center}
 .slide.layout-closing img.ai-img,.slide.closing img{position:absolute;inset:0;width:100%;height:100%;
   object-fit:cover;z-index:0}
