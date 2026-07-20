@@ -109,3 +109,80 @@ def test_organic_falls_back_to_ga4_sessions_without_gsc():
     b = compute_cross_channel(None, GA4, ADS, None)["blended"]
     assert b["organic_source"] == "GA4 Organic Search sessions"
     assert b["organic_clicks"] == 950
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# E-COMMERCE: revenue outranks conversion count.
+# A shop can take fewer, larger orders — conversions fall while the business has its best month.
+# A deck that ranks by conversion count calls that a decline and tells the client a good month
+# was bad. These guard against that.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+ADS_ECOM = {
+    "currency": "GBP", "period_label": "P",
+    "totals": {"clicks": 500, "cost": 1200.0, "conversions": 22.0, "avg_cpc": 2.4,
+               "conversions_value": 9600.0, "roas": 8.0},
+    "deltas": {"conversions": -12.0, "conversions_value": 34.0},
+}
+DEEP_ECOM = {"search_terms": [
+    # ranks #1 organically AND returns 12x on paid — incremental revenue, not waste
+    {"term": "[steel patches]", "clicks": 88, "cost": 412.0, "conversions": 3,
+     "conversions_value": 4944.0},
+    # ranks #2 organically and returns 0.4x — this is the one to question
+    {"term": "patch bundle", "clicks": 40, "cost": 300.0, "conversions": 1,
+     "conversions_value": 120.0},
+]}
+GSC_ECOM = {**GSC, "top_queries": GSC["top_queries"] + [
+    {"query": "patch bundle", "clicks": 200, "impressions": 4000, "position": 2.0}]}
+
+
+def test_conversions_down_but_revenue_up_is_reported_as_a_win():
+    r = compute_cross_channel(GSC_ECOM, None, ADS_ECOM, DEEP_ECOM)
+    first = r["flags"][0]
+    assert "REVENUE ROSE" in first and "GOOD period" in first
+    assert "do NOT list the conversion-count drop as a decline" in first
+
+
+def test_conversions_up_but_revenue_down_is_flagged_too():
+    ads = {**ADS_ECOM, "deltas": {"conversions": 15.0, "conversions_value": -20.0}}
+    r = compute_cross_channel(GSC_ECOM, None, ads, DEEP_ECOM)
+    assert "REVENUE FELL" in r["flags"][0]
+    assert "Average order value is down" in r["flags"][0]
+
+
+def test_profitable_defend_terms_are_not_called_wasted_spend():
+    """A term you already rank for is only waste if the paid spend is not earning."""
+    r = compute_cross_channel(GSC_ECOM, None, ADS_ECOM, DEEP_ECOM)
+    defend_flag = next(f for f in r["flags"] if "organic top 3" in f)
+    assert "Do NOT call this wasted spend on ROAS alone" in defend_flag
+    assert "returns 2x or better" in defend_flag      # the 12x term
+    assert "is the one to question first" in defend_flag  # the 0.4x term
+
+
+def test_overlap_rows_carry_revenue_and_roas():
+    rows = {r["term"]: r for r in compute_cross_channel(GSC_ECOM, None, ADS_ECOM, DEEP_ECOM)["overlap"]}
+    assert rows["[steel patches]"]["ads_roas"] == 12.0
+    assert rows["patch bundle"]["ads_roas"] == 0.4
+
+
+def test_blended_exposes_roas_aov_and_ecommerce_flag():
+    b = compute_cross_channel(GSC_ECOM, None, ADS_ECOM, DEEP_ECOM)["blended"]
+    assert b["is_ecommerce"] is True
+    assert b["roas"] == 8.0                      # 9600 revenue / 1200 spend
+    assert b["aov"] == round(9600 / 22, 2)
+
+
+def test_ga4_site_revenue_is_read_from_the_mapped_key():
+    """analytics_service maps GA4's totalRevenue to `revenue` — reading the raw name finds nothing."""
+    ga4 = {**GA4, "totals": {"sessions": 5000, "conversions": 40, "revenue": 24000.0}}
+    b = compute_cross_channel(GSC_ECOM, ga4, ADS_ECOM, None)["blended"]
+    assert b["ga4_revenue"] == 24000.0
+    assert b["blended_roas"] == 20.0             # 24000 site revenue / 1200 paid spend
+
+
+def test_lead_gen_account_has_no_revenue_noise():
+    """No conversion value => not an e-commerce client; revenue fields stay absent."""
+    ads = {**ADS_ECOM, "totals": {**ADS_ECOM["totals"], "conversions_value": 0.0, "roas": 0}}
+    b = compute_cross_channel(GSC_ECOM, None, ads, None)["blended"]
+    assert b["is_ecommerce"] is False
+    assert b["roas"] is None and b["ads_revenue"] is None

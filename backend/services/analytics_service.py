@@ -34,6 +34,11 @@ _CORE_METRICS = [
     'sessions', 'totalUsers', 'newUsers', 'screenPageViews',
     'averageSessionDuration', 'engagementRate', 'bounceRate',
     'engagedSessions',
+    # Revenue. For an e-commerce client this is the number that matters most — a period with fewer
+    # conversions but higher revenue is a good period, and without this the deck cannot tell.
+    # `totalRevenue` is a standard GA4 metric and returns 0 for properties with no ecommerce, so it
+    # is safe to request unconditionally; it rides on the existing call at no extra API cost.
+    'totalRevenue',
 ]
 
 
@@ -343,6 +348,11 @@ class AnalyticsService:
                     # Goal conversion rate = conversions / sessions, as a percentage. Matches
                     # the "Goal Conversion Rate" scorecard in the Looker template.
                     'goal_conversion_rate': round(conversions / sessions * 100, 2) if sessions else 0,
+                    # Site-wide revenue. 0 for any property without ecommerce, which is how the
+                    # deck tells a shop from a lead-gen site: revenue > 0 means judge the account
+                    # on revenue and ROAS, not on conversion counts.
+                    'revenue': round(d.get('totalRevenue', 0), 2),
+                    'aov': round(d.get('totalRevenue', 0) / conversions, 2) if conversions else 0,
                 }
 
             cur_t = fmt(current)

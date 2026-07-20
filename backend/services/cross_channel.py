@@ -123,6 +123,7 @@ def _overlap(gsc_ctx: Optional[Dict], ads_deep: Optional[Dict],
         bucket = _bucket(pos, cost, conv, in_gsc=o is not None)
         if not bucket:
             continue
+        value = _f(t.get("conversions_value"))
         rows.append({
             "term": t.get("term", ""),
             "bucket": bucket,
@@ -133,7 +134,13 @@ def _overlap(gsc_ctx: Optional[Dict], ads_deep: Optional[Dict],
             "ads_clicks": int(_f(t.get("clicks"))),
             "ads_cost": round(cost, 2),
             "ads_conversions": conv,
+            # Revenue per term. For e-commerce this decides the recommendation: a DEFEND term
+            # returning 8x ROAS is NOT wasted spend just because organic also ranks for it.
+            "ads_value": round(value, 2),
+            "ads_roas": round(value / cost, 2) if cost else 0,
         })
+    # Rank by ad spend — the table is about where the money goes. Revenue rides along on each row so
+    # the reader can see which of that spend is actually earning.
     rows.sort(key=lambda r: r["ads_cost"], reverse=True)
     return rows[:_MAX_OVERLAP_ROWS]
 
@@ -217,7 +224,15 @@ def _blended(gsc_ctx, ga4_ctx, ads_ctx) -> Optional[Dict]:
 
     total = organic_clicks + paid_clicks
     avg_cpc = _f(t.get("avg_cpc")) or (cost / paid_clicks if paid_clicks else 0)
-    ga4_conv = _f((ga4_ctx.get("totals") or {}).get("conversions")) if ga4_ctx else 0.0
+    ga4_totals = (ga4_ctx.get("totals") or {}) if ga4_ctx else {}
+    ga4_conv = _f(ga4_totals.get("conversions"))
+    # Revenue. GA4 names it differently across property setups, so accept the usual keys; Ads
+    # conversion value is the reliable one and is always present for an e-commerce account.
+    ads_revenue = _f(t.get("conversions_value"))
+    # analytics_service maps GA4's totalRevenue to the snake_case key `revenue`; the raw names are
+    # accepted too in case a context arrives straight from the API.
+    ga4_revenue = _f(ga4_totals.get("revenue") or ga4_totals.get("totalRevenue")
+                     or ga4_totals.get("purchaseRevenue"))
     return {
         "organic_clicks": int(organic_clicks),
         "organic_source": source,
@@ -230,6 +245,15 @@ def _blended(gsc_ctx, ga4_ctx, ads_ctx) -> Optional[Dict]:
         "ga4_conversions": ga4_conv,
         "paid_cpa": round(cost / ads_conv, 2) if ads_conv else None,
         "blended_cpa": round(cost / ga4_conv, 2) if ga4_conv else None,
+        # ── revenue: for an e-commerce client these outrank every count above ──────────────────
+        "ads_revenue": round(ads_revenue, 2) if ads_revenue else None,
+        "roas": round(ads_revenue / cost, 2) if (cost and ads_revenue) else None,
+        "aov": round(ads_revenue / ads_conv, 2) if (ads_conv and ads_revenue) else None,
+        "ga4_revenue": round(ga4_revenue, 2) if ga4_revenue else None,
+        # Revenue the whole site earned per unit of ad spend — only meaningful when GA4 reports
+        # site-wide revenue, since Ads only sees what it can attribute to itself.
+        "blended_roas": round(ga4_revenue / cost, 2) if (cost and ga4_revenue) else None,
+        "is_ecommerce": bool(ads_revenue or ga4_revenue),
         # What the organic clicks would have cost at the account's own CPC. Not a real saving — it
         # is the media cost avoided, and the brief labels it that way so nobody books it as revenue.
         "organic_click_value": round(organic_clicks * avg_cpc, 2) if avg_cpc else None,
@@ -244,10 +268,28 @@ def _flags(overlap: List[Dict], blended: Optional[Dict]) -> List[str]:
     nonbrand_defend = [r for r in defend if not r["branded"]]
     if nonbrand_defend:
         spend = round(sum(r["ads_cost"] for r in nonbrand_defend), 2)
-        out.append(
-            f"{len(nonbrand_defend)} non-branded term(s) are being paid for while already ranking in "
-            f"the organic top 3 — {spend} of spend. Review whether paid is adding incremental clicks "
-            f"here or duplicating a listing already won.")
+        rev = round(sum(r.get("ads_value") or 0 for r in nonbrand_defend), 2)
+        if rev > 0:
+            # Revenue changes the verdict. Spend on a term you already rank for is only waste if it
+            # is not earning — a DEFEND term at 8x ROAS is incremental revenue, not duplication.
+            roas = round(rev / spend, 2) if spend else 0
+            profitable = [r for r in nonbrand_defend if (r.get("ads_roas") or 0) >= 2]
+            weak = [r for r in nonbrand_defend if (r.get("ads_roas") or 0) < 1 and r["ads_cost"] > 0]
+            out.append(
+                f"{len(nonbrand_defend)} non-branded term(s) are paid for while already ranking in the "
+                f"organic top 3: {spend} spend returning {rev} revenue ({roas}x ROAS). Do NOT call this "
+                f"wasted spend on ROAS alone — {len(profitable)} of them "
+                f"{'returns' if len(profitable) == 1 else 'return'} 2x or better and "
+                f"{'is' if len(profitable) == 1 else 'are'} earning "
+                f"{'its' if len(profitable) == 1 else 'their'} place." +
+                (f" The {len(weak)} returning under 1x "
+                 f"{'is the one' if len(weak) == 1 else 'are the ones'} to question first."
+                 if weak else " None are returning under 1x."))
+        else:
+            out.append(
+                f"{len(nonbrand_defend)} non-branded term(s) are being paid for while already ranking in "
+                f"the organic top 3 — {spend} of spend. Review whether paid is adding incremental clicks "
+                f"here or duplicating a listing already won.")
     brand_defend = [r for r in defend if r["branded"]]
     if brand_defend:
         spend = round(sum(r["ads_cost"] for r in brand_defend), 2)
@@ -258,15 +300,52 @@ def _flags(overlap: List[Dict], blended: Optional[Dict]) -> List[str]:
     gaps = [r for r in overlap if r["bucket"] == "CONTENT GAP"]
     if gaps:
         conv = round(sum(r["ads_conversions"] for r in gaps), 1)
+        rev = round(sum(r.get("ads_value") or 0 for r in gaps), 2)
+        # Rank content targets by the REVENUE they already earn on paid, not by conversion count.
+        top = sorted(gaps, key=lambda r: r.get("ads_value") or 0, reverse=True)[:3]
+        money = (f" worth {rev} in paid revenue" if rev > 0 else "")
+        best = (" Highest-value first: "
+                + ", ".join(f"\"{r['term']}\" ({r.get('ads_value')})" for r in top)) if rev > 0 else ""
         out.append(
-            f"{len(gaps)} term(s) convert on paid ({conv} conversions) while organic ranks outside "
-            f"the top 10 or not at all — paid has already proven the commercial intent, so these are "
-            f"the highest-confidence content targets in the deck.")
+            f"{len(gaps)} term(s) convert on paid ({conv} conversions{money}) while organic ranks "
+            f"outside the top 10 or not at all — paid has already proven the commercial intent, so "
+            f"these are the highest-confidence content targets in the deck.{best}")
     if blended and blended.get("paid_share", 0) > 0:
         out.append(
             f"Paid accounts for {blended['paid_share']}% of acquisition clicks and organic "
             f"{blended['organic_share']}%.")
+    if blended and blended.get("roas") is not None:
+        out.append(
+            f"Paid ROAS is {blended['roas']}x ({blended['ads_revenue']} revenue from "
+            f"{blended['ads_cost']} spend). For this client REVENUE and ROAS are the headline "
+            f"measures — lead with them, not with conversion counts.")
     return out
+
+
+def _revenue_vs_volume(ads_ctx: Optional[Dict]) -> Optional[str]:
+    """Catch the trap where conversions fell but revenue rose (or vice versa).
+
+    An e-commerce client can take fewer, larger orders: conversion count drops while the business
+    has its best month. A deck that ranks declines by conversion count puts that on a "Needs
+    Attention" slide and tells the client their good month was bad. Comparing the two movements is
+    arithmetic, so it is settled here rather than left to the model to notice.
+    """
+    if not ads_ctx:
+        return None
+    d = ads_ctx.get("deltas") or {}
+    conv_d, rev_d = d.get("conversions"), d.get("conversions_value")
+    if conv_d is None or rev_d is None:
+        return None
+    if conv_d < 0 and rev_d > 0:
+        return (f"IMPORTANT — conversions fell {conv_d}% but REVENUE ROSE {rev_d}%: fewer orders, "
+                f"each worth more. This is a GOOD period for the business. Report it as a win led by "
+                f"the revenue figure, and do NOT list the conversion-count drop as a decline needing "
+                f"attention.")
+    if conv_d > 0 and rev_d < 0:
+        return (f"IMPORTANT — conversions rose {conv_d}% but REVENUE FELL {rev_d}%: more orders of "
+                f"lower value. Average order value is down; that is the real story, not the "
+                f"conversion growth. Lead with revenue.")
+    return None
 
 
 def compute_cross_channel(gsc_ctx: Optional[Dict], ga4_ctx: Optional[Dict],
@@ -276,11 +355,16 @@ def compute_cross_channel(gsc_ctx: Optional[Dict], ga4_ctx: Optional[Dict],
     try:
         overlap = _overlap(gsc_ctx, ads_deep, brand_cores)
         blended = _blended(gsc_ctx, ga4_ctx, ads_ctx)
+        flags = _flags(overlap, blended)
+        # Put the revenue-vs-volume verdict FIRST — it can invert the reading of everything below it.
+        divergence = _revenue_vs_volume(ads_ctx)
+        if divergence:
+            flags.insert(0, divergence)
         return {
             "overlap": overlap,
             "reconciliation": _reconciliation(gsc_ctx, ga4_ctx, ads_ctx),
             "blended": blended,
-            "flags": _flags(overlap, blended),
+            "flags": flags,
             "period_mismatch": _period_mismatch(gsc_ctx, ga4_ctx, ads_ctx),
             "currency": (ads_ctx or {}).get("currency") or "",
         }

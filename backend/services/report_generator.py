@@ -390,6 +390,19 @@ def _ga4_brief_sections(ga4: Dict) -> str:
         f"{c.get('users',0)} users, {c.get('conversions',0)} conversions"
         for c in ga4.get("channels", [])
     ) or "  (none)"
+
+    # Site-wide revenue, only when the property records any (0 => not an ecommerce site).
+    # For a shop this outranks every engagement metric above it.
+    _rev = _num(t.get("revenue"))
+    ga4_money = ""
+    if _rev > 0:
+        ga4_money = (
+            f"\n- REVENUE (site-wide, all channels): {t.get('revenue', 0)} "
+            f"({_delta(d.get('revenue'))})"
+            f"\n- Average order value: {t.get('aov', 0)} ({_delta(d.get('aov'))})"
+            f"\n  THIS IS AN E-COMMERCE SITE — revenue is the headline measure. Fewer conversions "
+            f"with higher revenue is a GOOD period; lead with the revenue figure and never report "
+            f"the conversion drop as a decline on its own.")
     return f"""WEBSITE ANALYTICS (Google Analytics / GA4) — on-site behaviour for the same site and period.
 
 AUDIENCE & ENGAGEMENT (current value, change vs previous period):
@@ -400,7 +413,7 @@ AUDIENCE & ENGAGEMENT (current value, change vs previous period):
 - Engagement rate: {t.get('engagement_rate', 0)}% ({_delta(d.get('engagement_rate'), 'pp')})
 - Bounce rate: {t.get('bounce_rate', 0)}% ({_delta(d.get('bounce_rate'), 'pp')}; lower is better)
 - Avg session duration: {t.get('avg_session_duration', 0)}s ({_delta(d.get('avg_session_duration'))})
-- Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))})
+- Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))}){ga4_money}
 
 SESSIONS OVER TIME (daily; use for a sessions/users/conversions trend chart):
 {trend_lines}
@@ -971,6 +984,13 @@ _HONESTY_CLOSER = (
 )
 
 
+def _num(v) -> float:
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _ads_brief_sections(ctx: Dict, *, compact: bool = False, deep: Optional[Dict] = None,
                         prefix: str = "") -> str:
     """The Ads DATA sections only — no intro, no period line, no cover instruction, no closer.
@@ -1002,11 +1022,35 @@ def _ads_brief_sections(ctx: Dict, *, compact: bool = False, deep: Optional[Dict
     campaign_rows = ctx.get("campaigns", [])
     if compact:
         campaign_rows = campaign_rows[:8]
-    campaign_lines = "\n".join(
-        f"  - {c.get('name','')} ({c.get('status','')}): {c.get('impressions',0)} impressions, "
-        f"{c.get('clicks',0)} clicks, {c.get('cost',0)}{cur_sfx} cost, {c.get('conversions',0)} conversions"
-        for c in campaign_rows
-    ) or "  (none)"
+    def _camp(c):
+        # A campaign table ranked by cost with no revenue column cannot show which campaigns
+        # actually pay for themselves — the whole question for an e-commerce account.
+        base = (f"  - {c.get('name','')} ({c.get('status','')}): {c.get('impressions',0)} impressions, "
+                f"{c.get('clicks',0)} clicks, {c.get('cost',0)}{cur_sfx} cost, "
+                f"{c.get('conversions',0)} conversions")
+        if _num(c.get("conversions_value")) > 0:
+            base += f", {c.get('conversions_value')}{cur_sfx} revenue, {c.get('roas', 0)}x ROAS"
+        return base
+
+    campaign_lines = "\n".join(_camp(c) for c in campaign_rows) or "  (none)"
+
+    # REVENUE, when the account records any. For an e-commerce client this is the point of the whole
+    # report: conversion COUNT can fall while revenue RISES (fewer, larger orders), and a deck that
+    # only counts conversions calls that a decline. Emitted only when conversion value exists, so
+    # lead-gen accounts are not padded with "Revenue: 0" lines.
+    revenue = _num(t.get("conversions_value"))
+    conv = _num(t.get("conversions"))
+    money = ""
+    if revenue > 0:
+        aov = round(revenue / conv, 2) if conv else 0
+        money = f"""
+- Conversion value (REVENUE): {t.get('conversions_value', 0)}{cur_sfx} ({_delta(d.get('conversions_value'))})
+- ROAS (revenue returned per unit of spend): {t.get('roas', 0)}x ({_delta(d.get('roas'))})
+- Average order value: {aov}{cur_sfx}
+  THIS ACCOUNT EARNS REVENUE PER ORDER — judge it on REVENUE and ROAS FIRST, conversion count second.
+  If conversions fell but revenue rose, that is a WIN (fewer, larger orders), NOT a decline: say so
+  plainly and lead with the revenue figure. Never headline a conversion-count drop without the
+  revenue movement stated beside it."""
 
     out = f"""{prefix}ACCOUNT PERFORMANCE (current value, change vs previous period):
 - Impressions: {t.get('impressions', 0)} ({_delta(d.get('impressions'))})
@@ -1016,7 +1060,7 @@ def _ads_brief_sections(ctx: Dict, *, compact: bool = False, deep: Optional[Dict
 - Cost: {t.get('cost', 0)}{cur_sfx} ({_delta(d.get('cost'))})
 - Conversions: {t.get('conversions', 0)} ({_delta(d.get('conversions'))})
 - Conversion rate: {t.get('conversion_rate', 0)}% ({_delta(d.get('conversion_rate'), 'pp')})
-- Cost per conversion: {t.get('cost_per_conversion', 0)}{cur_sfx} ({_delta(d.get('cost_per_conversion'))}; lower is better)
+- Cost per conversion: {t.get('cost_per_conversion', 0)}{cur_sfx} ({_delta(d.get('cost_per_conversion'))}; lower is better){money}
 
 {prefix}PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
 {trend_lines}
@@ -1032,11 +1076,14 @@ TOP {prefix}CAMPAIGNS (by cost):
             f"{k.get('cost',0)}{cur_sfx} cost, {k.get('conversions',0)} conversions"
             for k in (deep.get("keywords") or [])[:12]
         ) or "  (none)"
-        st = "\n".join(
-            f"  - {s.get('term','')}: {s.get('clicks',0)} clicks, {s.get('cost',0)}{cur_sfx} cost, "
-            f"{s.get('conversions',0)} conversions"
-            for s in (deep.get("search_terms") or [])[:12]
-        ) or "  (none)"
+        def _term(x):
+            base = (f"  - {x.get('term','')}: {x.get('clicks',0)} clicks, {x.get('cost',0)}{cur_sfx} "
+                    f"cost, {x.get('conversions',0)} conversions")
+            if _num(x.get("conversions_value")) > 0:
+                base += f", {x.get('conversions_value')}{cur_sfx} revenue, {x.get('roas', 0)}x ROAS"
+            return base
+
+        st = "\n".join(_term(x) for x in (deep.get("search_terms") or [])[:12]) or "  (none)"
         out += f"\n\nTOP PAID KEYWORDS (by conversions):\n{kw}\n\nTOP PAID SEARCH TERMS (what people actually typed):\n{st}"
     return out
 
@@ -1119,6 +1166,28 @@ def _cross_channel_block(cross: Optional[Dict]) -> str:
         if b.get("blended_cpa") is not None:
             lines.append(f"- BLENDED cost per conversion (paid spend / ALL conversions): "
                          f"{b['blended_cpa']}{sfx}")
+        # Revenue outranks every count above it for an e-commerce client.
+        if b.get("ads_revenue") is not None:
+            lines.append(f"- PAID REVENUE (conversion value): {b['ads_revenue']}{sfx}")
+        if b.get("roas") is not None:
+            lines.append(f"- PAID ROAS: {b['roas']}x — revenue returned per unit of ad spend")
+        if b.get("aov") is not None:
+            lines.append(f"- Average order value: {b['aov']}{sfx}")
+        if b.get("ga4_revenue") is not None:
+            lines.append(f"- SITE-WIDE REVENUE (all channels, from GA4): {b['ga4_revenue']}{sfx}")
+        if b.get("blended_roas") is not None:
+            # Deliberately caveated: this divides ALL site revenue by paid spend, so it includes
+            # revenue paid did not generate. Presented bare it flatters the ad account.
+            lines.append(
+                f"- BLENDED ROAS (TOTAL site revenue / paid spend): {b['blended_roas']}x — this "
+                f"counts revenue from EVERY channel against the ad spend alone, so it is NOT a "
+                f"measure of paid performance. Use it only to show what the whole business returns "
+                f"per unit of media invested, and say that is what it is. Paid ROAS above is the "
+                f"figure that judges the ad account.")
+        if b.get("is_ecommerce"):
+            lines.append("  THIS IS AN E-COMMERCE CLIENT. Revenue and ROAS are the headline measures "
+                         "on EVERY slide that reports performance — conversion counts are secondary. "
+                         "A period with fewer conversions but higher revenue is a GOOD period; say so.")
         if b.get("organic_click_value") is not None:
             lines.append(
                 f"- Organic click value: {b['organic_click_value']}{sfx} — what those organic clicks "
@@ -1139,10 +1208,13 @@ def _cross_channel_block(cross: Optional[Dict]) -> str:
             pos = f"organic pos {r['organic_position']}" if r["organic_position"] is not None \
                 else "NOT ranking organically"
             brand = " [BRANDED]" if r["branded"] else ""
+            # Revenue per term decides whether "you already rank for this" is actually a criticism.
+            money = (f", {r['ads_value']}{sfx} revenue, {r['ads_roas']}x ROAS"
+                     if r.get("ads_value") else "")
             rows.append(
                 f"- {r['bucket']}{brand}: \"{r['term']}\" — {pos}, {r['organic_clicks']} organic "
                 f"clicks | paid: {r['ads_clicks']} clicks, {r['ads_cost']}{sfx}, "
-                f"{r['ads_conversions']} conversions")
+                f"{r['ads_conversions']} conversions{money}")
         parts.append(
             "PAID/ORGANIC QUERY OVERLAP (terms appearing in BOTH channels; already joined and "
             "classified — use these buckets verbatim, do NOT reclassify):\n"
