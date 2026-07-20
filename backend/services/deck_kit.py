@@ -70,9 +70,9 @@ html,body{background:var(--k-bg);color:var(--k-ink);
   font-family:var(--font-body),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 
 /* ── the slide skeleton ─────────────────────────────────────────────────────────
-   Header, then a body that TAKES THE SLACK, then the bands — as ordinary flow children in that
-   order. This is why a takeaway can never print over a chart: it is not positioned, it sits on
-   the floor and the body above it shrinks. */
+   Header, then a body that TAKES THE SLACK, then the callout row — as ordinary flow children in
+   that order. This is why a callout row can never print over a chart: it is not positioned, it
+   sits on the floor and the body above it shrinks. */
 .slide{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--k-bg);
   display:flex;flex-direction:column;padding:80px 104px;page-break-after:always}
 .slide + .slide{margin-top:32px}
@@ -94,11 +94,12 @@ html,body{background:var(--k-bg);color:var(--k-ink);
   display:flex;flex-direction:column;justify-content:flex-start}
 
 .callout-row{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:28px}
-.takeaway{flex:0 0 auto;display:flex;align-items:flex-start;gap:26px;background:var(--k-dark);
-  color:#fff;border-radius:14px;padding:24px 30px;margin-top:26px}
-.takeaway-label{flex:0 0 auto;font-size:17px;font-weight:700;letter-spacing:.14em;
-  text-transform:uppercase;color:var(--k-accent);padding-top:3px}
-.takeaway p{font-size:24px;line-height:1.4}
+/* NO takeaway band. The dark "EXECUTIVE TAKEAWAY" bar is switched off by request — the slide's
+   conclusion belongs in its own content (the callout trio, the card copy, the panel beside the
+   chart) rather than in a separate strip of furniture at the bottom. Hidden rather than only
+   dropped from the prompt: the band is in every deck exemplar a model has ever seen, so it gets
+   emitted from habit, and a rule here is deterministic where a prompt is not. */
+.takeaway,.takeaway-label{display:none !important}
 /* NO per-slide footer. It repeated the client name and the reporting period on all fourteen
    slides — both already on the cover — and spent ~40px of every slide's height saying nothing.
    Hidden rather than merely dropped from the prompt: the model emits one from habit (it is in

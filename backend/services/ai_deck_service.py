@@ -276,7 +276,9 @@ BING_STRUCTURE = (
 # Derived from a reference Google Ads audit deck that reads markedly better than ours. The gap
 # was NOT layout — by this point the kit already guaranteed the geometry — it was the writing.
 # Their titles state findings; ours labelled categories. Their charts always sit beside an
-# interpretation; ours shipped one naked. Their takeaway band is a spine; ours was sporadic.
+# interpretation; ours shipped one naked. NOTE: the reference uses a dark "EXECUTIVE TAKEAWAY"
+# band on most slides; we deliberately do NOT — the conclusion belongs in the slide's own content
+# instead, so the analysis survives without the furniture.
 EDITORIAL_STANDARD = """=== EDITORIAL STANDARD (how a senior analyst writes this deck) ===
 
 1. TITLES STATE A FINDING, NOT A CATEGORY. The headline IS the conclusion.
@@ -289,9 +291,11 @@ EDITORIAL_STANDARD = """=== EDITORIAL STANDARD (how a senior analyst writes this
    it: a "Reading the trend" panel of 2-3 bullets, a small before/after table, or 2-3 stat
    callouts. A chart with nothing telling the reader what it means is an unfinished slide.
 
-3. EVERY ANALYSIS SLIDE ENDS WITH A TAKEAWAY. Same label, same position, every time:
-   <div class="takeaway"><span class="takeaway-label">EXECUTIVE TAKEAWAY</span>
-   <p>one sentence: the implication, and what to do about it</p></div>
+3. EVERY ANALYSIS SLIDE STATES ITS CONCLUSION — but NEVER in a separate dark band.
+   Do NOT emit .takeaway / "EXECUTIVE TAKEAWAY" / "KEY TAKEAWAY" bars; they are switched off.
+   Put the "so what" where the reader already is: in the .callout-row trio (WHAT WE SEE /
+   OPPORTUNITY / TBS RECOMMENDATION), in the card copy, or in the panel beside the chart.
+   The conclusion must still be unmissable — it just lives in the content, not in furniture.
 
 4. PAIR EVERY NUMBER WITH ITS MEANING. Never print a metric without the sentence saying why it
    matters. Name the specific query, page or campaign - never "some keywords".
@@ -343,15 +347,15 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    the WORDS. You may add CSS ONLY for something the kit has no class for.
 
    CHROME (every content slide): .slide-header wrapping .sectionpill (or .eyebrow) + h2 + optional
-     .subtitle + .rule ; then the content ; then optional .callout-row / .takeaway.
-     .takeaway = <div class=takeaway><span class=takeaway-label>KEY TAKEAWAY</span><p>…</p></div>
+     .subtitle + .rule ; then the content ; then an optional .callout-row.
+     There is NO takeaway band in this deck — do not emit one.
      DO NOT add a footer: the client name, report name and period are on the cover already, and
      repeating them on all 14 slides just eats vertical space.
    CARDS (the primary device): .card-grid > .card × N, each .card = optional
      <span class="idx">1</span> (add .alt / .dark to cycle colour) + <h3> + <p>.
      YOU choose the grid: set grid-template-columns on .card-grid (2/3/4 × 1fr, one or two rows).
    CALLOUTS: .callout-row > .callout.see / .callout.opportunity / .callout.recommendation,
-     each = <span class="k">WHAT WE SEE</span> + <p>. The signature trio; stronger than a takeaway.
+     each = <span class="k">WHAT WE SEE</span> + <p>. THE way a slide states its conclusion.
    METRICS: .kpi-row > .kpi-tile (add .tile-dark or .tile-accent to spotlight ONE hero), each =
      <span class="l">label</span> + <span class="v">number</span> + a .delta chip.
    SEMANTIC CHIPS: .delta-good / .delta-bad / .delta-warn (also .pill.good/.bad/.warn, and
@@ -373,7 +377,6 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    padding:84px 108px.
      .slide-header (eyebrow + title + subtitle + rule)
      MAIN content region — flex:1; min-height:0 — this GROWS to fill all remaining height
-     .takeaway  (the dark band, on content slides that have a key takeaway)
    Fill that space with a CARD GRID (or a table, or — rarely — one chart), sized generously.
    DO NOT chase 100% coverage. Whitespace INSIDE a card, and a comfortable margin below the grid,
    are correct and premium: the reference deck leaves the bottom third of several slides empty and
@@ -499,7 +502,6 @@ subtitle + rule) -> a main region that fills all remaining height -> the dark EX
       <div class="panel panel-quiet"><span class="stat-big">—</span><span>label</span></div>
     </div>
   </div>
-  <div class="takeaway"><span class="takeaway-label">Executive Takeaway</span><p>The one sentence the client should remember.</p></div>
   <script type="application/json" class="plotly-spec" data-target="chart3">{"data":[{"type":"bar","x":["Mar","Apr"],"y":[3,5]}],"layout":{}}</script>
 </section>
 And the cover — a two-column grid (NOT a full-bleed photo): a type panel on the left, a full-height
@@ -594,7 +596,7 @@ _TBS_STYLE_DIRECTIVE = (
     f"--ink {TBS_PALETTE['ink']}, --muted {TBS_PALETTE['muted']}.\n"
     f"- PANELS are SOLID tints — never gradients: --tint {TBS_PALETTE['tint']} (light blue), "
     f"--tint-2 {TBS_PALETTE['tint2']} (light neutral), and --dark {TBS_PALETTE['dark']} for inverted "
-    "panels/table headers/the takeaway bar. Cover, section dividers and closing may use ONE full-bleed "
+    "panels/table headers. Cover, section dividers and closing may use ONE full-bleed "
     "saturated field in the accent, the green or the dark.\n"
     f"- TYPE: load '{TBS_FONTS['display']}' as --font-display and '{TBS_FONTS['body']}' as --font-body "
     "from fonts.googleapis.com. Titles are LARGE and BOLD (clamp ~64-104px), tight line-height, sentence "
@@ -1102,7 +1104,8 @@ HEADLINE: <one punchy line — the INSIGHT, not the metric name>
 BULLETS:
 - <short insight citing the REAL number(s) from the DATA>
 - <2-4 bullets total>
-TAKEAWAY: <the slide's key_takeaway from the plan, sharpened — naming a real query / page / theme>
+CONCLUSION: <the slide's key_takeaway, sharpened — naming a real query / page / theme.
+Render it inside the slide's content (a callout or the body copy), NOT as a separate dark band.>
 CHART: <none | one line: chart type + EXACTLY which series/rows to plot + what each axis means, with units>
 PHOTO: <the plan's image prompt if image.needed is true | none>
 
@@ -1146,7 +1149,7 @@ must be complete and self-sufficient. Define, exactly once:
 - The type scale for this 1920x1080 canvas (display 96-144px, h2 52-64px, .kpi-num 64-84px,
   body 26-30px, caption 18-20px) and a 12px spacing rhythm, applied via the component classes.
 - The SLIDE CHROME classes: .slide-header .eyebrow .subtitle .rule (a thin full-width accent hairline),
-  .takeaway (a FULL-WIDTH SOLID DARK band) + .takeaway-label (small ALL-CAPS in the accent), and
+  NO takeaway band (switched off — put the conclusion in the callouts or the body copy), and
 - The COVER classes: .brandmark, .eyebrow-pill (an uppercase letter-spaced label on a SOLID
   accent-tint pill with radius — not bare text; it hugs its text, it is NOT a full-width bar), and
   .meta (small muted metadata).
@@ -1211,7 +1214,7 @@ RULES:
   padding and any full-bleed/scrim. Do not substitute a different composition.
 - SLIDE CHROME (mandatory on every CONTENT slide — cover/section/closing are posters and skip it):
   open with .slide-header (.eyebrow kicker + the claim title + optional .subtitle + .rule), then the
-  main content region, then the .takeaway dark band carrying this slide's key takeaway
+  main content region (the slide's conclusion goes in a .callout-row or the body copy)
   (.takeaway-label "EXECUTIVE TAKEAWAY" + the sentence). This chrome is what makes
   the deck read as one designed system — do not omit or restyle it.
 - Deltas/movements use a .delta chip with the SEMANTIC class (.delta-good / .delta-bad / .delta-warn).
@@ -2248,14 +2251,12 @@ _FILL_CSS = """<style>/* deterministic-fill */
    div to scale an overflowing slide. That makes the chrome a GRANDCHILD of .slide, which
    silently killed every `.slide > X` rule here — the takeaway lost its pin and printed over
    the charts. So each skeleton rule matches through the wrapper as well. */
-/* THE SKELETON, forced. Models kept absolutely-positioning the takeaway band, so it stacked over
-   the content region. Pin it as a normal flow child at the end of the column instead, and let the
-   middle grow — this is geometry, not a design choice, so it must not depend on the model getting
-   it right. (The footer rules that used to live here are gone with the footer itself; their
-   `display:flex !important` was beating the kit's `display:none` and the footers kept rendering.) */
+/* THE SKELETON, forced. The takeaway and footer rules that used to live here are gone along with
+   those elements — and they HAD to go: their `!important` declarations would have beaten the kit's
+   `display:none` and both would have kept rendering. That is not hypothetical; it is exactly what
+   happened on the first footer-removal attempt (11 footers still on screen). */
 :is(.slide,.slide > .autofit) > .slide-header{flex:0 0 auto !important;}
-:is(.slide,.slide > .autofit) > .takeaway{position:static !important;flex:0 0 auto !important;order:98 !important;
-  margin:0 !important;width:100% !important;box-sizing:border-box !important;}
+
 
 /* Content children size to their content and may SHRINK, but must not grow — giving every child
    flex:1 stretched KPI strips halfway down the slide into empty space. */
@@ -2285,8 +2286,7 @@ _FILL_CSS = """<style>/* deterministic-fill */
    margin-top:auto absorbs the slack in the gap ABOVE the band instead of stretching the content —
    content stays at the top, the band sits on the floor, and the whitespace lands between them
    where it belongs. Only the topmost band takes it, or the two would fight over the slack. */
-:is(.slide,.slide > .autofit) > .takeaway{margin-top:auto !important;}
-.slide:not(:has(> .takeaway)) > .callout-row{margin-top:auto !important;}
+.slide > .callout-row{margin-top:auto !important;}
 /* section/closing are COLUMN posters — centring stacks them nicely. The cover is a ROW (kit),
    and centring a row whose children overflow pushes content off BOTH edges: it sliced the cover
    headline on the left and the Prepared-for card on the right. Its columns are already sized. */
