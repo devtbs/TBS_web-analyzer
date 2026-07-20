@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, CheckIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
@@ -63,7 +63,11 @@ const siteTags = (url) => {
 
 const Presentation = () => {
     const { switchAccount } = useAuth();
-    const [mode, setMode] = useState('gsc');           // 'gsc' | 'ga4' | 'ads' | 'pdf'
+    const [mode, setMode] = useState('gsc');
+    // Combined deck: any subset of GSC / GA4 / Ads for ONE client. Reuses the per-platform
+    // pickers below rather than duplicating them.
+    const [combined, setCombined] = useState({ gsc: true, ga4: true, ads: false });
+    const [combinedGa4Auto, setCombinedGa4Auto] = useState(true);           // 'gsc' | 'ga4' | 'ads' | 'pdf'
 
     // GSC site picker
     const [properties, setProperties] = useState([]);
@@ -177,7 +181,7 @@ const Presentation = () => {
 
     // Lazily load the GA4 property list the first time its tab is opened.
     useEffect(() => {
-        if (mode === 'ga4' && !ga4Loaded) {
+        if ((mode === 'ga4' || mode === 'combined') && !ga4Loaded) {
             setGa4Loaded(true); setGa4Loading(true);
             (async () => {
                 try {
@@ -193,7 +197,7 @@ const Presentation = () => {
 
     // Lazily load the Ads source list the first time its tab is opened.
     useEffect(() => {
-        if (mode === 'ads' && !adsLoaded) {
+        if ((mode === 'ads' || mode === 'combined') && !adsLoaded) {
             setAdsLoaded(true); setAdsLoading(true);
             (async () => {
                 try {
@@ -310,7 +314,11 @@ const Presentation = () => {
         }
     };
 
-    const canGenerate = mode === 'gsc' ? !!propUrl
+    const combinedReady = (combined.gsc && !!propUrl)
+        || (combined.ga4 && (!!ga4PropId || (combinedGa4Auto && combined.gsc && !!propUrl)))
+        || (combined.ads && !!adsCustId);
+    const canGenerate = mode === 'combined' ? combinedReady
+        : mode === 'gsc' ? !!propUrl
         : mode === 'ga4' ? !!ga4PropId
         : mode === 'ads' ? !!adsCustId
         : mode === 'bing' ? !!bingSite
@@ -405,7 +413,15 @@ const Presentation = () => {
         };
         try {
             let response;
-            if (mode === 'gsc') {
+            if (mode === 'combined') {
+                const qs = new URLSearchParams({ days, provider: prov, images: useImages });
+                if (combined.gsc && propUrl) qs.set('property', propUrl);
+                // Blank ga4_property_id + a GSC property = let the backend match GA4 on the domain.
+                if (combined.ga4 && !(combinedGa4Auto && combined.gsc)) qs.set('ga4_property_id', ga4PropId);
+                if (combined.ads && adsCustId) { qs.set('ads_customer_id', adsCustId); qs.set('ads_label', adsLabel || ''); }
+                response = await fetch(`/api/presentation/ai-deck-combined?${qs.toString()}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
+            } else if (mode === 'gsc') {
                 response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${prov}&images=${useImages}`,
                     { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
@@ -521,8 +537,8 @@ const Presentation = () => {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-6">
-                    {[['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['bing', 'Bing'], ['pdf', 'From a PDF']].map(([m, label]) => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-6">
+                    {[['combined', 'Combined'], ['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['bing', 'Bing'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
                             className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
                                 mode === m ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
@@ -531,7 +547,51 @@ const Presentation = () => {
                     ))}
                 </div>
 
-                {mode === 'gsc' && (
+                {mode === 'combined' && (
+                    <div className="mb-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Platforms in this deck</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {[['gsc', 'Search Console', 'Organic search'],
+                              ['ga4', 'Analytics (GA4)', 'On-site behaviour'],
+                              ['ads', 'Google Ads', 'Paid search']].map(([key, label, sub]) => (
+                                <button key={key} type="button" disabled={generating}
+                                    onClick={() => setCombined((c) => ({ ...c, [key]: !c[key] }))}
+                                    className={`text-left px-4 py-3 rounded-xl border transition-colors ${
+                                        combined[key] ? 'bg-[#26397A]/5 border-[#26397A] text-[#26397A]'
+                                                      : 'bg-white border-slate-300 text-slate-600 hover:border-[#26397A]/50'}`}>
+                                    <span className="flex items-center gap-2 font-bold text-sm">
+                                        <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                                            combined[key] ? 'bg-[#26397A] border-[#26397A]' : 'border-slate-400'}`}>
+                                            {combined[key] && <CheckIcon className="w-3 h-3 text-white" />}
+                                        </span>
+                                        {label}
+                                    </span>
+                                    <span className="block text-xs text-slate-500 mt-0.5 ml-6">{sub}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                            Pick any combination — the deck covers what you tick and says nothing about the rest.
+                            With two or more, it also compares them (e.g. terms you pay for that already rank organically).
+                        </p>
+                        {combined.ga4 && combined.gsc && (
+                            <label className="flex items-center gap-2 mt-3 text-sm text-slate-600">
+                                <input type="checkbox" checked={combinedGa4Auto} disabled={generating}
+                                    onChange={(e) => setCombinedGa4Auto(e.target.checked)}
+                                    className="rounded border-slate-400" />
+                                Match the Analytics property to the site automatically
+                            </label>
+                        )}
+                        {!combined.gsc && !combined.ga4 && !combined.ads && (
+                            <p className="text-xs text-red-600 mt-2 font-semibold">Tick at least one platform.</p>
+                        )}
+                        <p className="text-xs text-amber-700 mt-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            All three must belong to the <strong>same connected Google account</strong>.
+                        </p>
+                    </div>
+                )}
+
+                {(mode === 'gsc' || (mode === 'combined' && combined.gsc)) && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Site</label>
                         <div className="relative mb-6" ref={boxRef}>
@@ -573,7 +633,7 @@ const Presentation = () => {
                     </>
                 )}
 
-                {mode === 'ga4' && (
+                {(mode === 'ga4' || (mode === 'combined' && combined.ga4 && !(combinedGa4Auto && combined.gsc))) && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Google Analytics property</label>
                         <div className="relative mb-6" ref={ga4BoxRef}>
@@ -634,7 +694,7 @@ const Presentation = () => {
                     </>
                 )}
 
-                {mode === 'ads' && (
+                {(mode === 'ads' || (mode === 'combined' && combined.ads)) && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Google Ads account</label>
                         <div className="relative mb-6" ref={adsBoxRef}>
@@ -942,7 +1002,7 @@ const Presentation = () => {
                         placeholder={"Lines starting with /on <date> are added verbatim to a Key Dates slide, e.g.\n/on 26 may product launch at 9 AM\n/on 30 may final client sign-off"}
                         className={fieldCls + ' text-sm font-mono'} />
 
-                    {mode === 'gsc' && (
+                    {(mode === 'gsc' || (mode === 'combined' && combined.gsc)) && (
                         <div className="mt-4 pt-4 border-t border-slate-200">
                             <label className="block text-sm font-semibold text-slate-700">Branded queries to exclude</label>
                             <p className="text-xs text-slate-500 mt-0.5 mb-2">
