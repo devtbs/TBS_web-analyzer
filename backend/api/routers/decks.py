@@ -11,7 +11,7 @@ from config import settings
 from typing import Optional
 from api.routers._shared import (
     PPTX_MEDIA_TYPE, PDF_MEDIA_TYPE, _SSE_HEADERS,
-    _create_deck_placeholder, _finalize_deck_document,
+    _create_deck_placeholder, _finalize_deck_document, _update_deck_content,
     _slides_payload, _stream_deck_generation,
     get_account_id, _gsc_service_for, _ga4_service_for, _ads_service_for, _resolve_token,
 )
@@ -180,7 +180,13 @@ async def _finalize_and_preview(doc_id: str, html: str, on_progress, artifacts: 
     from services.ai_deck_service import render_slide_images
     _finalize_deck_document(doc_id, html=html, artifacts=artifacts)
     try:
-        imgs = await render_slide_images(html, on_progress=on_progress)
+        # The preview render is the only headless pass every deck already makes, so the automated
+        # layout checks ride along on it — no second Chromium launch. Stored on the Document so a
+        # broken deck is visible before anyone opens it.
+        qa: dict = {}
+        imgs = await render_slide_images(html, on_progress=on_progress, qa=qa)
+        if qa:
+            _update_deck_content(doc_id, qa=qa)
         slides = _slides_payload(imgs)
         _cache_slides(doc_id, slides)   # seed so the first Documents-page open is instant too
         return slides

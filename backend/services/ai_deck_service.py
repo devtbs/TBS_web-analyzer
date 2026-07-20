@@ -2901,9 +2901,16 @@ async def render_deck(html: str, fmt: str = "pdf") -> bytes:
     raise ValueError(f"Unsupported format: {fmt!r} (use 'pdf' or 'pptx')")
 
 
-async def render_slide_images(html: str, *, quality: int = 85, on_progress: ProgressCb = None) -> List[bytes]:
+async def render_slide_images(html: str, *, quality: int = 85, on_progress: ProgressCb = None,
+                              qa: Optional[Dict] = None) -> List[bytes]:
     """Render each slide to a JPEG for in-app preview — same load/Plotly-wait path as
-    _render, so the preview matches the downloaded file exactly (charts included)."""
+    _render, so the preview matches the downloaded file exactly (charts included).
+
+    `qa`, when given, is filled IN PLACE with the automated layout checks (services.deck_qa).
+    Piggybacking on this pass is deliberate: the page is already loaded, Plotly has already drawn
+    and the fonts have already settled, so the checks see exactly what the screenshot captures —
+    and it costs no extra browser launch. Mutating an out-param matches how `artifacts` is
+    threaded through the generators rather than changing this function's return type."""
     import os
     import tempfile
     from pathlib import Path
@@ -2945,6 +2952,19 @@ async def render_slide_images(html: str, *, quality: int = 85, on_progress: Prog
                 await page.evaluate("document.fonts.ready")
             except Exception:
                 pass
+            # QA here, on the settled page, BEFORE the screenshots — same DOM the reader will see.
+            if qa is not None:
+                from services.deck_qa import probe_page, format_issues
+                try:
+                    qa.update(await probe_page(page))
+                    line = format_issues(qa)
+                    if line:
+                        logger.info("deck QA: %s", line)
+                        if on_progress and not qa.get("ok", True):
+                            await on_progress(line)
+                except Exception:
+                    # QA must never cost a client their deck.
+                    logger.exception("deck QA failed — continuing")
             imgs: List[bytes] = []
             for el in await page.query_selector_all(".slide"):
                 imgs.append(await el.screenshot(type="jpeg", quality=quality))
