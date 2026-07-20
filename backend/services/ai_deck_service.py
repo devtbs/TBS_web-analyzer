@@ -249,6 +249,51 @@ GA4_STRUCTURE = (
 )
 
 
+# Structure for the COMBINED deck — any subset of GSC + GA4 + Google Ads for one client.
+#
+# There is no fixed slide count: every platform slide is OMIT-IF-ABSENT, so a GSC+Ads client gets
+# ~15 slides and an all-three client ~22. The brief states which platforms are present and emits an
+# explicit absence marker for the rest, so "omit" is a decision the model can actually make.
+#
+# The cross-channel slides are the reason this deck exists. Their numbers are computed in
+# services/cross_channel.py and handed over as facts — the structure tells the model to USE them and
+# never to derive its own, because a model asked to intersect two query tables will produce a
+# plausible overlap that is not real.
+COMBINED_STRUCTURE = (
+    "THIS IS ONE REPORT ABOUT ONE BUSINESS — not three reports bolted together. Never write "
+    "'turning now to Google Ads' or 'in the Analytics section'. Every slide title must state a "
+    "FINDING about the business, not name a data source.\n"
+    "OMIT RULE: a slide whose source section is absent from the DATA must be skipped entirely — do "
+    "not include the slide with placeholder text, and do not invent the data.\n"
+    "CROSS-CHANNEL RULE: slides drawing on CROSS-CHANNEL SYNTHESIS must use ONLY the numbers given "
+    "there. Do NOT compute your own paid-vs-organic comparison from the platform sections — the "
+    "overlap has already been calculated by joining the two datasets, which you cannot do reliably "
+    "by eye.\n\n"
+    "1. Cover Slide — client/domain, 'Digital Performance Report', and the REPORTING PERIOD as the subtitle, on a professional hero visual. NO KPI numbers on the cover.\n"
+    "2. Executive Summary — CHART-LED and CROSS-CHANNEL: lead with the whole acquisition picture, not one platform. A slim KPI strip may draw from every platform present.\n"
+    "3. The Full Picture — Blended Acquisition (OMIT if BLENDED ACQUISITION is absent) — organic vs paid clicks/sessions side by side from BLENDED ACQUISITION, as a stacked bar or split donut, with the share of each. State the blended cost per conversion.\n"
+    "4. Organic Search Performance (OMIT if no ORGANIC SEARCH section) — clicks, impressions, CTR, average position with period-over-period change.\n"
+    "5. Organic Performance Over Time (OMIT if no ORGANIC SEARCH section) — the monthly clicks+impressions bars with the average-position line on a SECOND y-axis (reversed, lower is better).\n"
+    "6. Top Non-Branded Queries (OMIT if no ORGANIC SEARCH section) — the query table, ranked by clicks.\n"
+    "7. Keyword Opportunity (OMIT if KEYWORD POSITION vs IMPRESSIONS is absent) — the position-vs-impressions bubble chart, bubble size by impressions, best ranks to the right.\n"
+    "8. Biggest Movers (OMIT if no ORGANIC SEARCH section) — risers AND fallers, queries and landing pages, previous → current.\n"
+    "9. CTR Opportunities (OMIT if CTR OPPORTUNITIES is (none)) — high-impression queries whose CTR trails their rank, ranked by missed clicks.\n"
+    "10. Top Landing Pages (OMIT if no ORGANIC SEARCH section) — the page table. Caption it EXACTLY as the data section labels it (non-branded vs all traffic).\n"
+    "11. Website Audience & Engagement (OMIT if no WEBSITE ANALYTICS section) — sessions, users, engagement rate, conversions with movement.\n"
+    "12. Traffic by Channel (OMIT if no WEBSITE ANALYTICS section) — the channel split. This is the pivot slide: frame organic and paid as the two channels the rest of the deck examines.\n"
+    "13. Geographic Distribution (OMIT if GEOGRAPHY is absent) — a Plotly CHOROPLETH world map paired with a top-countries bar.\n"
+    "14. Paid Search Performance (OMIT if no PAID SEARCH section) — cost, clicks, CTR, average CPC, conversions and cost per conversion with movement.\n"
+    "15. Paid Performance Over Time (OMIT if no PAID SEARCH section) — the daily clicks/cost/conversions trend. Put cost and clicks on SEPARATE axes.\n"
+    "16. Top Campaigns (OMIT if no PAID SEARCH section) — the campaign table ranked by cost.\n"
+    "17. Paid vs Organic — Where They Meet (OMIT if PAID/ORGANIC QUERY OVERLAP is absent or (none)) — the overlap table grouped by the DEFEND / CONTENT GAP / DOUBLE COVERAGE buckets GIVEN IN THE DATA. Show both sides' numbers per term. Do not re-derive or re-label the buckets. Where a row is marked BRANDED, carry the caveat that brand bidding often defends against competitors.\n"
+    "18. Channel Efficiency (OMIT if BLENDED ACQUISITION is absent) — paid cost per conversion against the organic click value, using ONLY the figures in BLENDED ACQUISITION. Label the organic figure as media cost avoided, never as revenue or savings earned.\n"
+    "19. Measurement Health (OMIT if CHANNEL RECONCILIATION is absent) — where the platforms disagree about the same traffic and what that means. A large paid gap usually means auto-tagging is broken: state it as a fixable finding, not an error in the report.\n"
+    "20. Needs Attention — What's Dropping (REQUIRED) — declines across EVERY platform present, ranked by impact, each with its real movement, likely cause and specific fix. Calm and professional, never softened into vague positivity.\n"
+    "21. Strategic Recommendations — actionable and grounded, spanning the platforms present. When both paid and organic are present, at least ONE recommendation must move budget or effort BETWEEN channels, justified by the overlap or efficiency data.\n"
+    "22. Closing Slide — key takeaways, honest momentum summary, professional thank-you page carrying the reporting period."
+)
+
+
 # Structure for the Bing (Microsoft) organic-search deck. Bing gives clicks/impressions +
 # top queries/pages; CTR and period deltas are derived upstream. The AI Search Visibility
 # slide (Copilot citations) is OMITTABLE — only present when the user uploads the AI

@@ -179,10 +179,17 @@ def _reconciliation(gsc_ctx, ga4_ctx, ads_ctx) -> List[str]:
                     f"{int(sessions)} Paid Search sessions ({ratio:.2f}x). A gap this large usually "
                     f"means auto-tagging (gclid) is off or being stripped — paid traffic is landing "
                     f"but being attributed to another channel. This is a REAL, fixable finding.")
-            else:
+            elif ratio <= 1.3:
                 out.append(
                     f"Paid: Google Ads reports {int(clicks)} clicks, GA4 records {int(sessions)} "
                     f"Paid Search sessions ({ratio:.2f}x) — tracking looks healthy.")
+            else:
+                out.append(
+                    f"Paid: GA4 records {int(sessions)} Paid Search sessions against "
+                    f"{int(clicks)} Google Ads clicks ({ratio:.2f}x). GA4 counting materially MORE "
+                    f"paid sessions than Ads reports clicks usually means other paid sources "
+                    f"(non-Google, or Cross-network) are folded into this channel. Do not present "
+                    f"the two as the same number.")
     return out
 
 

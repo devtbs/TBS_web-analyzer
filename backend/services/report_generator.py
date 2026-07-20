@@ -1088,6 +1088,253 @@ async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
     return {"customer_id": customer_id, "domain": name, "html": html, "artifacts": artifacts}
 
 
+# ============================================================================
+# COMBINED → AI deck. Any subset of GSC + GA4 + Google Ads for ONE client.
+#
+# Not a new pipeline: a fourth caller of generate_deck_html with a merged brief. All the risk is in
+# the merge, because three briefs written for standalone decks each carry their own intro, their own
+# reporting period and their own "On the COVER slide…" instruction — concatenate them naively and
+# the model is told to build three cover slides from three different periods.
+# ============================================================================
+
+def _cross_channel_block(cross: Optional[Dict]) -> str:
+    """Render the precomputed synthesis. The model never derives these numbers — it explains them."""
+    if not cross:
+        return ""
+    cur = cross.get("currency") or ""
+    sfx = f" {cur}" if cur else ""
+    parts: List[str] = []
+
+    b = cross.get("blended")
+    if b:
+        lines = [
+            f"- Organic clicks: {b['organic_clicks']} ({b['organic_share']}% of acquisition) "
+            f"[source: {b['organic_source']}]",
+            f"- Paid clicks: {b['paid_clicks']} ({b['paid_share']}%)",
+            f"- Paid cost: {b['ads_cost']}{sfx}",
+        ]
+        if b.get("paid_cpa") is not None:
+            lines.append(f"- Paid cost per conversion: {b['paid_cpa']}{sfx} "
+                         f"({b['ads_conversions']} conversions)")
+        if b.get("blended_cpa") is not None:
+            lines.append(f"- BLENDED cost per conversion (paid spend / ALL conversions): "
+                         f"{b['blended_cpa']}{sfx}")
+        if b.get("organic_click_value") is not None:
+            lines.append(
+                f"- Organic click value: {b['organic_click_value']}{sfx} — what those organic clicks "
+                f"would have cost at the account's own average CPC of {b['avg_cpc']}{sfx}. This is "
+                f"MEDIA COST AVOIDED, not revenue and not money saved. Say it that way.")
+        parts.append("BLENDED ACQUISITION (organic and paid together — use for the whole-picture "
+                     "slide):\n" + "\n".join(lines))
+
+    recon = cross.get("reconciliation") or []
+    if recon:
+        parts.append("CHANNEL RECONCILIATION (how the platforms count the same traffic):\n"
+                     + "\n".join(f"- {r}" for r in recon))
+
+    overlap = cross.get("overlap") or []
+    if overlap:
+        rows = []
+        for r in overlap:
+            pos = f"organic pos {r['organic_position']}" if r["organic_position"] is not None \
+                else "NOT ranking organically"
+            brand = " [BRANDED]" if r["branded"] else ""
+            rows.append(
+                f"- {r['bucket']}{brand}: \"{r['term']}\" — {pos}, {r['organic_clicks']} organic "
+                f"clicks | paid: {r['ads_clicks']} clicks, {r['ads_cost']}{sfx}, "
+                f"{r['ads_conversions']} conversions")
+        parts.append(
+            "PAID/ORGANIC QUERY OVERLAP (terms appearing in BOTH channels; already joined and "
+            "classified — use these buckets verbatim, do NOT reclassify):\n"
+            "  DEFEND = already ranks organic top 3 and is also being paid for.\n"
+            "  CONTENT GAP = paid converts but organic ranks 11+ or not at all.\n"
+            "  DOUBLE COVERAGE = organic 4-10 plus paid; both surfaces held.\n"
+            + "\n".join(rows))
+
+    flags = cross.get("flags") or []
+    if flags:
+        parts.append("CROSS-CHANNEL FLAGS (headline conclusions — state these, do not soften):\n"
+                     + "\n".join(f"- {f}" for f in flags))
+
+    if not parts:
+        return ""
+    return "=== CROSS-CHANNEL SYNTHESIS ===\n" + "\n\n".join(parts)
+
+
+def _combined_data_brief(gsc_ctx: Optional[Dict], ga4_ctx: Optional[Dict],
+                         ads_ctx: Optional[Dict], *, client: str, days: int,
+                         ads_label: str = "", ads_deep: Optional[Dict] = None,
+                         cross: Optional[Dict] = None) -> str:
+    """One brief covering every platform that loaded.
+
+    Ordering is deliberate: the synthesis comes FIRST, before any single-platform section. The model
+    plans from what it reads first, so leading with the cross-channel picture is what makes the deck
+    read as one report rather than three chapters.
+    """
+    present = [n for n, c in (("Google Search Console", gsc_ctx), ("Google Analytics 4", ga4_ctx),
+                              ("Google Ads", ads_ctx)) if c]
+    if len(present) > 1:
+        sources = ", ".join(present[:-1]) + " and " + present[-1]
+    else:
+        sources = present[0] if present else "no platforms"
+
+    # One period line for the whole deck, taken from whichever platform is present, in preference
+    # order. Three period lines is how a deck ends up quoting three different date ranges.
+    period_label = ""
+    for c, key in ((gsc_ctx, "period"), (ga4_ctx, "period_label"), (ads_ctx, "period_label")):
+        if not c:
+            continue
+        period_label = (c.get("period") or {}).get("label", "") if key == "period" else c.get(key, "")
+        if period_label:
+            break
+    period_label = period_label or f"last {days} days"
+
+    head = (
+        f"Combined digital performance report for {client}. It brings together {sources} into ONE "
+        f"report about ONE business.\n"
+        f"Reporting period: {period_label} (last {days} days, compared with the previous {days} days).\n"
+        f"On the COVER slide, show this reporting period ({period_label}) as the subtitle.\n")
+    if cross and cross.get("period_mismatch"):
+        head += cross["period_mismatch"] + "\n"
+
+    blocks = [head.rstrip()]
+
+    cc = _cross_channel_block(cross)
+    if cc:
+        blocks.append(cc)
+
+    # Each platform: its sections, or an explicit absence marker. Silence is what makes a planner
+    # invent data — the same reason _empty_note exists for emptied query sections.
+    if gsc_ctx:
+        blocks.append("=== ORGANIC SEARCH (Google Search Console) ===\n"
+                      + _gsc_data_brief(gsc_ctx, compact=True, include_ga4=False, sections_only=True))
+    else:
+        blocks.append("(No Search Console data for this client — OMIT every organic-search slide. "
+                      "Do NOT describe paid or analytics data as 'organic search'.)")
+
+    if ga4_ctx:
+        blocks.append("=== WEBSITE ANALYTICS ===\n" + _ga4_brief_sections(ga4_ctx))
+    else:
+        blocks.append("(No Analytics data for this client — OMIT every on-site behaviour, "
+                      "engagement and channel-mix slide.)")
+
+    if ads_ctx:
+        blocks.append("=== PAID SEARCH (Google Ads) ===\n"
+                      + _ads_brief_sections(ads_ctx, compact=True, deep=ads_deep, prefix="PAID "))
+    else:
+        blocks.append("(No Google Ads data for this client — OMIT every paid-search slide AND every "
+                      "paid-vs-organic comparison. Do NOT infer paid performance from other data.)")
+
+    blocks.append(_HONESTY_CLOSER)
+    return "\n\n".join(blocks)
+
+
+async def generate_ai_combined_deck(*, days: int = 28,
+                                    gsc_service=None, property_url: str = "",
+                                    ga4_service=None, ga4_property_id: str = "",
+                                    ads_service=None, ads_customer_id: str = "",
+                                    ads_label: str = "",
+                                    provider: str = "deepseek", prompt: Optional[str] = None,
+                                    images: bool = True, notes: str = "", on_progress=None,
+                                    creativity: str = "balanced", pipeline: str = "single",
+                                    models: Optional[dict] = None, theme_mode: str = "tbs",
+                                    custom_color: Optional[str] = None, style: str = "tbs",
+                                    brand_terms: Optional[str] = None) -> Dict:
+    """One deck from any combination of GSC, GA4 and Google Ads.
+
+    Every platform is optional and every fetch degrades independently: a client with no Ads refresh
+    token still gets their organic deck, and it says NOTHING about paid rather than inventing it.
+    At least one platform must load, otherwise there is no report to write."""
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
+                                          _AI_IMG_RE, COMBINED_STRUCTURE, _apply_theme)
+    from services.cross_channel import compute_cross_channel
+    from services.highlights import to_brief_block
+
+    gsc_ctx = ga4_ctx = ads_ctx = ads_deep = None
+
+    if gsc_service and property_url:
+        if on_progress:
+            await on_progress("Gathering Search Console data…")
+        try:
+            gsc_ctx = await assemble_gsc_context(gsc_service, property_url, days,
+                                                 ga4_service=ga4_service, brand_terms=brand_terms)
+        except Exception:
+            logger.exception("combined deck: Search Console fetch failed")
+
+    if ga4_service:
+        # Without GSC there is no domain to match on, so the property must have been chosen.
+        pid = ga4_property_id
+        if not pid and gsc_ctx:
+            try:
+                match = await ga4_service.find_property_for_domain(gsc_ctx["domain"])
+                pid = (match or {}).get("property_id") or ""
+            except Exception:
+                logger.warning("combined deck: GA4 auto-match failed", exc_info=True)
+        if pid:
+            if on_progress:
+                await on_progress("Gathering Analytics data…")
+            try:
+                ga4_ctx = await assemble_ga4_context(ga4_service, pid, days,
+                                                     label=(gsc_ctx or {}).get("domain", ""))
+            except Exception:
+                logger.exception("combined deck: GA4 fetch failed")
+
+    if ads_service and ads_customer_id:
+        if on_progress:
+            await on_progress("Gathering Google Ads data…")
+        try:
+            ads_ctx = await assemble_ads_context(ads_service, ads_customer_id, days)
+        except Exception:
+            logger.exception("combined deck: Google Ads fetch failed")
+        if ads_ctx:
+            # Deep-dive is the ONLY source of paid search terms, so losing it costs the overlap
+            # slides but must not cost the whole paid section.
+            try:
+                ads_deep = await ads_service.get_deep_dive(ads_customer_id, days)
+            except Exception:
+                logger.warning("combined deck: Ads deep-dive failed — no overlap slides",
+                               exc_info=True)
+
+    if not any((gsc_ctx, ga4_ctx, ads_ctx)):
+        raise ValueError("No platform data could be loaded for this client — check the selected "
+                         "property/account and that the connected Google account has access.")
+
+    # ONE identity for the whole deck: palette, typographic seed and cover title. GSC is preferred
+    # because it carries a real domain; without it fall back to whatever names the client.
+    client = ((gsc_ctx or {}).get("domain")
+              or (ga4_ctx or {}).get("name")
+              or ads_label or (f"Account {ads_customer_id}" if ads_customer_id else "") or "Report")
+
+    cross = compute_cross_channel(
+        gsc_ctx, ga4_ctx, ads_ctx, ads_deep,
+        brand_cores=_brand_cores((gsc_ctx or {}).get("domain", ""), brand_terms))
+
+    brief = _combined_data_brief(gsc_ctx, ga4_ctx, ads_ctx, client=client, days=days,
+                                 ads_label=ads_label, ads_deep=ads_deep,
+                                 cross=cross) + to_brief_block(notes)
+
+    palette = await resolve_deck_palette(theme_mode, custom_color, client)
+    brand = _brand_accent_directive(palette["accent"], palette["accent2"])
+    image_cache = {} if images else None
+    artifacts = {}
+    html = await generate_deck_html(brief, prompt=prompt, brand=brand,
+                                    structure=COMBINED_STRUCTURE, provider=provider,
+                                    on_progress=on_progress, image_cache=image_cache,
+                                    seed=client, creativity=creativity,
+                                    pipeline=pipeline, models=models, style=style,
+                                    artifacts=artifacts)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
+    return {
+        "domain": client,
+        "html": html,
+        "artifacts": artifacts,
+        "platforms": [n for n, c in (("gsc", gsc_ctx), ("ga4", ga4_ctx), ("ads", ads_ctx)) if c],
+    }
+
+
 async def assemble_bing_context(access_token: str, site: str, days: int = 28,
                                 ai_perf_csv: Optional[str] = None,
                                 ai_perf_data: Optional[Dict] = None) -> Dict:
