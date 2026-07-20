@@ -248,6 +248,21 @@ tbody tr.more td{text-align:left;font-size:18px;font-style:italic;color:var(--k-
 
 /* cover — flex-basis on the columns, NOT flex:1, so the photo column keeps its width. */
 .slide.layout-cover,.slide.cover{padding:0;flex-direction:row}
+/* A COVER COLUMN MUST SURVIVE ITS PHOTO FAILING TO GENERATE.
+   Image generation is rate-limited and flaky; when it fails the <img> is stripped, and a column
+   whose only content was that image collapses to the intrinsic width of whatever is left — which
+   shipped a Prepared-for card squeezed into a ~130px vertical strip. These rules are keyed on
+   POSITION rather than on .cover-right, because the model frequently writes its own bare divs and
+   then none of the class-based rules below apply at all. The second column keeps half the canvas
+   whether or not a photo ever arrives, and gets a tint so an imageless cover still reads as
+   designed rather than as a gap. */
+.slide.layout-cover > *,.slide.cover > *{min-width:0}
+.slide.layout-cover > *:not(:first-child),.slide.cover > *:not(:first-child){
+  flex:1 1 0;position:relative;overflow:hidden}
+.slide.layout-cover > *:not(:first-child):not(:has(img)),
+.slide.cover > *:not(:first-child):not(:has(img)){background:var(--k-tint)}
+/* the floating card spans its column even when the model positioned it itself */
+.slide.layout-cover > *:not(:first-child) > *:not(img){min-width:60%}
 .cover-left{flex:0 0 52%;display:flex;flex-direction:column;justify-content:center;padding:0 96px;
   min-width:0}
 .brandmark{display:flex;align-items:baseline;gap:14px;margin-bottom:26px}
@@ -271,6 +286,12 @@ tbody tr.more td{text-align:left;font-size:18px;font-style:italic;color:var(--k-
 .cover-stats .v{font-family:var(--font-display),sans-serif;font-size:40px;font-weight:700;
   color:var(--k-accent);line-height:1}
 .cover-stats .l{font-size:17px;color:var(--k-muted)}
+
+/* An imageless CLOSING slide must not become white type on white: the scrim is transparent over
+   nothing once the photo is stripped. Give the slide itself the dark ground so the type stays
+   legible whether or not the photo generated. */
+.slide.layout-closing:not(:has(img)),.slide.closing:not(:has(img)){background:var(--k-dark)}
+.slide.layout-closing:not(:has(img)) .scrim,.slide.closing:not(:has(img)) .scrim{display:none}
 
 /* closing — mirrors the cover so the deck opens and closes on an image.
    Everything here is defensive: one deck's closing slide used NO .closing-in, NO .scrim and a bare
