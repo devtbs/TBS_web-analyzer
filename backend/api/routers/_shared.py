@@ -192,6 +192,34 @@ def _ga4_service_for(db, email, account_id=None):
     return AnalyticsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)
 
 
+def _ads_service_for(db, email, account_id=None, *, required: bool = True):
+    """Build an AdsService from the user's stored token.
+
+    Google Ads is stricter than GSC/GA4: it needs a developer token to be configured AND a stored
+    REFRESH token (an access token alone is rejected). The single-platform Ads route must surface
+    each of those as a 400 — `required=True` preserves exactly that.
+
+    The combined deck passes `required=False`: a client whose Ads connection is unusable should
+    still get their organic deck, with the brief stating that no paid data was available, rather
+    than losing the whole report to a 400 about a platform they only ticked as a bonus.
+    """
+    from services.ads_service import ads_is_configured, AdsService
+
+    def _fail(detail):
+        if required:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+        return None
+
+    if not ads_is_configured():
+        return _fail("Google Ads is not configured — a developer token is required.")
+    token, is_refresh = _resolve_token(db, email, account_id)
+    if not token:
+        return _fail("Google account not connected for this account.")
+    if not is_refresh:
+        return _fail("Google Ads requires a stored refresh token — reconnect your Google account.")
+    return AdsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=email)
+
+
 def _create_deck_placeholder(user_email: str, *, source: str, label: str,
                              provider: str) -> str:
     """Insert an AI-Deck Document row up-front, marked status=generating, so the deck shows

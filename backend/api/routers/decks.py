@@ -13,7 +13,7 @@ from api.routers._shared import (
     PPTX_MEDIA_TYPE, PDF_MEDIA_TYPE, _SSE_HEADERS,
     _create_deck_placeholder, _finalize_deck_document,
     _slides_payload, _stream_deck_generation,
-    get_account_id, _gsc_service_for, _ga4_service_for, _resolve_token,
+    get_account_id, _gsc_service_for, _ga4_service_for, _ads_service_for, _resolve_token,
 )
 
 router = APIRouter()
@@ -425,19 +425,10 @@ async def presentation_ai_deck_ads(
     from services.report_generator import generate_ai_ads_deck
     from services.ai_deck_service import render_slide_images
     from services.image_service import images_enabled
-    from services.ads_service import ads_is_configured, AdsService
     _require_llm_key()
-    if not ads_is_configured():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Google Ads is not configured — a developer token is required.")
-    token, is_refresh = _resolve_token(db, current_user.email, account_id)
-    if not token:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Google account not connected for this account.")
-    if not is_refresh:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Google Ads requires a stored refresh token — reconnect your Google account.")
-    service = AdsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=current_user.email)
+    # required=True keeps this route's existing 400s (not configured / not connected / no refresh
+    # token) byte-for-byte; the combined route passes required=False to degrade instead.
+    service = _ads_service_for(db, current_user.email, account_id, required=True)
     notes = (body or {}).get("notes", "")
     creativity = (body or {}).get("creativity", "balanced")
     pipeline = (body or {}).get("pipeline", "single")
@@ -456,6 +447,84 @@ async def presentation_ai_deck_ads(
                                             pipeline=pipeline, models=models,
                                             theme_mode=theme_mode, custom_color=custom_color, style=style,
                                             on_progress=on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                              artifacts=result.get("artifacts"))
+        return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
+
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.post("/api/presentation/ai-deck-combined")
+async def presentation_ai_deck_combined(
+    property: str = "",
+    ga4_property_id: str = "",
+    ads_customer_id: str = "",
+    ads_label: str = "",
+    days: int = 28,
+    provider: str = "deepseek",
+    images: bool = True,
+    body: dict = Body(default={}),
+    account_id: Optional[int] = Depends(get_account_id),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """ONE deck combining any subset of Search Console, GA4 and Google Ads for a single client.
+
+    Every selector is optional — pass the ones the operator ticked; at least one is required.
+    Query: ?property=<gsc>&ga4_property_id=<id>&ads_customer_id=<id>&ads_label=<name>&days=N
+
+    Degradation is the point: a client whose Ads connection lacks a refresh token still gets their
+    organic deck, and the brief tells the model there is no paid data rather than letting it infer
+    some. Only a request with NO usable platform is rejected.
+    """
+    from services.report_generator import generate_ai_combined_deck
+    from services.image_service import images_enabled
+    _require_llm_key()
+    if not (property or ga4_property_id or ads_customer_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Select at least one platform (Search Console, GA4 or Google Ads).")
+
+    gsc_service = _gsc_service_for(db, current_user.email, account_id) if property else None
+    # GA4 is needed both for an explicit pick and for the domain auto-match when only GSC was given.
+    ga4_service = None
+    if ga4_property_id or property:
+        try:
+            ga4_service = _ga4_service_for(db, current_user.email, account_id)
+        except HTTPException:
+            ga4_service = None          # no Analytics connection — the deck simply omits it
+    ads_service = (_ads_service_for(db, current_user.email, account_id, required=False)
+                   if ads_customer_id else None)
+
+    notes = (body or {}).get("notes", "")
+    creativity = (body or {}).get("creativity", "balanced")
+    pipeline = (body or {}).get("pipeline", "single")
+    models = _parse_models((body or {}).get("models"))
+    theme_mode = (body or {}).get("theme_mode", "tbs")
+    custom_color = (body or {}).get("custom_color")
+    style = (body or {}).get("style", "tbs")
+    brand_terms = (body or {}).get("brand_terms")
+    place_label = _domain_of(property) if property else (ads_label or "Combined report")
+
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="combined",
+                                          label=place_label, provider=provider)
+        set_doc_id(doc_id)
+        result = await generate_ai_combined_deck(
+            days=days,
+            gsc_service=gsc_service, property_url=property,
+            ga4_service=ga4_service, ga4_property_id=ga4_property_id,
+            ads_service=ads_service, ads_customer_id=ads_customer_id, ads_label=ads_label,
+            provider=provider, images=images and images_enabled(), notes=notes,
+            creativity=creativity, pipeline=pipeline, models=models,
+            theme_mode=theme_mode, custom_color=custom_color, style=style,
+            brand_terms=brand_terms, on_progress=on_progress)
+        # Name the platforms that actually landed, so a silently-omitted one is visible to the
+        # operator instead of being discovered by reading the finished deck.
+        got = ", ".join({"gsc": "Search Console", "ga4": "Analytics", "ads": "Google Ads"}[p]
+                        for p in result.get("platforms", []))
+        if on_progress:
+            await on_progress(f"Built from: {got or 'no platforms'}")
         slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
                                               artifacts=result.get("artifacts"))
         return {"document_id": doc_id, "slides": slides, "label": result["domain"]}
