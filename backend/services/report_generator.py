@@ -620,7 +620,7 @@ def _gsc_data_brief(ctx: Dict, *, compact: bool = False, include_ga4: bool = Tru
             for r in (geo.get("rows", [])[:12] if compact else geo.get("rows", []))) or "  (none)"
 
     period = ctx.get("period") or {}
-    period_label = period.get("label", f"last {ctx['days']} days")
+    period_label = period.get("label", f"last {ctx.get('days', 28)} days")
     ga4 = ctx.get("ga4") or None
     ga4_block = ("\n\n" + _ga4_brief_sections(ga4)) if (ga4 and include_ga4) else ""
 
@@ -676,7 +676,7 @@ BIGGEST MOVERS — QUERIES, BY POSITION (declined):
 
 """
     header = f"""{intro}
-{brand_rule}Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+{brand_rule}Reporting period: {period_label} (last {ctx.get('days', 28)} days, compared with the previous {ctx.get('days', 28)} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 """
@@ -865,10 +865,10 @@ def _ga4_data_brief(ctx: Dict) -> str:
         for r in ctx.get("geo", [])
     ) or "  (none)"
 
-    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    period_label = ctx.get("period_label") or f"last {ctx.get('days', 28)} days"
     core = _ga4_brief_sections(ctx)
     return f"""Website analytics (Google Analytics / GA4) report for {ctx['name']}.
-Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+Reporting period: {period_label} (last {ctx.get('days', 28)} days, compared with the previous {ctx.get('days', 28)} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 {core}
@@ -1043,9 +1043,9 @@ TOP {prefix}CAMPAIGNS (by cost):
 
 def _ads_data_brief(ctx: Dict, label: str) -> str:
     cur = ctx.get("currency") or ""
-    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    period_label = ctx.get("period_label") or f"last {ctx.get('days', 28)} days"
     return f"""Paid search (Google Ads) report for {label}. All costs are in {cur or 'the account currency'}.
-Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+Reporting period: {period_label} (last {ctx.get('days', 28)} days, compared with the previous {ctx.get('days', 28)} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 {_ads_brief_sections(ctx)}
@@ -1395,9 +1395,9 @@ def _bing_data_brief(ctx: Dict, label: str) -> str:
         for p in ctx.get("pages", [])
     ) or "  (none)"
 
-    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    period_label = ctx.get("period_label") or f"last {ctx.get('days', 28)} days"
     brief = f"""Bing (Microsoft) organic search report for {label}.
-Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+Reporting period: {period_label} (last {ctx.get('days', 28)} days, compared with the previous {ctx.get('days', 28)} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 BING SEARCH PERFORMANCE (current value, change vs previous period):
