@@ -419,7 +419,22 @@ def _empty_note(ctx: Dict) -> str:
     return "  (none — SKIP this slide; do not invent data to fill it.)"
 
 
-def _gsc_data_brief(ctx: Dict) -> str:
+def _gsc_data_brief(ctx: Dict, *, compact: bool = False, include_ga4: bool = True,
+                    sections_only: bool = False) -> str:
+    """The GSC brief. Three keyword-only flags exist purely for the COMBINED deck; all default to
+    the single-platform behaviour, so this function's output is unchanged for the GSC deck.
+
+    sections_only — emit the DATA sections without the intro, reporting-period line, cover
+        instruction or honesty closer. A combined brief carries three platforms and must emit
+        exactly one of each; three "On the COVER slide…" instructions in one prompt is how a deck
+        ends up with three cover slides.
+    include_ga4 — this brief already inlines a GA4 section when assemble_gsc_context auto-matched a
+        property. The combined brief emits GA4 centrally from the EXPLICITLY chosen property, so
+        leaving this on would print GA4 twice with two different sets of numbers.
+    compact — drop the sections whose slides the combined structure omits, and shorten the long
+        tables. The full brief is ~20 sections; three of those in one prompt is what causes the
+        model to ration its effort and flatten the composition.
+    """
     a = ctx.get("analytics") or {}
     totals = a.get("totals") or {}
     deltas = a.get("deltas") or {}
@@ -431,7 +446,7 @@ def _gsc_data_brief(ctx: Dict) -> str:
     q_lines = "\n".join(
         f"  - \"{q.get('query','')}\": {q.get('clicks',0)} clicks, "
         f"{q.get('impressions',0)} impressions, {q.get('ctr',0)}% CTR, pos {q.get('position','?')}"
-        for q in ctx.get("top_queries", [])
+        for q in (ctx.get("top_queries", [])[:10] if compact else ctx.get("top_queries", []))
     ) or "  (none)"
     top_queries_header = (
         "TOP QUERIES (by clicks — NON-BRANDED only; branded/navigational queries are intentionally "
@@ -504,12 +519,12 @@ def _gsc_data_brief(ctx: Dict) -> str:
         f"  - \"{o.get('query','')}\" at pos {o.get('position','?')}: {o.get('impressions',0)} impressions, "
         f"{o.get('actual_ctr','?')}% actual CTR vs {o.get('expected_ctr','?')}% expected "
         f"(~{o.get('missed_clicks',0)} missed clicks)"
-        for o in ctx.get("ctr_opportunities", [])
+        for o in (ctx.get("ctr_opportunities", [])[:8] if compact else ctx.get("ctr_opportunities", []))
     ) or _empty_note(ctx)
     sd_lines = "\n".join(
         f"  - \"{s.get('query','')}\" at pos {s.get('position','?')} ({s.get('impressions',0)} impressions, "
         f"~{s.get('potential_clicks',0)} extra clicks if pushed to top 3) — {s.get('page','')}"
-        for s in ctx.get("striking_distance", [])
+        for s in (ctx.get("striking_distance", [])[:8] if compact else ctx.get("striking_distance", []))
     ) or _empty_note(ctx)
     country_lines = "\n".join(
         f"  - {c.get('name','')}: {c.get('clicks',0)} clicks, {c.get('impressions',0)} impressions"
@@ -595,19 +610,19 @@ def _gsc_data_brief(ctx: Dict) -> str:
                     "\"locationmode\":\"country names\", shaded by sessions.")
         geo_lines = "\n".join(
             f"  - {r.get('country','')}: {r.get('sessions',0)} sessions, {r.get('users',0)} users"
-            for r in geo.get("rows", [])) or "  (none)"
+            for r in (geo.get("rows", [])[:12] if compact else geo.get("rows", []))) or "  (none)"
     else:
         geo_metric = "ORGANIC CLICKS"
         geo_note = ("Country codes are ISO-3 (e.g. 'tha','sgp','usa') — render a Plotly choropleth "
                     "with \"locationmode\":\"ISO-3\" (uppercase the codes), shaded by clicks.")
         geo_lines = "\n".join(
             f"  - {r.get('name','')}: {r.get('clicks',0)} clicks, {r.get('impressions',0)} impressions"
-            for r in geo.get("rows", [])) or "  (none)"
+            for r in (geo.get("rows", [])[:12] if compact else geo.get("rows", []))) or "  (none)"
 
     period = ctx.get("period") or {}
     period_label = period.get("label", f"last {ctx['days']} days")
     ga4 = ctx.get("ga4") or None
-    ga4_block = ("\n\n" + _ga4_brief_sections(ga4)) if ga4 else ""
+    ga4_block = ("\n\n" + _ga4_brief_sections(ga4)) if (ga4 and include_ga4) else ""
 
     # ── Analyst playbook: core principles (from deck_playbook.md) + grounded conditional flags ──
     from services.analyst_flags import compute_analyst_flags, load_core_principles
@@ -628,20 +643,50 @@ def _gsc_data_brief(ctx: Dict) -> str:
         if ga4 else
         f"Organic search (Google Search Console) report for {ctx['domain']}."
     )
-    return f"""{intro}
+    # ── sections the COMBINED deck drops ───────────────────────────────────────────────────────
+    # Each is a whole block so `compact` removes the heading with its data — a heading left over an
+    # empty list reads as missing data and the planner tries to fill it. The choice of what goes is
+    # driven by which slides COMBINED_STRUCTURE omits, so the brief never carries data for a slide
+    # that cannot be built. Daily trend goes because the monthly combo already carries the organic
+    # story; by-POSITION movers go because by-CLICKS is the client-facing one; TOP COUNTRIES goes
+    # because GEOGRAPHY already covers it (a redundancy that exists in the full brief too).
+    daily_block = "" if compact else f"""PERFORMANCE OVER TIME (daily; use for the daily impressions & URL-clicks area charts):
+{trend_lines}
+
+"""
+    pos_movers_block = "" if compact else f"""BIGGEST MOVERS — QUERIES, BY POSITION (improved; Δ is positive when rank gets better):
+{_mv_pos(risers_p)}
+BIGGEST MOVERS — QUERIES, BY POSITION (declined):
+{_mv_pos(fallers_p)}
+"""
+    footprint_block = "" if compact else f"""QUERY FOOTPRINT (per month; use for a stacked bar of top-10 query counts [pos 1-3 + pos 4-10] with a total-queries line):
+{foot_lines}
+
+"""
+    stype_block = "" if compact else f"""BY SEARCH TYPE (web/image/video/news; use for a search-surface breakdown chart — OMIT the slide if only 'web' is present or this is (none)):
+{stype_lines}
+
+"""
+    appearance_block = "" if compact else f"""SEARCH APPEARANCE (rich-result types — FAQ, product snippets, etc.; clicks/impressions/CTR/position. OMIT the slide entirely if this is (none)):
+{appearance_lines}
+
+"""
+    countries_block = "" if compact else f"""TOP COUNTRIES (by clicks):
+{country_lines}
+
+"""
+    header = f"""{intro}
 {brand_rule}Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
 On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
-OVERALL SEARCH PERFORMANCE (current value, change vs previous period):
+"""
+    body = f"""OVERALL SEARCH PERFORMANCE (current value, change vs previous period):
 - Clicks: {totals.get('clicks', 0)} ({_d(deltas.get('clicks'))})
 - Impressions: {totals.get('impressions', 0)} ({_d(deltas.get('impressions'))})
 - CTR: {totals.get('ctr', 0)}% ({_d(deltas.get('ctr'), 'pp')})
 - Average position: {totals.get('position', 0)} ({_d(deltas.get('position'), 'pp')}; lower is better)
 
-PERFORMANCE OVER TIME (daily; use for the daily impressions & URL-clicks area charts):
-{trend_lines}
-
-MONTHLY PERFORMANCE (last 12 months; use for the clicks+impressions bar + avg-position line combo chart):
+{daily_block}MONTHLY PERFORMANCE (last 12 months; use for the clicks+impressions bar + avg-position line combo chart):
 {monthly_lines}
 
 {top_queries_header}
@@ -663,42 +708,28 @@ BIGGEST MOVERS — QUERIES, BY CLICKS (rising; previous → current):
 {_mv_clk(risers_c)}
 BIGGEST MOVERS — QUERIES, BY CLICKS (falling; previous → current):
 {_mv_clk(fallers_c)}
-BIGGEST MOVERS — QUERIES, BY POSITION (improved; Δ is positive when rank gets better):
-{_mv_pos(risers_p)}
-BIGGEST MOVERS — QUERIES, BY POSITION (declined):
-{_mv_pos(fallers_p)}
-
+{pos_movers_block}
 BIGGEST MOVERS — LANDING PAGES (ALL traffic incl. branded — period-over-period deltas are
 only available unfiltered; caption as "all traffic"):
 {_mv_page(page_risers)}
 BIGGEST MOVERS — LANDING PAGES (falling by clicks):
 {_mv_page(page_fallers)}
 
-QUERY FOOTPRINT (per month; use for a stacked bar of top-10 query counts [pos 1-3 + pos 4-10] with a total-queries line):
-{foot_lines}
-
-{pages_header}
+{footprint_block}{pages_header}
 {p_lines}
 
 BY DEVICE:
 {dev_lines}
 
-BY SEARCH TYPE (web/image/video/news; use for a search-surface breakdown chart — OMIT the slide if only 'web' is present or this is (none)):
-{stype_lines}
-
-SEARCH APPEARANCE (rich-result types — FAQ, product snippets, etc.; clicks/impressions/CTR/position. OMIT the slide entirely if this is (none)):
-{appearance_lines}
-
-CTR OPPORTUNITIES (high-impression queries whose CTR is below expected for their rank; use for a quick-CTR-wins slide — actual vs expected CTR, ranked by missed clicks. OMIT the slide if (none)):
+{stype_block}{appearance_block}CTR OPPORTUNITIES (high-impression queries whose CTR is below expected for their rank; use for a quick-CTR-wins slide — actual vs expected CTR, ranked by missed clicks. OMIT the slide if (none)):
 {ctr_opp_lines}
 
-TOP COUNTRIES (by clicks):
-{country_lines}
-
-GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-countries bar). {geo_note}
-{geo_lines}{ga4_block}{analyst_block}
-
-Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with its real number and movement, the likely cause, and the specific fix. Professional and calm, never alarmist, but never hidden or spun."""
+{countries_block}GEOGRAPHY — {geo_metric} BY COUNTRY (use for a choropleth world map + a top-countries bar). {geo_note}
+{geo_lines}{ga4_block}{analyst_block}"""
+    if sections_only:
+        # The brand rule travels with the GSC data it governs, not with the deck-level preamble.
+        return brand_rule + body
+    return header + body + "\n\n" + _HONESTY_CLOSER
 
 
 def _brand_accent_directive(accent: str, accent2: str) -> str:
@@ -930,7 +961,28 @@ async def assemble_ads_context(service, customer_id: str, days: int = 28) -> Dic
     }
 
 
-def _ads_data_brief(ctx: Dict, label: str) -> str:
+# The closing paragraph every brief ends with. Was duplicated verbatim at the tail of the GSC, GA4
+# and Ads briefs; a combined deck would have made it four copies (and printed it three times in one
+# prompt). Defined once so all callers stay in step.
+_HONESTY_CLOSER = (
+    "Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with its "
+    "real number and movement, the likely cause, and the specific fix. Professional and calm, never "
+    "alarmist, but never hidden or spun."
+)
+
+
+def _ads_brief_sections(ctx: Dict, *, compact: bool = False, deep: Optional[Dict] = None,
+                        prefix: str = "") -> str:
+    """The Ads DATA sections only — no intro, no period line, no cover instruction, no closer.
+
+    Mirrors _ga4_brief_sections. Splitting these out is what lets the combined brief carry three
+    platforms while emitting exactly ONE intro and ONE cover instruction; three briefs each asking
+    for a cover slide is how a deck ends up with three cover slides.
+
+    `prefix` platform-qualifies the section headers ("PAID "). In a merged brief the bare header
+    "PERFORMANCE OVER TIME" appears in BOTH the GSC and Ads sections, leaving the model no way to
+    tell which trend belongs to which channel.
+    """
     t = ctx.get("totals") or {}
     d = ctx.get("deltas") or {}
     cur = ctx.get("currency") or ""
@@ -939,23 +991,24 @@ def _ads_data_brief(ctx: Dict, label: str) -> str:
     def _delta(v, suffix="%"):
         return "n/a" if v is None else f"{v:+}{suffix}"
 
+    trend_rows = ctx.get("trend", [])
+    if compact:
+        trend_rows = trend_rows[-14:]        # a fortnight reads as a trend; 28 rows is filler
     trend_lines = "\n".join(
         f"  - {row.get('name','')}: {row.get('clicks',0)} clicks, "
         f"{row.get('cost',0)}{cur_sfx} cost, {row.get('conversions',0)} conversions"
-        for row in ctx.get("trend", [])
+        for row in trend_rows
     ) or "  (none)"
+    campaign_rows = ctx.get("campaigns", [])
+    if compact:
+        campaign_rows = campaign_rows[:8]
     campaign_lines = "\n".join(
         f"  - {c.get('name','')} ({c.get('status','')}): {c.get('impressions',0)} impressions, "
         f"{c.get('clicks',0)} clicks, {c.get('cost',0)}{cur_sfx} cost, {c.get('conversions',0)} conversions"
-        for c in ctx.get("campaigns", [])
+        for c in campaign_rows
     ) or "  (none)"
 
-    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
-    return f"""Paid search (Google Ads) report for {label}. All costs are in {cur or 'the account currency'}.
-Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
-On the COVER slide, show this reporting period ({period_label}) as the subtitle.
-
-ACCOUNT PERFORMANCE (current value, change vs previous period):
+    out = f"""{prefix}ACCOUNT PERFORMANCE (current value, change vs previous period):
 - Impressions: {t.get('impressions', 0)} ({_delta(d.get('impressions'))})
 - Clicks: {t.get('clicks', 0)} ({_delta(d.get('clicks'))})
 - CTR: {t.get('ctr', 0)}% ({_delta(d.get('ctr'), 'pp')})
@@ -965,13 +1018,39 @@ ACCOUNT PERFORMANCE (current value, change vs previous period):
 - Conversion rate: {t.get('conversion_rate', 0)}% ({_delta(d.get('conversion_rate'), 'pp')})
 - Cost per conversion: {t.get('cost_per_conversion', 0)}{cur_sfx} ({_delta(d.get('cost_per_conversion'))}; lower is better)
 
-PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
+{prefix}PERFORMANCE OVER TIME (daily; use for a trend line/area chart):
 {trend_lines}
 
-TOP CAMPAIGNS (by cost):
-{campaign_lines}
+TOP {prefix}CAMPAIGNS (by cost):
+{campaign_lines}"""
 
-Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each drop with its real number and movement, the likely cause, and the specific fix. Professional and calm, never alarmist, but never hidden or spun."""
+    # Deep-dive keywords/search terms only exist for the combined deck (get_deep_dive). They are the
+    # raw material for the paid-vs-organic overlap, so they are worth their tokens only there.
+    if deep:
+        kw = "\n".join(
+            f"  - {k.get('keyword','')} [{k.get('match_type','')}]: {k.get('clicks',0)} clicks, "
+            f"{k.get('cost',0)}{cur_sfx} cost, {k.get('conversions',0)} conversions"
+            for k in (deep.get("keywords") or [])[:12]
+        ) or "  (none)"
+        st = "\n".join(
+            f"  - {s.get('term','')}: {s.get('clicks',0)} clicks, {s.get('cost',0)}{cur_sfx} cost, "
+            f"{s.get('conversions',0)} conversions"
+            for s in (deep.get("search_terms") or [])[:12]
+        ) or "  (none)"
+        out += f"\n\nTOP PAID KEYWORDS (by conversions):\n{kw}\n\nTOP PAID SEARCH TERMS (what people actually typed):\n{st}"
+    return out
+
+
+def _ads_data_brief(ctx: Dict, label: str) -> str:
+    cur = ctx.get("currency") or ""
+    period_label = ctx.get("period_label") or f"last {ctx['days']} days"
+    return f"""Paid search (Google Ads) report for {label}. All costs are in {cur or 'the account currency'}.
+Reporting period: {period_label} (last {ctx['days']} days, compared with the previous {ctx['days']} days).
+On the COVER slide, show this reporting period ({period_label}) as the subtitle.
+
+{_ads_brief_sections(ctx)}
+
+{_HONESTY_CLOSER}"""
 
 
 async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
