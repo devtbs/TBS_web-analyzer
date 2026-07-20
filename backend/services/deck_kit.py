@@ -70,9 +70,9 @@ html,body{background:var(--k-bg);color:var(--k-ink);
   font-family:var(--font-body),system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 
 /* ── the slide skeleton ─────────────────────────────────────────────────────────
-   Header, then a body that TAKES THE SLACK, then the bands, then the footer — as ordinary
-   flow children in that order. This is why a takeaway can never print over a chart and a
-   footer can never float mid-slide: they are not positioned, they sit on the floor. */
+   Header, then a body that TAKES THE SLACK, then the bands — as ordinary flow children in that
+   order. This is why a takeaway can never print over a chart: it is not positioned, it sits on
+   the floor and the body above it shrinks. */
 .slide{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--k-bg);
   display:flex;flex-direction:column;padding:80px 104px;page-break-after:always}
 .slide + .slide{margin-top:32px}
@@ -99,9 +99,13 @@ html,body{background:var(--k-bg);color:var(--k-ink);
 .takeaway-label{flex:0 0 auto;font-size:17px;font-weight:700;letter-spacing:.14em;
   text-transform:uppercase;color:var(--k-accent);padding-top:3px}
 .takeaway p{font-size:24px;line-height:1.4}
-.footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
-  margin-top:24px;font-size:17px;color:var(--k-muted)}
-.pageno{font-size:17px;color:var(--k-muted);letter-spacing:.08em}
+/* NO per-slide footer. It repeated the client name and the reporting period on all fourteen
+   slides — both already on the cover — and spent ~40px of every slide's height saying nothing.
+   Hidden rather than merely dropped from the prompt: the model emits one from habit (it is in
+   every deck exemplar it has ever seen), and a rule here is deterministic where a prompt is not. */
+.footer{display:none !important}
+.pageno{position:absolute;right:64px;bottom:36px;font-size:17px;color:var(--k-muted);
+  letter-spacing:.08em}
 
 /* ── cards — the primary content device ─────────────────────────────────────────
    How many cards, over how many rows, is the model's composition to make — it sets
@@ -288,8 +292,7 @@ tbody tr.more td{text-align:left;font-size:18px;font-style:italic;color:var(--k-
 .closing-stats .v{font-family:var(--font-display),sans-serif;font-size:48px;font-weight:700;
   color:var(--k-accent)}
 .closing-stats .l{font-size:18px;color:rgba(255,255,255,.7)}
-.slide.layout-closing .footer,.slide.closing .footer{position:absolute;left:104px;right:104px;
-  bottom:44px;z-index:2;color:rgba(255,255,255,.6)}
+
 
 /* section divider + quote */
 .slide.layout-section{background:var(--k-dark);justify-content:center}

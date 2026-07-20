@@ -182,7 +182,7 @@ GOOGLE_ADS_STRUCTURE = (
     "8. Demographics Performance — age, gender, audience segments if available; highlight highest-performing demographics.\n"
     "9. Needs Attention — What's Dropping (REQUIRED — always include this slide) — every declining metric, campaign, keyword or landing page RANKED BY IMPACT, each with its real movement (previous → current, % change), the likely cause, and the specific fix (bids, budget, targeting, creative). Calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
     "10. Strategic Insights & Optimization Opportunities — actionable Google Ads recommendations ONLY (scale winning campaigns, improve keyword targeting, budget allocation, audience optimization, bid strategy). Do NOT suggest website redesign unless the data supports it.\n"
-    "11. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "11. Closing Slide — key takeaways, honest momentum summary, professional thank-you page carrying the reporting period."
 )
 
 
@@ -229,7 +229,7 @@ GSC_STRUCTURE = (
     "17. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\") shaded by the stated metric (sessions or clicks) using the stated locationmode, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
     "18. Needs Attention — What's Dropping (REQUIRED — always include this slide) — the honest counterpart to the wins. Every declining query, landing page and theme, RANKED BY IMPACT, each with its real movement (previous → current, and the % or position change), the likely cause, and the specific fix. Source this from the ANALYST FLAGS in the data (AT RISK / DEFEND / PAGE DECLINE) plus the falling movers. Use a clear, readable table or ranked rows — calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
     "19. Strategic Insights & Recommendations — actionable recommendations ONLY, spanning BOTH search and (when present) website analytics: SEO content/internal-linking/CTR/title improvements, target near-page-1 queries, defend declining queries/pages, plus double-down on best-converting channels and lift engagement/conversion where the analytics support it.\n"
-    "20. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "20. Closing Slide — key takeaways, honest momentum summary, professional thank-you page carrying the reporting period."
 )
 
 
@@ -245,7 +245,7 @@ GA4_STRUCTURE = (
     "7. Geographic Distribution — from GEOGRAPHY: a Plotly CHOROPLETH world map (\"type\":\"choropleth\", \"locationmode\":\"country names\") shaded by sessions, paired with a top-countries bar. Keep the geo clean (accent colourscale, transparent bg, no coastline/frame chartjunk).\n"
     "8. Needs Attention — What's Dropping (REQUIRED — always include this slide) — every declining metric, channel, device or geography RANKED BY IMPACT, each with its real movement (previous → current, % change), the likely cause, and the specific fix. Calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
     "9. Strategic Insights & Recommendations — actionable recommendations ONLY, grounded in the analytics: double-down on best-converting channels, lift engagement/reduce bounce where the data supports it, grow the strongest audiences/geographies, and improve conversion paths.\n"
-    "10. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "10. Closing Slide — key takeaways, honest momentum summary, professional thank-you page carrying the reporting period."
 )
 
 
@@ -263,7 +263,7 @@ BING_STRUCTURE = (
     "7. AI Search Visibility (OMIT this ENTIRE slide if there is no AI SEARCH VISIBILITY section in the data) — the 'reporting on AI' slide: show Total AI Citations and Average Cited Pages as KPIs, make the CITATIONS OVER TIME daily series the hero chart (a Plotly filled AREA/line of citations), and call out the peak citation day. Frame it as how often this site is cited as a source in Microsoft Copilot / Bing AI-generated answers — a growing AI-search visibility signal.\n"
     "8. Needs Attention — What's Dropping (REQUIRED — always include this slide) — every declining query, landing page or metric RANKED BY IMPACT, each with its real movement (previous → current, % change), the likely cause, and the specific fix. Calm and professional, never alarmist, but never softened into vague positivity. OMIT only if genuinely nothing declined.\n"
     "9. Strategic Insights & Recommendations — actionable Bing-specific recommendations ONLY: grow Bing visibility, target near-page-1 Bing queries, improve CTR on high-impression queries, and (when AI data present) sustain/grow AI-citation momentum by strengthening the most-cited content. Do NOT reference Google.\n"
-    "10. Closing Slide — key takeaways, honest momentum summary, professional thank-you page with the reporting period in a slim footer."
+    "10. Closing Slide — key takeaways, honest momentum summary, professional thank-you page carrying the reporting period."
 )
 
 
@@ -303,9 +303,10 @@ per-slide colours, fonts or spacing — everything references the tokens below.
    the WORDS. You may add CSS ONLY for something the kit has no class for.
 
    CHROME (every content slide): .slide-header wrapping .sectionpill (or .eyebrow) + h2 + optional
-     .subtitle + .rule ; then the content ; then optional .callout-row / .takeaway ; then .footer.
+     .subtitle + .rule ; then the content ; then optional .callout-row / .takeaway.
      .takeaway = <div class=takeaway><span class=takeaway-label>KEY TAKEAWAY</span><p>…</p></div>
-     .footer   = two spans: "<client> — <report name>" and the period.
+     DO NOT add a footer: the client name, report name and period are on the cover already, and
+     repeating them on all 14 slides just eats vertical space.
    CARDS (the primary device): .card-grid > .card × N, each .card = optional
      <span class="idx">1</span> (add .alt / .dark to cycle colour) + <h3> + <p>.
      YOU choose the grid: set grid-template-columns on .card-grid (2/3/4 × 1fr, one or two rows).
@@ -333,7 +334,6 @@ per-slide colours, fonts or spacing — everything references the tokens below.
      .slide-header (eyebrow + title + subtitle + rule)
      MAIN content region — flex:1; min-height:0 — this GROWS to fill all remaining height
      .takeaway  (the dark band, on content slides that have a key takeaway)
-     .footer
    Fill that space with a CARD GRID (or a table, or — rarely — one chart), sized generously.
    DO NOT chase 100% coverage. Whitespace INSIDE a card, and a comfortable margin below the grid,
    are correct and premium: the reference deck leaves the bottom third of several slides empty and
@@ -444,7 +444,7 @@ Load the chosen fonts from fonts.googleapis.com. You MAY tune the accent toward 
 DESIGN_EXEMPLARS = """=== EXEMPLAR (the SKELETON + chrome to match — do NOT copy its words, theme or composition) ===
 This shows the agency-grade slide SYSTEM: every content slide = header (eyebrow + CLAIM title +
 subtitle + rule) -> a main region that fills all remaining height -> the dark EXECUTIVE TAKEAWAY band
--> the muted footer. Follow the ART DIRECTION + the planned LAYOUT for this deck's actual composition:
+-> the content. Follow the ART DIRECTION + the planned LAYOUT for this deck's actual composition:
 <section class="slide layout-chart-rail" style="display:flex;flex-direction:column;height:1080px;padding:84px 108px">
   <div class="slide-header">
     <span class="eyebrow">Budget Efficiency Review</span>
@@ -460,7 +460,6 @@ subtitle + rule) -> a main region that fills all remaining height -> the dark EX
     </div>
   </div>
   <div class="takeaway"><span class="takeaway-label">Executive Takeaway</span><p>The one sentence the client should remember.</p></div>
-  <div class="footer"><span>Client — Report name</span><span>Period</span></div>
   <script type="application/json" class="plotly-spec" data-target="chart3">{"data":[{"type":"bar","x":["Mar","Apr"],"y":[3,5]}],"layout":{}}</script>
 </section>
 And the cover — a two-column grid (NOT a full-bleed photo): a type panel on the left, a full-height
@@ -509,7 +508,6 @@ accent-tinted word in the title, and the brand mark. NO performance KPIs on the 
     <div class="panel" style="background:#FDF6E3"><span class="eyebrow" style="color:#8A6D1F">OPPORTUNITY</span><p>One sentence.</p></div>
     <div class="panel" style="background:#EDF7E9"><span class="eyebrow" style="color:#4A7A2B">TBS RECOMMENDATION</span><p>One sentence.</p></div>
   </div>
-  <div class="footer"><span>Client — Report name</span><span>15 Jun – 13 Jul 2026</span></div>
 </section>
 
 Notes on the exemplars: the cover carries a photo and the closing carries a photo — NO other slide
@@ -933,7 +931,7 @@ whose title only describes one of them.
 ## Layout Principles
 Top-anchor sparse content with consistent gaps; centre only on cover/hero slides. VARY the layout every
 slide — no two consecutive slides share a structure. Every non-cover slide carries a visual (chart, table,
-diagram or image). A thin muted footer is allowed (left = report name, centre = client, right = slide no.).
+diagram or image). Do NOT add a per-slide footer.
 
 ## Recurring Motif
 Pick ONE motif / emotional anchor from the REAL data — the single headline number that defines this
@@ -1109,14 +1107,13 @@ must be complete and self-sufficient. Define, exactly once:
   body 26-30px, caption 18-20px) and a 12px spacing rhythm, applied via the component classes.
 - The SLIDE CHROME classes: .slide-header .eyebrow .subtitle .rule (a thin full-width accent hairline),
   .takeaway (a FULL-WIDTH SOLID DARK band) + .takeaway-label (small ALL-CAPS in the accent), and
-  .footer (a thin muted row, space-between).
 - The COVER classes: .brandmark, .eyebrow-pill (an uppercase letter-spaced label on a SOLID
   accent-tint pill with radius — not bare text; it hugs its text, it is NOT a full-width bar), and
   .meta (small muted metadata).
 - THE BRAND MARK IS ALWAYS THE LITERAL WORD "TBS". TBS is the agency that WRITES this report; the
   client is the SUBJECT of it. Never replace it with the client's name, initials or monogram (not
   "J&S", not "JS") — that would put the client's logo on TBS's report. The client's name belongs in
-  "Prepared by TBS for <client>", the Prepared-for card, and the footer. Nowhere else.
+  "Prepared by TBS for <client>" and the Prepared-for card. Nowhere else.
 - THE CARD SYSTEM (the most important classes in this stylesheet — the deck is built from them):
   .card       = background var(--surface) (WHITE) on the tinted page ground, border 1px solid
                 var(--line) on all FOUR sides, border-radius 16px, padding 32px 28px, and a flex
@@ -1175,7 +1172,7 @@ RULES:
 - SLIDE CHROME (mandatory on every CONTENT slide — cover/section/closing are posters and skip it):
   open with .slide-header (.eyebrow kicker + the claim title + optional .subtitle + .rule), then the
   main content region, then the .takeaway dark band carrying this slide's key takeaway
-  (.takeaway-label "EXECUTIVE TAKEAWAY" + the sentence), then the .footer. This chrome is what makes
+  (.takeaway-label "EXECUTIVE TAKEAWAY" + the sentence). This chrome is what makes
   the deck read as one designed system — do not omit or restyle it.
 - Deltas/movements use a .delta chip with the SEMANTIC class (.delta-good / .delta-bad / .delta-warn).
 - Use ONLY the shared stylesheet's tokens/classes (below). Do NOT emit a <style> tag and do NOT invent or
@@ -2211,16 +2208,15 @@ _FILL_CSS = """<style>/* deterministic-fill */
    div to scale an overflowing slide. That makes the chrome a GRANDCHILD of .slide, which
    silently killed every `.slide > X` rule here — the takeaway lost its pin and printed over
    the charts. So each skeleton rule matches through the wrapper as well. */
-/* THE SKELETON, forced. Models kept absolutely-positioning the takeaway band and the footer, so
-   they stacked on each other and clipped the content region. Pin them as normal flow children at
-   the end of the column instead, and let the middle grow — this is geometry, not a design choice,
-   so it must not depend on the model getting it right. */
+/* THE SKELETON, forced. Models kept absolutely-positioning the takeaway band, so it stacked over
+   the content region. Pin it as a normal flow child at the end of the column instead, and let the
+   middle grow — this is geometry, not a design choice, so it must not depend on the model getting
+   it right. (The footer rules that used to live here are gone with the footer itself; their
+   `display:flex !important` was beating the kit's `display:none` and the footers kept rendering.) */
 :is(.slide,.slide > .autofit) > .slide-header{flex:0 0 auto !important;}
 :is(.slide,.slide > .autofit) > .takeaway{position:static !important;flex:0 0 auto !important;order:98 !important;
   margin:0 !important;width:100% !important;box-sizing:border-box !important;}
-:is(.slide,.slide > .autofit) > .footer{position:static !important;flex:0 0 auto !important;order:99 !important;
-  margin:0 !important;width:100% !important;box-sizing:border-box !important;
-  display:flex !important;justify-content:space-between !important;align-items:center !important;}
+
 /* Content children size to their content and may SHRINK, but must not grow — giving every child
    flex:1 stretched KPI strips halfway down the slide into empty space. */
 :is(.slide:not([class*="layout-cover"]):not([class*="layout-closing"]):not([class*="layout-section"]):not([class*="layout-dark-split"]),.slide > .autofit) > *:not(.slide-header):not(.takeaway):not(.footer):not(.pageno):not(script):not(style){
@@ -2243,8 +2239,7 @@ _FILL_CSS = """<style>/* deterministic-fill */
 /* A table must shrink to fit rather than be sliced off by the clip (slide 5 lost 9 of 10 rows). */
 .slide table{max-height:100%;}
 :is(.slide,.slide > .autofit) > *:has(table){overflow:auto;}
-/* the footer already carries the page index — drop the duplicate pinned one */
-.slide:has(.footer) .pageno{display:none !important;}
+/* the deck carries no per-slide footer, so a pinned page index is the only slide marker left */
 /* PIN THE BOTTOM BAND. Content is top-anchored and no longer grows to fill (by design), so nothing
    was pushing the takeaway/footer down any more and they floated mid-slide right under the cards.
    margin-top:auto absorbs the slack in the gap ABOVE the band instead of stretching the content —
@@ -2252,7 +2247,6 @@ _FILL_CSS = """<style>/* deterministic-fill */
    where it belongs. Only the topmost band takes it, or the two would fight over the slack. */
 :is(.slide,.slide > .autofit) > .takeaway{margin-top:auto !important;}
 .slide:not(:has(> .takeaway)) > .callout-row{margin-top:auto !important;}
-.slide:not(:has(> .takeaway)):not(:has(> .callout-row)) > .footer{margin-top:auto !important;}
 /* section/closing are COLUMN posters — centring stacks them nicely. The cover is a ROW (kit),
    and centring a row whose children overflow pushes content off BOTH edges: it sliced the cover
    headline on the left and the Prepared-for card on the right. Its columns are already sized. */
