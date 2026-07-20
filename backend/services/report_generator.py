@@ -280,6 +280,42 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
 
     nonbrand = _nb(queries)
     ctr_opps = _nb(ctr_opps)
+    # Landing pages, net of brand. get_top_pages aggregates by page ONLY, so its clicks include
+    # branded search: for jesseandson.com the homepage showed 479 clicks (54% of the site) that
+    # were overwhelmingly people googling the brand name — while the slide was captioned
+    # "non-branded traffic". The caption was false, which is worse than a layout bug. Rebuilding
+    # from page+query rows lets us drop branded queries before aggregating, so the number finally
+    # matches the label. Kept as a SEPARATE key: `top_pages` still carries the period-over-period
+    # deltas that the movers slide needs, and those are legitimately all-traffic.
+    pages_nonbrand = None
+    if cores:
+        try:
+            pq = await service.get_pages_with_queries(property_url, days=days)
+            rebuilt = []
+            for pg in pq or []:
+                kept = [q for q in (pg.get("queries") or [])
+                        if not _is_brand_query(q.get("query", ""), cores)]
+                clicks = sum(q.get("clicks") or 0 for q in kept)
+                impr = sum(q.get("impressions") or 0 for q in kept)
+                if impr <= 0:
+                    continue
+                wpos = sum((q.get("position") or 0) * (q.get("impressions") or 0) for q in kept)
+                rebuilt.append({
+                    "url": (pg.get("url") or "").rstrip("/"),
+                    "clicks": clicks,
+                    "impressions": impr,
+                    "ctr": round(100 * clicks / impr, 2),
+                    "position": round(wpos / impr, 1),
+                    "nonbrand_queries": len(kept),
+                })
+            rebuilt.sort(key=lambda r: (r["clicks"], r["impressions"]), reverse=True)
+            pages_nonbrand = rebuilt or None
+        except Exception:
+            # Fall back to all-traffic pages — the brief then LABELS them as such rather than
+            # claiming a filter that did not run.
+            logger.exception("non-brand page rebuild failed; keeping all-traffic pages")
+            pages_nonbrand = None
+
     striking = _nb(striking)
     if insights and insights.get("queries"):
         insights = {**insights, "queries": _nb(insights["queries"])}
@@ -321,6 +357,8 @@ async def assemble_gsc_context(service, property_url: str, days: int = 28, *,
         "brand_split": brand_split,
         "query_insights": insights or {},
         "top_pages": pages[:10],
+        "top_pages_nonbrand": (pages_nonbrand or [])[:10],
+        "pages_brand_excluded": bool(pages_nonbrand),
         "devices": devices,
         "search_types": search_types,
         "search_appearance": (search_appearance or [])[:8],
@@ -407,6 +445,11 @@ def _gsc_data_brief(ctx: Dict) -> str:
         "Branded/navigational queries have ALREADY been removed from the query table, CTR "
         "opportunities, striking distance, the query bubble chart, the movers list and the unique-"
         "keyword mix. The client already ranks for their own name; it is not an opportunity.\n"
+        + ("- Landing-page clicks are ALSO brand-filtered this run — the page table is non-branded.\n"
+           if ctx.get("pages_brand_excluded") else
+           "- EXCEPTION: landing-page, device, country, search-type and trend figures still INCLUDE "
+           "branded traffic (they cannot be split by query). Caption them \"all traffic\" and NEVER "
+           "describe them as non-branded.\n") +
         f"- Branded share of query clicks: {bs.get('branded_click_share', 0)}% "
         f"({bs.get('branded_queries', 0)} branded queries vs {bs.get('nonbranded_queries', 0)} "
         f"non-branded). State this ONCE, as context, on the overview slide only.\n"
@@ -421,11 +464,23 @@ def _gsc_data_brief(ctx: Dict) -> str:
         "not reconcile them, apologise for them, or call it a data gap.\n"
         if ctx.get("brand_excluded") else ""
     )
+    # Prefer the brand-filtered page table; fall back to all-traffic. The HEADER below always
+    # states which one this is — a page list captioned "non-branded" that silently includes brand
+    # is a false claim on a client slide, and that is exactly what shipped.
+    _pages_for_brief = ctx.get("top_pages_nonbrand") or ctx.get("top_pages", [])
     p_lines = "\n".join(
         f"  - {p.get('url','')}: {p.get('clicks',0)} clicks, "
         f"{p.get('impressions',0)} impressions, {p.get('ctr',0)}% CTR, pos {p.get('position','?')}"
-        for p in ctx.get("top_pages", [])
+        for p in _pages_for_brief
     ) or "  (none)"
+    pages_header = (
+        "TOP LANDING PAGES (NON-BRANDED clicks only — branded search has been removed from these "
+        "figures, so they are lower than the site totals and will not reconcile with them. That is "
+        "correct; do not apologise for it):"
+        if ctx.get("pages_brand_excluded")
+        else "TOP LANDING PAGES (ALL traffic, INCLUDING branded search — the brand filter could not "
+             "be applied here. Caption these as \"all traffic\"; do NOT label them non-branded):"
+    )
     trend_lines = "\n".join(
         f"  - {t.get('month','')}: {t.get('clicks',0)} clicks, {t.get('impressions',0)} impressions"
         for t in ctx.get("trend", [])
@@ -613,7 +668,8 @@ BIGGEST MOVERS — QUERIES, BY POSITION (improved; Δ is positive when rank gets
 BIGGEST MOVERS — QUERIES, BY POSITION (declined):
 {_mv_pos(fallers_p)}
 
-BIGGEST MOVERS — LANDING PAGES (rising by clicks):
+BIGGEST MOVERS — LANDING PAGES (ALL traffic incl. branded — period-over-period deltas are
+only available unfiltered; caption as "all traffic"):
 {_mv_page(page_risers)}
 BIGGEST MOVERS — LANDING PAGES (falling by clicks):
 {_mv_page(page_fallers)}
@@ -621,7 +677,7 @@ BIGGEST MOVERS — LANDING PAGES (falling by clicks):
 QUERY FOOTPRINT (per month; use for a stacked bar of top-10 query counts [pos 1-3 + pos 4-10] with a total-queries line):
 {foot_lines}
 
-TOP PAGES (by clicks):
+{pages_header}
 {p_lines}
 
 BY DEVICE:

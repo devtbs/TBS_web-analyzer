@@ -273,6 +273,46 @@ BING_STRUCTURE = (
 # gap to polished tools: cohesive tokens + a fixed component/layout vocabulary so all
 # slides look like one designed template instead of N improvised ones.
 # ---------------------------------------------------------------------------
+# Derived from a reference Google Ads audit deck that reads markedly better than ours. The gap
+# was NOT layout — by this point the kit already guaranteed the geometry — it was the writing.
+# Their titles state findings; ours labelled categories. Their charts always sit beside an
+# interpretation; ours shipped one naked. Their takeaway band is a spine; ours was sporadic.
+EDITORIAL_STANDARD = """=== EDITORIAL STANDARD (how a senior analyst writes this deck) ===
+
+1. TITLES STATE A FINDING, NOT A CATEGORY. The headline IS the conclusion.
+   Good: "Flat Investment, Volatile Returns" | "Visibility Constrained by Rank" |
+         "Non-brand Demand Is Outpacing Brand"
+   Bad:  "Top queries" | "Devices & search surfaces" | "Performance overview"
+   If the title could sit unchanged on any other client's deck, rewrite it.
+
+2. NO CHART STANDS ALONE. Every chart shares its slide with interpretation beside or beneath
+   it: a "Reading the trend" panel of 2-3 bullets, a small before/after table, or 2-3 stat
+   callouts. A chart with nothing telling the reader what it means is an unfinished slide.
+
+3. EVERY ANALYSIS SLIDE ENDS WITH A TAKEAWAY. Same label, same position, every time:
+   <div class="takeaway"><span class="takeaway-label">EXECUTIVE TAKEAWAY</span>
+   <p>one sentence: the implication, and what to do about it</p></div>
+
+4. PAIR EVERY NUMBER WITH ITS MEANING. Never print a metric without the sentence saying why it
+   matters. Name the specific query, page or campaign - never "some keywords".
+
+5. NEVER ASSERT A TREND THE NUMBERS CONTRADICT. If you write "grew", "doubled" or "improved",
+   the later number must actually be larger. A deck shipped "more than doubled from Jan low of
+   54 to Jul high of 36" - a 33% FALL described as a doubling, printed under a chart showing
+   the fall. Check the direction against the figures before writing the sentence.
+
+=== NON-BRANDED FOCUS (this is the work the client is paying for) ===
+Branded search is the client's existing reputation, not the work.
+- Mention branded search EXACTLY ONCE, as a single reconciliation line ("X% of clicks are
+  branded"), then spend every other slide on non-branded demand.
+- NEVER build a slide, KPI tile or recommendation around branded share.
+- Query, CTR-opportunity and striking-distance data IS already filtered to non-branded.
+- Landing-page, device, country and trend figures STILL INCLUDE branded traffic. When citing
+  them say "all traffic" - never label them non-branded. Claiming otherwise is false.
+
+TONE: an analyst briefing a client, not a dashboard. Sentence case, no exclamation marks."""
+
+
 DESIGN_SYSTEM = """=== DESIGN SYSTEM (required — build the deck like a senior studio template) ===
 Define a single design language ONCE in :root and reuse it on every slide. Do NOT invent
 per-slide colours, fonts or spacing — everything references the tokens below.
@@ -729,7 +769,7 @@ def build_prompt(data_brief: str, *, prompt: Optional[str] = None,
         filled = filled + "\n\n" + directive
     if "{data}" not in template:
         filled = filled + "\n\nDATA (use ONLY this):\n" + data_brief
-    parts = [filled, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
+    parts = [filled, EDITORIAL_STANDARD, HTML_CONTRACT, DESIGN_SYSTEM, THEME_PRESETS]
     parts.append(_style_directive(style, seed))      # fonts/ground: TBS house / per-site / a preset
     # Art direction varies per GENERATION (variant_seed), so two models / re-runs of the SAME site
     # get different compositions — pinning it to the domain made every deck for a site look identical.
