@@ -56,6 +56,7 @@ class ToolContext:
 
 # ── Tool schemas (OpenAI function-calling format) ───────────────────────────
 READ_TOOLS = {"get_context", "list_gsc_properties", "list_ga4_properties",
+              "gsc_overview", "gsc_movers", "gsc_ctr_opportunities", "paid_vs_organic",
               "list_ads_customers", "ga4_overview", "ads_overview",
               "gsc_striking_distance", "gsc_cannibalization"}
 ACTION_TOOLS = {"generate_deck"}
@@ -104,6 +105,48 @@ TOOL_SCHEMAS = [
         }, "required": ["customer_id"]},
     }},
     {"type": "function", "function": {
+        "name": "gsc_overview",
+        "description": "Organic search overview for a GSC property: total clicks, impressions, CTR "
+                       "and average position WITH period-over-period change, plus the top queries "
+                       "and top pages. Use this FIRST for any 'how is organic doing / how did we "
+                       "perform' question — it is the core organic report.",
+        "parameters": {"type": "object", "properties": {
+            "property_url": {"type": "string", "description": "GSC property url, e.g. https://x.com/ or sc-domain:x.com"},
+            "days": {"type": "integer", "description": "Look-back window, default 28."},
+        }, "required": ["property_url"]},
+    }},
+    {"type": "function", "function": {
+        "name": "gsc_movers",
+        "description": "The biggest query risers and fallers by clicks for a GSC property, each with "
+                       "its rank movement. Use this to explain WHY organic traffic went up or down.",
+        "parameters": {"type": "object", "properties": {
+            "property_url": {"type": "string"},
+            "days": {"type": "integer", "description": "Look-back window, default 28."},
+        }, "required": ["property_url"]},
+    }},
+    {"type": "function", "function": {
+        "name": "gsc_ctr_opportunities",
+        "description": "High-impression queries whose click-through rate is below what their rank "
+                       "should earn — the clearest quick wins from better titles/meta descriptions.",
+        "parameters": {"type": "object", "properties": {
+            "property_url": {"type": "string"},
+            "days": {"type": "integer", "description": "Look-back window, default 28."},
+        }, "required": ["property_url"]},
+    }},
+    {"type": "function", "function": {
+        "name": "paid_vs_organic",
+        "description": "Join a client's Google Ads search terms with their Search Console queries to "
+                       "answer 'are we paying for terms we already rank for?'. Returns the overlap "
+                       "bucketed as DEFEND (already top-3 organic + paying), CONTENT GAP (paid "
+                       "converts, organic invisible) and DOUBLE COVERAGE, plus blended acquisition "
+                       "and ROAS. Needs BOTH a GSC property and an Ads customer for the same client.",
+        "parameters": {"type": "object", "properties": {
+            "property_url": {"type": "string", "description": "GSC property url for the client."},
+            "customer_id": {"type": "string", "description": "Google Ads customer id (digits) for the SAME client."},
+            "days": {"type": "integer", "description": "Look-back window, default 28."},
+        }, "required": ["property_url", "customer_id"]},
+    }},
+    {"type": "function", "function": {
         "name": "gsc_striking_distance",
         "description": "Keywords ranking at positions 4–20 for a GSC property — the quickest "
                        "page-1 wins.",
@@ -147,17 +190,35 @@ TOOL_SCHEMAS = [
 ]
 
 _SYSTEM_PROMPT = (
-    "You are the in-app assistant for TBS Web Analyzer, a marketing analytics app for an agency "
-    "that manages many clients' Search Console (GSC), Google Analytics (GA4) and Google Ads data. "
-    "Help the team get answers and produce deliverables fast.\n"
-    "- Use the tools to fetch real data; never invent numbers. If you need an id, call get_context "
-    "or the relevant list_* tool to resolve names to ids.\n"
-    "- Be concise and concrete: lead with the numbers that matter and a short takeaway.\n"
-    "- generate_deck is an action that creates a deliverable — the app will ask the user to confirm "
-    "it before it runs, so just call it when asked.\n"
-    "- If a request needs a specific client/site and the user hasn't named one and get_context "
-    "shows nothing selected, call ask_client_choice (with the right kind) so they can pick from "
-    "their list — do NOT guess or assume a client."
+    "You are the in-app analyst for TBS Web Analyzer, a marketing agency's tool spanning many "
+    "clients' Search Console (GSC), Google Analytics (GA4) and Google Ads data. You are a sharp "
+    "performance-marketing analyst, not a chatbot: you fetch the real numbers, interpret them, and "
+    "say what to do.\n"
+    "\n"
+    "HOW TO ANSWER\n"
+    "- Always fetch real data with a tool before answering a data question; never invent or "
+    "estimate numbers. Resolve 'this site/account' via get_context first.\n"
+    "- Pick the RIGHT tool: gsc_overview for 'how is organic doing' (it has the totals AND the "
+    "period-over-period change); gsc_movers for 'why did traffic change'; gsc_ctr_opportunities / "
+    "gsc_striking_distance for quick wins; paid_vs_organic when the question spans paid and organic "
+    "for the same client.\n"
+    "- Lead with the answer and the number that matters, then one line of what it means, then the "
+    "action. Use a short markdown table when comparing more than ~3 numbers. Keep it tight.\n"
+    "- Read deltas correctly: for POSITION, a negative change is an IMPROVEMENT (rank moved toward "
+    "1). For clicks/impressions/revenue, negative is a decline.\n"
+    "- Be honest about declines — state the real number and movement and the likely cause; never "
+    "spin a drop as flat or positive. Equally, don't manufacture alarm from noise (a 2→1 click "
+    "'-50%' is not a story).\n"
+    "- For an e-commerce client, judge Ads on REVENUE and ROAS first, conversion count second: "
+    "fewer, larger orders (conversions down, revenue up) is a GOOD period.\n"
+    "- If a tool returns an error or empty data, say so plainly and suggest the fix (e.g. reconnect "
+    "the account) — do not paper over it with invented numbers.\n"
+    "\n"
+    "ACTIONS & CLIENTS\n"
+    "- generate_deck creates a deliverable; the app confirms with the user before it runs, so just "
+    "call it when asked.\n"
+    "- If a request needs a specific client and none is selected (get_context shows nothing), call "
+    "ask_client_choice so they can pick — never guess a client."
 )
 
 
@@ -207,6 +268,95 @@ async def _handle(name: str, args: dict, ctx: ToolContext) -> dict:
             return {"error": "Google Ads needs a stored refresh token — reconnect the Google account."}
         service = AdsService.from_stored_token(token, is_refresh_token=is_refresh, user_email=ctx.user_email)
         return await service.get_overview(str(args["customer_id"]), int(args.get("days", 28)))
+
+    if name == "gsc_overview":
+        # The core organic tool that was missing — clicks/impressions/CTR/position WITH
+        # period-over-period change, plus the top queries and pages. Most "how is organic doing?"
+        # questions need exactly this, and before it the assistant only had striking-distance and
+        # cannibalization, neither of which answers the basic question.
+        service = _gsc_service_for(ctx.db, ctx.user_email, ctx.account_id)
+        url, days = args["property_url"], int(args.get("days", 28))
+        analytics = await service.get_search_analytics(url, days=days, group_by="daily")
+        queries = await service.get_top_queries(url, days=days)
+        pages = await service.get_top_pages(url, days=days)
+        return {
+            "totals": analytics.get("totals", {}),
+            "change_vs_previous_period_pct": analytics.get("deltas", {}),
+            "top_queries": queries[:15],
+            "top_pages": pages[:10],
+            "note": "Deltas are % change vs the previous equal period. A negative 'position' "
+                    "delta is an IMPROVEMENT (rank got closer to 1).",
+        }
+
+    if name == "gsc_movers":
+        # "What changed and why?" — the biggest query risers and fallers by clicks, each with its
+        # rank movement, so the assistant can explain a traffic shift instead of only describing it.
+        # get_query_insights returns raw current/prev values, NOT pre-computed deltas, so the
+        # change is derived here (an earlier version looked for a `clicks_delta` key that does not
+        # exist and scored every query zero).
+        service = _gsc_service_for(ctx.db, ctx.user_email, ctx.account_id)
+        ins = await service.get_query_insights(args["property_url"], days=int(args.get("days", 28)))
+        moved = []
+        for r in ins.get("queries") or []:
+            cd = (r.get("clicks") or 0) - (r.get("prev_clicks") or 0)
+            if cd == 0:
+                continue
+            pos, prev_pos = r.get("position") or 0, r.get("prev_position") or 0
+            moved.append({
+                "query": r.get("query"),
+                "clicks": r.get("clicks"), "clicks_change": cd,
+                "position": pos,
+                # negative = rank improved (moved toward 1); only meaningful when it ranked before.
+                "position_change": round(pos - prev_pos, 1) if prev_pos else None,
+                "impressions": r.get("impressions"),
+            })
+        risers = sorted((m for m in moved if m["clicks_change"] > 0),
+                        key=lambda m: m["clicks_change"], reverse=True)[:10]
+        fallers = sorted((m for m in moved if m["clicks_change"] < 0),
+                         key=lambda m: m["clicks_change"])[:10]
+        return {"rising_queries": risers, "falling_queries": fallers}
+
+    if name == "gsc_ctr_opportunities":
+        # High-impression queries whose CTR trails their rank — the clearest quick wins.
+        service = _gsc_service_for(ctx.db, ctx.user_email, ctx.account_id)
+        data = await service.get_ctr_opportunities(args["property_url"], int(args.get("days", 28)))
+        return {"opportunities": data[:20], "total": len(data)}
+
+    if name == "paid_vs_organic":
+        # Reuse the cross-channel synthesis the deck pipeline computes — "are we paying for terms we
+        # already rank for?". The one question that needs GSC and Ads joined, answered from the same
+        # code the deck uses so the assistant and the deck never disagree.
+        from services.report_generator import (assemble_gsc_context, assemble_ads_context,
+                                               _brand_cores)
+        from services.cross_channel import compute_cross_channel
+        from services.ads_service import ads_is_configured, AdsService
+        if not ads_is_configured():
+            return {"error": "Google Ads is not configured (no developer token)."}
+        gsc_service = _gsc_service_for(ctx.db, ctx.user_email, ctx.account_id)
+        token, is_refresh = _resolve_token(ctx.db, ctx.user_email, ctx.account_id)
+        if not is_refresh:
+            return {"error": "Google Ads needs a stored refresh token — reconnect the Google account."}
+        ads_service = AdsService.from_stored_token(token, is_refresh_token=is_refresh,
+                                                   user_email=ctx.user_email)
+        days = int(args.get("days", 28))
+        gsc_ctx = await assemble_gsc_context(gsc_service, args["property_url"], days)
+        try:
+            ads_ctx = await assemble_ads_context(ads_service, str(args["customer_id"]), days)
+        except Exception:
+            # Wrong id, or the connected account can't access this customer — a plain message the
+            # model can relay, not a gRPC stack trace.
+            logger.warning("paid_vs_organic: Ads fetch failed", exc_info=True)
+            return {"error": f"Could not load Google Ads data for customer "
+                             f"{args.get('customer_id')} — check the id and that the connected "
+                             f"account has access to it."}
+        try:
+            deep = await ads_service.get_deep_dive(str(args["customer_id"]), days)
+        except Exception:
+            deep = None
+        cross = compute_cross_channel(gsc_ctx, None, ads_ctx, deep,
+                                      brand_cores=_brand_cores(gsc_ctx.get("domain", ""), None))
+        return {"overlap": cross["overlap"][:12], "blended": cross["blended"],
+                "flags": cross["flags"]}
 
     if name == "gsc_striking_distance":
         service = _gsc_service_for(ctx.db, ctx.user_email, ctx.account_id)
@@ -477,6 +627,10 @@ def _activity_label(name: str) -> str:
         "list_ads_customers": "Listing Google Ads accounts…",
         "ga4_overview": "Fetching GA4 traffic…",
         "ads_overview": "Fetching Google Ads performance…",
+        "gsc_overview": "Pulling the organic search overview…",
+        "gsc_movers": "Finding the biggest movers…",
+        "gsc_ctr_opportunities": "Looking for CTR quick wins…",
+        "paid_vs_organic": "Comparing paid and organic…",
         "gsc_striking_distance": "Finding striking-distance keywords…",
         "gsc_cannibalization": "Checking keyword cannibalization…",
     }.get(name, f"Running {name}…")
