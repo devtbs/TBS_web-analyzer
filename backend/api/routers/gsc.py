@@ -81,19 +81,21 @@ async def connect_gsc(
 
 @router.get("/auth/gsc/properties")
 async def get_gsc_properties(
+    account_id: Optional[int] = Depends(get_account_id),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get list of Search Console properties accessible by the user
-    Uses the stored GSC token from database
+    Get Search Console properties for the SELECTED connected Google account.
+
+    Honours the X-Account-Id header like every other GSC data endpoint. Without this it always
+    returned the PRIMARY account's properties regardless of which account the user had switched to,
+    so My Sites showed account #1's sites forever and the 2nd/3rd account's clients were invisible.
     """
     from services.gsc_service import get_user_properties
-    from utils.user_manager import get_user_gsc_token
+    from api.routers._shared import _resolve_token
 
-    # Get token from database (returns tuple: token, is_refresh_token)
-    gsc_token, is_refresh = get_user_gsc_token(db, current_user.email)
-
+    gsc_token, is_refresh = _resolve_token(db, current_user.email, account_id)
     if not gsc_token:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -101,7 +103,11 @@ async def get_gsc_properties(
         )
 
     try:
-        properties = await get_user_properties(gsc_token, is_refresh_token=is_refresh, user_email=current_user.email)
+        # Cache identity is per Google account so account 2's list can't be served from account 1's
+        # cache entry (the /all endpoint keys the same way).
+        properties = await get_user_properties(
+            gsc_token, is_refresh_token=is_refresh,
+            user_email=f"{current_user.email}|{account_id}" if account_id else current_user.email)
         return {"properties": properties}
     except Exception as e:
         raise HTTPException(

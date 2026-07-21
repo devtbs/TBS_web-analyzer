@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
     AreaChart,
     Area,
@@ -26,8 +27,11 @@ import Favicon from '../components/ui/Favicon';
 import toast from 'react-hot-toast';
 
 /* ── sessionStorage TTL cache helpers ────────────────────── */
-const SS_PROPS_KEY    = 'gsc_cache_properties';
-const SS_ANALYTICS_KEY = 'gsc_cache_analytics';
+// Cache keys are scoped to the selected Google account, so switching accounts shows that
+// account's sites rather than serving the previous one from a shared cache.
+const _acct = () => localStorage.getItem('selected_account_id') || 'primary';
+const SS_PROPS_KEY    = () => `gsc_cache_properties_${_acct()}`;
+const SS_ANALYTICS_KEY = () => `gsc_cache_analytics_${_acct()}`;
 const SS_TTL_PROPS    = 5  * 60 * 1000; //  5 min
 const SS_TTL_DATA     = 15 * 60 * 1000; // 15 min
 
@@ -333,6 +337,7 @@ const PropertyCard = ({ property, data, loading, index, onClick, permissionDenie
 
 /* ── Page ─────────────────────────────────────────────────── */
 export default function MySites() {
+    const { selectedAccountId } = useAuth();
     const navigate = useNavigate();
     const [properties, setProperties] = useState([]);
     const [analyticsMap, setAnalyticsMap] = useState({}); // url → analytics data
@@ -352,11 +357,11 @@ export default function MySites() {
                 if (!token) { setIsConnected(false); setLoadingProps(false); return; }
 
                 // Check sessionStorage for cached properties
-                const cachedProps = !forceRefresh && ssGet(SS_PROPS_KEY);
+                const cachedProps = !forceRefresh && ssGet(SS_PROPS_KEY());
                 const props = cachedProps || await (async () => {
                     const res = await api.get('/auth/gsc/properties');
                     const p = res.data.properties || [];
-                    ssSet(SS_PROPS_KEY, p);
+                    ssSet(SS_PROPS_KEY(), p);
                     return p;
                 })();
 
@@ -367,7 +372,7 @@ export default function MySites() {
                 /* ── Fetch analytics ── */
                 if (props.length > 0) {
                     // Check sessionStorage for cached analytics map
-                    const cachedMap = !forceRefresh && ssGetData(SS_ANALYTICS_KEY);
+                    const cachedMap = !forceRefresh && ssGetData(SS_ANALYTICS_KEY());
                     if (cachedMap) {
                         setAnalyticsMap(cachedMap);
                         setLoadingData(false);
@@ -400,7 +405,7 @@ export default function MySites() {
                             }
                         }
                     });
-                    ssSet(SS_ANALYTICS_KEY, map);
+                    ssSet(SS_ANALYTICS_KEY(), map);
                     setAnalyticsMap(map);
                     setPermissionErrors(denied);
                     setLoadingData(false);
@@ -414,7 +419,9 @@ export default function MySites() {
             }
         };
         load();
-    }, []);
+        // Re-fetch when the user switches Google account — otherwise My Sites keeps showing the
+        // account it first mounted with. Paired with the account-scoped cache keys above.
+    }, [selectedAccountId]);
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
@@ -423,12 +430,12 @@ export default function MySites() {
         // Invalidate backend cache too
         try { await api.post('/auth/gsc/cache/invalidate'); } catch {}
         // Clear session cache
-        sessionStorage.removeItem(SS_PROPS_KEY);
-        sessionStorage.removeItem(SS_ANALYTICS_KEY);
+        sessionStorage.removeItem(SS_PROPS_KEY());
+        sessionStorage.removeItem(SS_ANALYTICS_KEY());
         // Re-trigger load via page reload is simplest, or re-run load directly:
         const res = await api.get('/auth/gsc/properties');
         const props = res.data.properties || [];
-        ssSet(SS_PROPS_KEY, props);
+        ssSet(SS_PROPS_KEY(), props);
         setProperties(props);
         if (props.length > 0) {
             const results = await Promise.allSettled(
@@ -454,7 +461,7 @@ export default function MySites() {
                     }
                 }
             });
-            ssSet(SS_ANALYTICS_KEY, map);
+            ssSet(SS_ANALYTICS_KEY(), map);
             setAnalyticsMap(map);
             setPermissionErrors(denied);
         }

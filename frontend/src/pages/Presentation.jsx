@@ -147,6 +147,9 @@ const Presentation = () => {
                 const res = await api.get('/auth/gsc/properties/all');
                 const list = flattenGroups(res.data.groups, 'properties');
                 setProperties(list);
+                // Surface per-account failures (usually an expired/revoked token) instead of the
+                // account silently vanishing from the list — the reason a whole client can "go missing".
+                (res.data.errors || []).forEach(e => toast.error(`${e.google_email || 'An account'}: reconnect needed`));
                 if (list.length) { setPropUrl(list[0].url); setQuery(prettyName(list[0].url)); switchAccount(list[0].account_id); }
             } catch { toast.error('Could not load sites — is Search Console connected?'); }
             finally { setLoadingProps(false); }

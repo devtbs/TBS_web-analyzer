@@ -203,6 +203,7 @@ const GoogleAdsAnalytics = () => {
                 if (res.data.configured === false) { setConfigured(false); return; }
                 const list = flattenGroups(res.data.groups, 'customers');
                 setCustomers(list);
+                (res.data.errors || []).forEach(e => toast.error(`${e.google_email || 'An account'}: reconnect needed`));
                 setIsConnected(list.length > 0);
                 const saved = localStorage.getItem('google_ads_selected_customer');
                 const savedCust = saved && list.find(c => c.customer_id === saved);

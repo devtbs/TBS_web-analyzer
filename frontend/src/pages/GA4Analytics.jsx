@@ -246,6 +246,7 @@ const GA4Analytics = () => {
                 const res = await api.get('/auth/ga4/properties/all');
                 const props = flattenGroups(res.data.groups, 'properties');
                 setProperties(props);
+                (res.data.errors || []).forEach(e => toast.error(`${e.google_email || 'An account'}: reconnect needed`));
                 setIsConnected(props.length > 0);
                 const saved = localStorage.getItem('ga4_selected_property');
                 const savedProp = saved && props.find(p => p.property_id === saved);
