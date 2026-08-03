@@ -19,13 +19,14 @@ SUPERMACHINE_BASE = "https://dev.supermachine.art/v1"
 SUPERMACHINE_POLL_ATTEMPTS = 30   # ~30 * 4s = 2 min ceiling per image
 SUPERMACHINE_POLL_DELAY = 4       # seconds between polls
 
-# Resolutions the "Supermachine NextGen" model accepts (the API rejects anything else
-# with INVALID_RESOLUTION). We snap any requested size to the nearest of these by aspect
-# ratio. 1280x720 matches the 16:9 deck slide, so it's the natural default.
+# Resolutions the active model accepts (the API rejects anything else with INVALID_RESOLUTION).
+# We snap any requested size to the nearest of these by aspect ratio. THESE MUST MATCH THE MODEL
+# in SUPERMACHINE_MODEL — each model exposes its own list via the resolution error / GET /models.
+# Current set is "Supermachine Nova"'s (1344x768 is its widest landscape, closest to the 16:9 slide).
 SUPERMACHINE_RESOLUTIONS = [
-    (1280, 720), (1184, 884), (1024, 768), (1024, 576),   # landscape
-    (1024, 1024), (1280, 1280),                            # square
-    (768, 1024), (884, 1184), (576, 1024), (720, 1280),    # portrait
+    (1344, 768), (1024, 768),                 # landscape
+    (1024, 1024), (1408, 1408),               # square
+    (768, 1024), (768, 1344),                 # portrait
 ]
 
 
@@ -75,7 +76,7 @@ async def generate_image(prompt: str, *, size: str = "1280x720",
     import httpx
 
     width, height = _snap_resolution(*_parse_size(size))
-    model = getattr(settings, "SUPERMACHINE_MODEL", "") or "Supermachine NextGen"
+    model = getattr(settings, "SUPERMACHINE_MODEL", "") or "Supermachine Nova"
     headers = {
         "Authorization": f"Bearer {settings.SUPERMACHINE_API_KEY}",
         "Content-Type": "application/json",
