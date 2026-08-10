@@ -126,6 +126,7 @@ const NAV_GROUPS = [
         section: 'Tools',
         items: [
             { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
+            { label: 'Connections',     path: '/connections',     icon: CircleStackIcon },
             { label: 'History',         path: '/history',         icon: ClockIcon },
         ],
     },

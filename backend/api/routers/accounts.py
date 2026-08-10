@@ -29,6 +29,66 @@ async def list_accounts(
     return {"accounts": get_google_accounts(db, current_user.email)}
 
 
+# Connections health is PROBED, not stored — a dead refresh token only reveals itself when Google
+# rejects a refresh (invalid_grant). We cache the result briefly so opening the page isn't a cost
+# bomb (one GSC sites.list per account). Module-level cache: single uvicorn process, same pattern as
+# the deck-job cache.
+import time as _time
+_CONN_CACHE: dict = {}          # user_email -> (ts, payload)
+_CONN_TTL = 5 * 60
+
+
+@router.get("/auth/connections")
+async def connections_health(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Live token-health for every connected account. Each is probed with a cheap call; a revoked
+    refresh token surfaces as status 'dead' with a Reconnect prompt instead of silently vanishing."""
+    import asyncio
+    from api.routers._shared import iter_google_accounts, refresh_bing_token
+    from services.gsc_service import get_user_properties
+    from utils.user_manager import get_bing_accounts, get_bing_account_token
+
+    email = current_user.email
+    cached = _CONN_CACHE.get(email)
+    if cached and (_time.time() - cached[0] < _CONN_TTL):
+        return cached[1]
+
+    async def _probe_google(acct):
+        row = {"account_id": acct["account_id"], "google_email": acct["google_email"],
+               "provider": "google"}
+        try:
+            props = await get_user_properties(
+                acct["token"], is_refresh_token=acct["is_refresh"],
+                user_email=f"{email}|{acct['google_email']}")
+            return {**row, "status": "ok", "property_count": len(props or [])}
+        except Exception as e:
+            msg = str(e)
+            dead = "invalid_grant" in msg or "expired or revoked" in msg
+            return {**row, "status": "dead" if dead else "error",
+                    "error": "Token expired or revoked — reconnect." if dead else msg[:140]}
+
+    google = await asyncio.gather(*[_probe_google(a) for a in iter_google_accounts(db, email)])
+
+    bing = []
+    for b in get_bing_accounts(db, email):
+        row = {"account_id": b["id"], "google_email": b["label"], "provider": "bing"}
+        try:
+            token = get_bing_account_token(db, email, b["id"])
+            await asyncio.to_thread(refresh_bing_token, token)  # raises on a dead token
+            bing.append({**row, "status": "ok"})
+        except Exception as e:
+            msg = str(e)
+            dead = "invalid_grant" in msg or "400" in msg
+            bing.append({**row, "status": "dead" if dead else "error",
+                         "error": "Token expired — reconnect." if dead else msg[:140]})
+
+    payload = {"connections": list(google) + bing}
+    _CONN_CACHE[email] = (_time.time(), payload)
+    return payload
+
+
 @router.post("/auth/accounts/connect")
 async def connect_account(
     request: dict,

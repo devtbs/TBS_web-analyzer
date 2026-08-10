@@ -19,6 +19,7 @@ import Home from './pages/Home';
 // force-graph, recharts, jspdf, …) only download when that route is actually visited.
 const MySites = lazy(() => import('./pages/MySites'));
 const Clients = lazy(() => import('./pages/Clients'));
+const Connections = lazy(() => import('./pages/Connections'));
 const NewAnalysis = lazy(() => import('./pages/NewAnalysis'));
 const History = lazy(() => import('./pages/History'));
 const Results = lazy(() => import('./pages/Results'));
@@ -211,6 +212,7 @@ function AppContent() {
                     <Route path="/assistant" element={<Assistant />} />
                     <Route path="/alerts" element={<AlertsPage />} />
                     <Route path="/technical-audit" element={<TechnicalAuditPage />} />
+                    <Route path="/connections" element={<Connections />} />
                 </Route>
             </Routes>
             
