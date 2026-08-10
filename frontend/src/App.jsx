@@ -18,6 +18,7 @@ import Home from './pages/Home';
 // All protected pages are code-split: each page and its heavy libraries (xlsx, tiptap,
 // force-graph, recharts, jspdf, …) only download when that route is actually visited.
 const MySites = lazy(() => import('./pages/MySites'));
+const Clients = lazy(() => import('./pages/Clients'));
 const NewAnalysis = lazy(() => import('./pages/NewAnalysis'));
 const History = lazy(() => import('./pages/History'));
 const Results = lazy(() => import('./pages/Results'));
@@ -157,7 +158,7 @@ const PublicLayout = ({ children }) => {
     const { user, loading } = useAuth();
     
     if (loading) return null;
-    if (user) return <Navigate to="/my-sites" replace />;
+    if (user) return <Navigate to="/clients" replace />;
     
     return (
         <div className="min-h-screen flex flex-col">
@@ -184,8 +185,9 @@ function AppContent() {
 
                 {/* All protected pages share the same Layout wrapper */}
                 <Route element={<ProtectedLayout />}>
+                    <Route path="/clients" element={<Clients />} />
                     <Route path="/my-sites" element={<MySites />} />
-                    <Route path="/dashboard" element={<Navigate to="/my-sites" replace />} />
+                    <Route path="/dashboard" element={<Navigate to="/clients" replace />} />
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />
                     <Route path="/ga4-analytics" element={<GA4Analytics />} />
                     <Route path="/google-ads" element={<GoogleAdsAnalytics />} />

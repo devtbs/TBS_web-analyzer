@@ -101,7 +101,7 @@ const NAV_GROUPS = [
     {
         section: 'Overview',
         items: [
-            { label: 'My Sites',     path: '/my-sites',    icon: Squares2X2Icon },
+            { label: 'Clients',      path: '/clients',     icon: Squares2X2Icon },
             { label: 'AI Assistant', path: '/assistant',   icon: SparklesIcon },
         ],
     },
