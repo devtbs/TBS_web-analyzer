@@ -149,6 +149,7 @@ async def create_document(
 
 @router.get("/api/documents", response_model=List[DocumentResponse])
 async def list_documents(
+    client_id: Optional[str] = None,
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -156,8 +157,14 @@ async def list_documents(
 
     For AI-Deck docs we surface content.status (generating|done|error) so the Documents
     list can show a live status chip; the nested JSON field isn't reachable via ORM
-    attribute mapping, so build the response objects explicitly."""
-    documents = db.query(Document).filter(Document.user_email == current_user.email).order_by(Document.updated_at.desc()).all()
+    attribute mapping, so build the response objects explicitly.
+
+    ?client_id=<id> scopes the list to one client's documents (the Documents page uses this to
+    show 'decks for this client')."""
+    q = db.query(Document).filter(Document.user_email == current_user.email)
+    if client_id:
+        q = q.filter(Document.client_id == client_id)
+    documents = q.order_by(Document.updated_at.desc()).all()
     out = []
     for doc in documents:
         item = DocumentResponse.model_validate(doc)

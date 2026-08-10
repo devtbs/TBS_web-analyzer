@@ -105,6 +105,10 @@ class Document(Base):
     id = Column(String, primary_key=True, index=True)
     user_email = Column(String, index=True, nullable=False)
     analysis_id = Column(String, index=True, nullable=True)
+    # Optional link to a Client (agency book). Standalone id, not an FK — the Client table is
+    # intentionally FK-free. NULL = unlinked. On existing DBs this column is added via a one-time
+    # manual ALTER (create_all() never ALTERs an existing table).
+    client_id = Column(String, index=True, nullable=True)
     title = Column(String, nullable=False)
     content_type = Column(String, default="Content Brief", nullable=False)
     content = Column(JSON, nullable=False)

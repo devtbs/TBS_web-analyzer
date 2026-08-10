@@ -15,6 +15,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from auth.auth import get_current_user
@@ -42,6 +43,41 @@ def resolve_client(db, email: str, client_id: str) -> Optional[dict]:
     c = (db.query(Client)
          .filter(Client.id == client_id, Client.user_email == email).first())
     return _serialize(c) if c else None
+
+
+def find_client_for(db, email: str, *, gsc_property: Optional[str] = None,
+                    ga4_property_id: Optional[str] = None, ads_customer_id: Optional[str] = None,
+                    account_id: Optional[int] = None) -> Optional[str]:
+    """Reverse-lookup: given a platform asset, return the client id it belongs to (or None).
+
+    Lets a generated deck self-link to its client even when the UI didn't pass a client id. Match
+    priority mirrors how specific each asset is: exact GSC property (optionally scoped to the owning
+    account), then GA4 property, then Ads customer. Only non-archived clients are considered."""
+    base = db.query(Client.id).filter(Client.user_email == email, Client.archived == False)  # noqa: E712
+
+    def _first(q):
+        row = q.first()
+        return row[0] if row else None
+
+    if gsc_property:
+        q = base.filter(Client.gsc_property == gsc_property)
+        # Prefer the client on the owning account when the property exists under several.
+        if account_id is not None:
+            hit = _first(q.filter(Client.google_account_id == account_id))
+            if hit:
+                return hit
+        hit = _first(q)
+        if hit:
+            return hit
+    if ga4_property_id:
+        hit = _first(base.filter(Client.ga4_property_id == ga4_property_id))
+        if hit:
+            return hit
+    if ads_customer_id:
+        hit = _first(base.filter(Client.ads_customer_id == ads_customer_id))
+        if hit:
+            return hit
+    return None
 
 
 @router.get("/api/clients")
@@ -190,6 +226,42 @@ async def autoseed_clients(current_user: UserInfo = Depends(get_current_user),
     return {"created": created, "total": total}
 
 
+async def _client_overview_row(db, email: str, c: Client, days: int) -> dict:
+    """One client's GSC headline metrics + real period-over-period deltas (or an error marker).
+
+    Shared by the batch (`/overview`) and streaming (`/overview/stream`) endpoints. `id` + the
+    account/asset ids are what selectClient() writes into localStorage so the picked client opens on
+    the RIGHT Google account (a cross-account client left these unset before, which is exactly why its
+    property selector rendered blank)."""
+    from services.gsc_service import GSCService
+    from api.routers._shared import _resolve_token
+
+    base = {"client_id": c.id, "id": c.id, "name": c.name, "domain": c.domain,
+            "gsc_property": c.gsc_property, "google_account_id": c.google_account_id,
+            "ga4_property_id": c.ga4_property_id, "ads_customer_id": c.ads_customer_id}
+    if not c.gsc_property:
+        return {**base, "error": "no Search Console property linked"}
+    try:
+        token, is_refresh = _resolve_token(db, email, c.google_account_id)
+        svc = GSCService.from_stored_token(
+            token, is_refresh_token=is_refresh,
+            user_email=f"{email}|{c.google_account_id}" if c.google_account_id else email)
+        data = await svc.get_search_analytics(c.gsc_property, days=days, group_by="daily")
+        return {**base,
+                "totals": data.get("totals", {}),
+                "deltas": data.get("deltas", {}),
+                "sparkline": [r.get("clicks", 0) for r in (data.get("chart_data") or [])]}
+    except Exception as e:
+        logger.warning("overview: %s failed: %s", c.gsc_property, str(e)[:120])
+        return {**base, "error": "could not load — the account may need reconnecting"}
+
+
+def _overview_clients(db, email: str):
+    return (db.query(Client)
+            .filter(Client.user_email == email, Client.archived == False)  # noqa: E712
+            .order_by(Client.created_at.desc()).all())
+
+
 @router.get("/api/clients/overview")
 async def clients_overview(days: int = 28,
                            current_user: UserInfo = Depends(get_current_user),
@@ -199,38 +271,40 @@ async def clients_overview(days: int = 28,
     The old My Sites did this client-side, GSC-only and single-account, with a FAKE previous-period
     baseline. This runs server-side across all accounts and returns the REAL deltas from
     get_search_analytics. Per-client failures degrade to an error marker so one dead property never
-    blanks the whole page.
+    blanks the whole page. Kept as the non-streaming fallback alongside /overview/stream.
     """
-    from services.gsc_service import GSCService
-    from api.routers._shared import _resolve_token
+    email = current_user.email
+    clients = _overview_clients(db, email)
+    rows = (await asyncio.gather(*[_client_overview_row(db, email, c, days) for c in clients])
+            if clients else [])
+    return {"clients": rows}
+
+
+@router.get("/api/clients/overview/stream")
+async def clients_overview_stream(days: int = 28,
+                                  current_user: UserInfo = Depends(get_current_user),
+                                  db: Session = Depends(get_db)):
+    """Same portfolio data as /overview, but streamed one card at a time (SSE) so the Clients page
+    paints progressively instead of blocking on the slowest client. Emits `start` {total}, then a
+    `client` event per row as it resolves, then `done` {count}.
+
+    Cost is identical to the batch call: GOOGLE_CALL_GATE (services/gsc_service.py) still caps Google
+    calls at 4 concurrently — streaming only changes WHEN each finished row is flushed to the client.
+    """
+    from api.routers._shared import _SSE_HEADERS, _sse
 
     email = current_user.email
-    clients = (db.query(Client)
-               .filter(Client.user_email == email, Client.archived == False)  # noqa: E712
-               .order_by(Client.created_at.desc()).all())
+    clients = _overview_clients(db, email)
 
-    async def _one(c: Client):
-        # `id` + account/asset ids are what selectClient() writes into localStorage so the picked
-        # client opens on the RIGHT Google account (a cross-account client left these unset before,
-        # which is exactly why its property selector rendered blank).
-        base = {"client_id": c.id, "id": c.id, "name": c.name, "domain": c.domain,
-                "gsc_property": c.gsc_property, "google_account_id": c.google_account_id,
-                "ga4_property_id": c.ga4_property_id, "ads_customer_id": c.ads_customer_id}
-        if not c.gsc_property:
-            return {**base, "error": "no Search Console property linked"}
-        try:
-            token, is_refresh = _resolve_token(db, email, c.google_account_id)
-            svc = GSCService.from_stored_token(
-                token, is_refresh_token=is_refresh,
-                user_email=f"{email}|{c.google_account_id}" if c.google_account_id else email)
-            data = await svc.get_search_analytics(c.gsc_property, days=days, group_by="daily")
-            return {**base,
-                    "totals": data.get("totals", {}),
-                    "deltas": data.get("deltas", {}),
-                    "sparkline": [r.get("clicks", 0) for r in (data.get("chart_data") or [])]}
-        except Exception as e:
-            logger.warning("overview: %s failed: %s", c.gsc_property, str(e)[:120])
-            return {**base, "error": "could not load — the account may need reconnecting"}
+    async def gen():
+        yield _sse("start", {"total": len(clients)})
+        count = 0
+        if clients:
+            tasks = [asyncio.ensure_future(_client_overview_row(db, email, c, days)) for c in clients]
+            for fut in asyncio.as_completed(tasks):
+                row = await fut
+                count += 1
+                yield _sse("client", row)
+        yield _sse("done", {"count": count})
 
-    rows = await asyncio.gather(*[_one(c) for c in clients]) if clients else []
-    return {"clients": rows}
+    return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)

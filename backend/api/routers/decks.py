@@ -121,6 +121,7 @@ async def presentation_ai_deck_from_pdf(
     theme_mode: str = Form("tbs"),
     custom_color: str = Form(""),
     style: str = Form("tbs"),
+    client_id: str = Form(""),
     current_user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -137,9 +138,10 @@ async def presentation_ai_deck_from_pdf(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
     label = (file.filename or "report").rsplit(".", 1)[0][:60] or "report"
     models_dict = _parse_models(models)
+    deck_client_id = _resolve_deck_client(db, current_user.email, client_id=client_id or None)
 
     async def run(on_progress, set_doc_id):
-        doc_id = _create_deck_placeholder(current_user.email, source="pdf", label=label, provider=provider)
+        doc_id = _create_deck_placeholder(current_user.email, source="pdf", label=label, provider=provider, client_id=deck_client_id)
         set_doc_id(doc_id)
         result = await generate_deck_from_pdf(pdf_bytes, provider=provider, render=False,
                                               images=images and images_enabled(),
@@ -200,6 +202,19 @@ def _domain_of(url: str) -> str:
     s = (url or "report").strip()
     s = s.replace("sc-domain:", "").replace("https://", "").replace("http://", "")
     return s.strip("/").split("/")[0] or "report"
+
+
+def _resolve_deck_client(db, email, body=None, *, client_id=None, **assets):
+    """The client id to stamp on a deck: the one the UI sent, else a reverse-match from the deck's
+    platform assets (property/customer). Resolved in the request scope (db still open) and closed
+    over by the detached run() — never called from inside the background job."""
+    cid = client_id or (body or {}).get("client_id")
+    if cid:
+        return cid
+    if not any(assets.values()):
+        return None
+    from api.routers.clients import find_client_for
+    return find_client_for(db, email, **assets)
 
 
 def _parse_models(models):
@@ -277,9 +292,10 @@ async def presentation_ai_deck_gsc(
     style = (body or {}).get("style", "tbs")
     brand_terms = (body or {}).get("brand_terms") or ""
     place_label = _domain_of(property)
+    client_id = _resolve_deck_client(db, current_user.email, body, gsc_property=property, account_id=account_id)
 
     async def run(on_progress, set_doc_id):
-        doc_id = _create_deck_placeholder(current_user.email, source="gsc", label=place_label, provider=provider)
+        doc_id = _create_deck_placeholder(current_user.email, source="gsc", label=place_label, provider=provider, client_id=client_id)
         set_doc_id(doc_id)
         result = await generate_ai_gsc_deck(service, property, days, provider=provider,
                                             images=images and images_enabled(),
@@ -348,9 +364,10 @@ async def presentation_ai_deck_bing(
         ai_perf_data = get_ai_performance(current_user.email, site)
 
     place_label = label or _domain_of(site)
+    client_id = _resolve_deck_client(db, current_user.email, body)
 
     async def run(on_progress, set_doc_id):
-        doc_id = _create_deck_placeholder(current_user.email, source="bing", label=place_label, provider=provider)
+        doc_id = _create_deck_placeholder(current_user.email, source="bing", label=place_label, provider=provider, client_id=client_id)
         set_doc_id(doc_id)
         result = await generate_ai_bing_deck(access_token, site, days, label=label, provider=provider,
                                              images=images and images_enabled(),
@@ -395,9 +412,10 @@ async def presentation_ai_deck_ga4(
     custom_color = (body or {}).get("custom_color")
     style = (body or {}).get("style", "tbs")
     place_label = label or _domain_of(property_id)
+    client_id = _resolve_deck_client(db, current_user.email, body, ga4_property_id=property_id, account_id=account_id)
 
     async def run(on_progress, set_doc_id):
-        doc_id = _create_deck_placeholder(current_user.email, source="ga4", label=place_label, provider=provider)
+        doc_id = _create_deck_placeholder(current_user.email, source="ga4", label=place_label, provider=provider, client_id=client_id)
         set_doc_id(doc_id)
         result = await generate_ai_ga4_deck(service, property_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
@@ -443,9 +461,10 @@ async def presentation_ai_deck_ads(
     custom_color = (body or {}).get("custom_color")
     style = (body or {}).get("style", "tbs")
     place_label = label or _domain_of(customer_id)
+    client_id = _resolve_deck_client(db, current_user.email, body, ads_customer_id=customer_id, account_id=account_id)
 
     async def run(on_progress, set_doc_id):
-        doc_id = _create_deck_placeholder(current_user.email, source="ads", label=place_label, provider=provider)
+        doc_id = _create_deck_placeholder(current_user.email, source="ads", label=place_label, provider=provider, client_id=client_id)
         set_doc_id(doc_id)
         result = await generate_ai_ads_deck(service, customer_id, days, label=label, provider=provider,
                                             images=images and images_enabled(),
@@ -511,10 +530,13 @@ async def presentation_ai_deck_combined(
     style = (body or {}).get("style", "tbs")
     brand_terms = (body or {}).get("brand_terms")
     place_label = _domain_of(property) if property else (ads_label or "Combined report")
+    client_id = _resolve_deck_client(db, current_user.email, body,
+                                     gsc_property=property or None, ga4_property_id=ga4_property_id or None,
+                                     ads_customer_id=ads_customer_id or None, account_id=account_id)
 
     async def run(on_progress, set_doc_id):
         doc_id = _create_deck_placeholder(current_user.email, source="combined",
-                                          label=place_label, provider=provider)
+                                          label=place_label, provider=provider, client_id=client_id)
         set_doc_id(doc_id)
         result = await generate_ai_combined_deck(
             days=days,

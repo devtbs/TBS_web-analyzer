@@ -14,6 +14,8 @@ import {
     ChevronLeftIcon,
     ChevronRightIcon,
     MagnifyingGlassIcon,
+    XMarkIcon,
+    UserGroupIcon,
 } from '@heroicons/react/24/outline';
 import { 
     FolderIcon as FolderIconSolid, 
@@ -62,6 +64,10 @@ export default function Documents() {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchParams] = useSearchParams();
     const folderFilter = searchParams.get('folder');
+    // Client scope: defaults to the currently-selected client so opening Documents shows that
+    // client's decks; clearable to see everything. '' = all clients.
+    const [clientFilter, setClientFilter] = useState(() => localStorage.getItem('selected_client_id') || '');
+    const [clients, setClients] = useState([]);   // [{id, name, domain}] for the filter dropdown
     const [activeDeadlinePopover, setActiveDeadlinePopover] = useState(null);
     const [activeFolderPopover, setActiveFolderPopover] = useState(null);
     const [activeActionsMenu, setActiveActionsMenu] = useState(null);
@@ -84,6 +90,12 @@ export default function Documents() {
         window.addEventListener('documents-updated', fetchDocuments);
         return () => window.removeEventListener('documents-updated', fetchDocuments);
     }, []);
+
+    // Client list for the filter dropdown + id→name lookup for row badges.
+    useEffect(() => {
+        api.get('/api/clients').then(r => setClients(r.data.clients || [])).catch(() => {});
+    }, []);
+    const clientName = (id) => clients.find(c => c.id === id)?.name;
 
     // While any AI-Deck row is still generating, poll so it flips to done/failed live.
     useEffect(() => {
@@ -317,7 +329,8 @@ export default function Documents() {
     const filteredDocs = documents.filter(doc => {
         const matchesSearch = doc.title.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesFolder = !folderFilter || doc.folder === folderFilter;
-        return matchesSearch && matchesFolder;
+        const matchesClient = !clientFilter || doc.client_id === clientFilter;
+        return matchesSearch && matchesFolder && matchesClient;
     });
 
     // Keep the indeterminate state of the select-all checkbox in sync
@@ -386,6 +399,20 @@ export default function Documents() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    {/* Client filter */}
+                    {clients.length > 0 && (
+                        <div className="relative flex-shrink-0">
+                            <UserGroupIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                            <select
+                                value={clientFilter}
+                                onChange={(e) => setClientFilter(e.target.value)}
+                                className="text-sm bg-slate-50 border-none rounded-lg pl-9 pr-8 py-2 w-full sm:w-48 focus:ring-2 focus:ring-emerald-500 transition-all font-medium appearance-none cursor-pointer"
+                            >
+                                <option value="">All clients</option>
+                                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        </div>
+                    )}
                     {/* New document */}
                     <button 
                         onClick={handleNewDocument}
@@ -397,6 +424,18 @@ export default function Documents() {
                     </button>
                 </div>
             </div>
+
+            {/* Active client-scope chip */}
+            {clientFilter && (
+                <div className="px-4 sm:px-6 pt-3">
+                    <span className="inline-flex items-center gap-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full pl-3 pr-2 py-1 text-[13px] font-semibold">
+                        Showing documents for {clientName(clientFilter) || 'selected client'}
+                        <button onClick={() => setClientFilter('')} className="p-0.5 rounded-full hover:bg-emerald-100" title="Clear filter">
+                            <XMarkIcon className="w-3.5 h-3.5" />
+                        </button>
+                    </span>
+                </div>
+            )}
 
             {/* ── Table (scrollable on small screens) ── */}
             <div className="flex-1 overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -471,6 +510,12 @@ export default function Documents() {
                                     <div className="text-sm font-medium text-slate-800 group-hover:text-emerald-600 transition-colors line-clamp-2 leading-tight">
                                         {doc.title}
                                     </div>
+                                    {doc.client_id && clientName(doc.client_id) && (
+                                        <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600">
+                                            <UserGroupIcon className="w-3 h-3" />
+                                            {clientName(doc.client_id)}
+                                        </span>
+                                    )}
                                     {doc.status === 'generating' && (
                                         <span className="inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />

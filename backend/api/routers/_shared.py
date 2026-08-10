@@ -221,7 +221,7 @@ def _ads_service_for(db, email, account_id=None, *, required: bool = True):
 
 
 def _create_deck_placeholder(user_email: str, *, source: str, label: str,
-                             provider: str) -> str:
+                             provider: str, client_id: Optional[str] = None) -> str:
     """Insert an AI-Deck Document row up-front, marked status=generating, so the deck shows
     in the Documents list the moment generation starts (with a live status). Returns its id;
     the row is filled in by _finalize_deck_document / _fail_deck_document when the job ends.
@@ -239,6 +239,7 @@ def _create_deck_placeholder(user_email: str, *, source: str, label: str,
         db.add(Document(
             id=doc_id,
             user_email=user_email,
+            client_id=client_id,
             title=f"AI Deck — {label} · {model_label} ({date_label})",
             content_type="AI Deck",
             content={"status": "generating", "html": None, "source": source,

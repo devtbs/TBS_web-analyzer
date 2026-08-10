@@ -8,6 +8,7 @@ import api from '../api/axios';
 import Favicon from '../components/ui/Favicon';
 import { selectClient } from '../utils/clientSelection';
 import { propertyMeta } from '../utils/propertyMeta';
+import { sseStream } from '../utils/sseFetch';
 
 /* Real period-over-period delta badge. Negative clicks/impressions = bad; caller sets direction. */
 const Delta = ({ value, positiveGood = true }) => {
@@ -148,24 +149,38 @@ function EditDrawer({ client, onClose, onSaved }) {
 
 export default function Clients() {
     const navigate = useNavigate();
-    const [clients, setClients] = useState(null);   // null = loading
+    const [clients, setClients] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [total, setTotal] = useState(0);          // expected card count (for the skeleton grid)
     const [search, setSearch] = useState('');
     const [editing, setEditing] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
 
+    // Stream the portfolio so cards paint as each client resolves instead of blocking on the slowest.
     const load = async () => {
-        try {
-            let res = await api.get('/api/clients/overview');
-            // First-ever load: no clients yet → seed from GSC, then re-fetch.
-            if (!res.data.clients?.length) {
-                await api.post('/api/clients/autoseed');
-                res = await api.get('/api/clients/overview');
-            }
-            setClients(res.data.clients || []);
-        } catch {
-            toast.error('Could not load clients');
-            setClients([]);
-        }
+        setLoading(true);
+        setClients([]);
+        setTotal(0);
+        let seeded = false;
+        const runStream = async () => {
+            await sseStream('/api/clients/overview/stream', async (type, data) => {
+                if (type === 'start') {
+                    setTotal(data.total || 0);
+                    // First-ever load: no clients yet → seed from GSC, then re-open the stream.
+                    if (!data.total && !seeded) {
+                        seeded = true;
+                        await api.post('/api/clients/autoseed');
+                        await runStream();
+                    }
+                } else if (type === 'client') {
+                    setClients(cs => [...cs, data]);
+                } else if (type === 'done') {
+                    setLoading(false);
+                }
+            });
+        };
+        try { await runStream(); }
+        catch { toast.error('Could not load clients'); setLoading(false); }
     };
     useEffect(() => { load(); }, []);
 
@@ -183,7 +198,7 @@ export default function Clients() {
     };
 
     const filtered = useMemo(() => {
-        const list = clients || [];
+        const list = clients;
         const q = search.trim().toLowerCase();
         const rows = q ? list.filter(c => (c.name + ' ' + (c.domain || '')).toLowerCase().includes(q)) : list;
         // Attention first, then by clicks desc so the active book surfaces above the long tail.
@@ -195,7 +210,9 @@ export default function Clients() {
         <div className="max-w-[1400px] mx-auto px-6 py-8">
             <div className="flex items-center gap-4 mb-6 flex-wrap">
                 <h1 className="text-2xl font-bold text-slate-800">Clients</h1>
-                {clients && <span className="text-sm text-slate-400">{clients.length} total</span>}
+                <span className="text-sm text-slate-400">
+                    {loading && total ? `${clients.length} / ${total}` : `${clients.length} total`}
+                </span>
                 <div className="relative ml-auto">
                     <MagnifyingGlassIcon className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients…"
@@ -207,19 +224,23 @@ export default function Clients() {
                 </button>
             </div>
 
-            {clients === null ? (
+            {loading && clients.length === 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {Array.from({ length: 6 }).map((_, i) => (
+                    {Array.from({ length: Math.min(total || 6, 12) }).map((_, i) => (
                         <div key={i} className="bg-white rounded-2xl border border-slate-200/80 h-[240px] animate-pulse" style={{ animationDelay: `${i * 60}ms` }} />
                     ))}
                 </div>
-            ) : filtered.length === 0 ? (
+            ) : !loading && filtered.length === 0 ? (
                 <div className="text-center py-20 text-slate-400">
                     {search ? `No clients match "${search}"` : 'No clients yet — click Sync to import from Search Console.'}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                     {filtered.map(c => <ClientCard key={c.client_id} c={c} onOpen={open} onEdit={setEditing} />)}
+                    {/* Trailing skeletons for clients still streaming in. */}
+                    {loading && !search && Array.from({ length: Math.max(0, Math.min((total || 0) - clients.length, 6)) }).map((_, i) => (
+                        <div key={`sk-${i}`} className="bg-white rounded-2xl border border-slate-200/80 h-[240px] animate-pulse" style={{ animationDelay: `${i * 60}ms` }} />
+                    ))}
                 </div>
             )}
 

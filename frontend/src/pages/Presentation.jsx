@@ -408,8 +408,12 @@ const Presentation = () => {
         };
         const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
         const models = pipeline === 'layered' ? resolvedLayerModels(prov) : undefined;
+        // Stamp the deck with the selected client so it shows under that client in Documents.
+        // The backend also reverse-matches by property, so this is belt-and-suspenders.
+        const selectedClientId = localStorage.getItem('selected_client_id');
         const body = {
             notes, creativity, pipeline, theme_mode: themeMode, style,
+            ...(selectedClientId ? { client_id: selectedClientId } : {}),
             ...(brandTerms.trim() ? { brand_terms: brandTerms } : {}),
             ...(themeMode === 'custom' ? { custom_color: customColor } : {}),
             ...(models ? { models } : {}),
@@ -452,6 +456,7 @@ const Presentation = () => {
                 fd.append('style', style);
                 if (themeMode === 'custom') fd.append('custom_color', customColor);
                 if (models) fd.append('models', JSON.stringify(models));
+                if (selectedClientId) fd.append('client_id', selectedClientId);
                 response = await fetch('/api/presentation/ai-deck-from-pdf', { method: 'POST', headers, body: fd });
             }
             if (!response.ok || !response.body) {

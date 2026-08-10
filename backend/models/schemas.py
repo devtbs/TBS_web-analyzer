@@ -246,6 +246,7 @@ class DocumentResponse(BaseModel):
     title: str
     content_type: str
     analysis_id: Optional[str] = None
+    client_id: Optional[str] = None
     folder: Optional[str] = None
     deadline: Optional[datetime] = None
     created_at: datetime
