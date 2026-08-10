@@ -34,6 +34,7 @@ import {
     EllipsisHorizontalIcon 
 } from '@heroicons/react/20/solid';
 import Favicon from '../ui/Favicon';
+import { propertyMeta, TAG_DARK } from '../../utils/propertyMeta';
 import SidebarAccountSwitcher from '../auth/SidebarAccountSwitcher';
 import api from '../../api/axios';
 
@@ -369,13 +370,18 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                                 >
                                     <div className="flex items-center gap-2.5 min-w-0">
                                         {selectedProperty ? (
-                                            <Favicon url={selectedProperty} size={18} className="rounded-sm flex-shrink-0" />
+                                            <Favicon url={selectedProperty} label={propertyMeta(selectedProperty).domain} size={18} className="rounded-sm flex-shrink-0" />
                                         ) : (
                                             <GlobeAltIcon className="w-[18px] h-[18px] text-slate-400" />
                                         )}
                                         <span className="text-slate-200 font-bold text-[13px] truncate">
-                                            {selectedProperty ? getDomain(selectedProperty) : 'Select Domain'}
+                                            {selectedProperty ? propertyMeta(selectedProperty).text : 'Select Domain'}
                                         </span>
+                                        {selectedProperty && propertyMeta(selectedProperty).tag && (
+                                            <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide ${TAG_DARK[propertyMeta(selectedProperty).tag] || ''}`}>
+                                                {propertyMeta(selectedProperty).tag}
+                                            </span>
+                                        )}
                                     </div>
                                     <ChevronDownIcon className={`w-4 h-4 text-slate-500 transition-transform duration-200 flex-shrink-0 ${isDomainPickerOpen ? 'rotate-180' : ''}`} />
                                 </button>
@@ -424,10 +430,15 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                                                                 }`}
                                                             >
                                                                 <div className="flex items-center gap-2.5 min-w-0">
-                                                                    <Favicon url={p.url} size={16} className={`rounded-sm flex-shrink-0 ${selectedProperty === p.url ? '' : 'grayscale opacity-70'}`} />
+                                                                    <Favicon url={p.url} label={propertyMeta(p.url).domain} size={16} className={`rounded-sm flex-shrink-0 ${selectedProperty === p.url ? '' : 'grayscale opacity-70'}`} />
                                                                     <span className={`text-[12px] font-medium truncate ${selectedProperty === p.url ? 'text-emerald-400' : 'text-slate-300'}`}>
-                                                                        {getDomain(p.url)}
+                                                                        {propertyMeta(p.url).text}
                                                                     </span>
+                                                                    {propertyMeta(p.url).tag && (
+                                                                        <span className={`shrink-0 px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wide ${TAG_DARK[propertyMeta(p.url).tag] || ''}`}>
+                                                                            {propertyMeta(p.url).tag}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                                 {selectedProperty === p.url && <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />}
                                                             </button>

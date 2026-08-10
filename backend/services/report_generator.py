@@ -127,6 +127,29 @@ def _domain_from_property(property_url: str) -> str:
         return property_url
 
 
+def property_display(property_url: str) -> tuple:
+    """Human label + bare domain for a GSC property string, PRESERVING what makes distinct
+    properties distinct. `sc-domain:x`, `https://x`, `https://www.x` and `http://x` share a bare
+    domain but are different properties with different data — so the label keeps scheme/www/path.
+
+    Returns (label, bare_domain). `_domain_from_property` stays the bare-domain source of truth.
+    """
+    domain = _domain_from_property(property_url)
+    if property_url.startswith("sc-domain:"):
+        return domain, domain
+    try:
+        from urllib.parse import urlparse
+        u = urlparse(property_url)
+        host = u.netloc  # keeps www.
+        path = (u.path or "").rstrip("/")
+        label = f"{host}{path}" or property_url
+        if u.scheme == "http":
+            label = "http://" + label
+        return label, domain
+    except Exception:
+        return property_url, domain
+
+
 def _brand_core(domain: str) -> str:
     """The domain's second-level label, alnum-lowercased, for brand-query matching
     (e.g. 'jesseandson.com' -> 'jesseandson'). Returns '' when < 4 chars (too short to

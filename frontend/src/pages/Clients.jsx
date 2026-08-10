@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import api from '../api/axios';
 import Favicon from '../components/ui/Favicon';
 import { selectClient } from '../utils/clientSelection';
+import { propertyMeta } from '../utils/propertyMeta';
 
 /* Real period-over-period delta badge. Negative clicks/impressions = bad; caller sets direction. */
 const Delta = ({ value, positiveGood = true }) => {
@@ -27,6 +28,7 @@ const needsAttention = (c) => !!c.error || (c.deltas && c.deltas.clicks != null 
 function ClientCard({ c, onOpen, onEdit }) {
     const spark = (c.sparkline || []).map((v, i) => ({ i, v }));
     const flag = needsAttention(c);
+    const meta = propertyMeta(c.gsc_property);
     return (
         <div className={`bg-white rounded-2xl border shadow-sm flex flex-col relative transition-shadow hover:shadow-md ${
             flag ? 'border-red-300' : 'border-slate-200/80'}`}>
@@ -34,14 +36,19 @@ function ClientCard({ c, onOpen, onEdit }) {
                 className="absolute top-3 right-3 z-10 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600">⋯</button>
             <button onClick={() => onOpen(c)} className="text-left flex flex-col flex-1 outline-none">
                 <div className="px-5 pt-5 pb-4 flex items-center gap-3 min-w-0 border-b border-slate-100/60">
-                    {c.gsc_property ? <Favicon url={c.gsc_property} size={32} className="rounded-lg shrink-0" />
-                                    : <div className="w-8 h-8 rounded-lg bg-slate-100 shrink-0" />}
+                    <Favicon url={c.gsc_property} label={c.domain || c.name} size={32} className="rounded-lg shrink-0" />
                     <div className="min-w-0 flex-1">
-                        <p className="font-bold text-slate-800 text-[15px] truncate">{c.name}</p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="font-bold text-slate-800 text-[15px] truncate">{c.name}</p>
+                            {meta.tag && (
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wide ${meta.tagCls}`}
+                                      title={c.gsc_property}>{meta.tag}</span>
+                            )}
+                        </div>
                         <div className="flex items-center gap-2 mt-0.5">
                             {c.ga4_property_id && <ChartPieIcon className="w-3.5 h-3.5 text-slate-400" title="GA4 linked" />}
                             {c.ads_customer_id && <MegaphoneIcon className="w-3.5 h-3.5 text-slate-400" title="Google Ads linked" />}
-                            <span className="text-[12px] text-slate-400 truncate">{c.domain}</span>
+                            <span className="text-[12px] text-slate-400 truncate">{meta.text || c.domain}</span>
                         </div>
                     </div>
                     {flag && <ExclamationTriangleIcon className="w-5 h-5 text-red-500 shrink-0" title="Needs attention" />}

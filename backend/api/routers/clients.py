@@ -116,10 +116,26 @@ async def autoseed_clients(current_user: UserInfo = Depends(get_current_user),
     properties from accounts other than the currently-selected one.
     """
     from services.gsc_service import get_user_properties
-    from services.report_generator import _domain_from_property
+    from services.report_generator import _domain_from_property, property_display
 
     email = current_user.email
     accounts = iter_google_accounts(db, email)
+
+    # One-time relabel: earlier auto-seeded clients were named with the bare domain, which made
+    # https/http/www/sc-domain variants of one domain indistinguishable. Rewrite those names to the
+    # disambiguating label — but only for rows the user hasn't renamed (name == old bare domain or
+    # == the raw property), so hand-edited names are preserved. Idempotent.
+    relabeled = 0
+    for c in db.query(Client).filter(Client.user_email == email).all():
+        if not c.gsc_property:
+            continue
+        label, domain = property_display(c.gsc_property)
+        if c.name in (domain, c.gsc_property) and (c.name != label or c.domain != domain):
+            c.name, c.domain = label, domain
+            relabeled += 1
+    if relabeled:
+        db.commit()
+
     # Everything already mapped (any archived state), so we never recreate a pruned client.
     existing = {p for (p,) in db.query(Client.gsc_property)
                 .filter(Client.user_email == email).all() if p}
@@ -151,7 +167,7 @@ async def autoseed_clients(current_user: UserInfo = Depends(get_current_user),
             url = p.get("url")
             if not url or url in existing:
                 continue
-            domain = _domain_from_property(url)
+            label, domain = property_display(url)
             ga4_pid = None
             if ga4:
                 try:
@@ -161,7 +177,7 @@ async def autoseed_clients(current_user: UserInfo = Depends(get_current_user),
                     ga4_pid = None
             db.add(Client(
                 id=str(uuid.uuid4()), user_email=email,
-                name=domain or url, domain=domain,
+                name=label or domain or url, domain=domain,
                 google_account_id=acct["account_id"], gsc_property=url,
                 ga4_property_id=ga4_pid,
             ))
@@ -194,8 +210,12 @@ async def clients_overview(days: int = 28,
                .order_by(Client.created_at.desc()).all())
 
     async def _one(c: Client):
-        base = {"client_id": c.id, "name": c.name, "domain": c.domain,
-                "gsc_property": c.gsc_property}
+        # `id` + account/asset ids are what selectClient() writes into localStorage so the picked
+        # client opens on the RIGHT Google account (a cross-account client left these unset before,
+        # which is exactly why its property selector rendered blank).
+        base = {"client_id": c.id, "id": c.id, "name": c.name, "domain": c.domain,
+                "gsc_property": c.gsc_property, "google_account_id": c.google_account_id,
+                "ga4_property_id": c.ga4_property_id, "ads_customer_id": c.ads_customer_id}
         if not c.gsc_property:
             return {**base, "error": "no Search Console property linked"}
         try:
