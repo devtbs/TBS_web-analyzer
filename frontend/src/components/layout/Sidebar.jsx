@@ -93,30 +93,40 @@ const getDomain = (url) => {
 };
 
 
+// Grouped by PURPOSE, not as one big "Analyze" bucket: an entry point, the data channels, things
+// that produce a deliverable, and utilities. Balanced 2/4/3/2 groups instead of the old 1/7/2, and
+// Search Console now sits with its sibling platforms (it points at /seo-analytics, which
+// self-selects a property, so it never dead-ends).
 const NAV_GROUPS = [
     {
         section: 'Overview',
         items: [
             { label: 'My Sites',     path: '/my-sites',    icon: Squares2X2Icon },
+            { label: 'AI Assistant', path: '/assistant',   icon: SparklesIcon },
         ],
     },
     {
-        section: 'Analyze',
+        section: 'Channels',
         items: [
-            { label: 'AI Assistant', path: '/assistant', icon: SparklesIcon },
-            { label: 'New Analysis', path: '/new-analysis', icon: RocketLaunchIcon },
-            { label: 'History',      path: '/history',      icon: ClockIcon },
-            { label: 'GA4 Analytics', path: '/ga4-analytics', icon: ChartPieIcon },
-            { label: 'Google Ads', path: '/google-ads', icon: MegaphoneIcon },
-            { label: 'Bing Search', path: '/bing-analytics', icon: MagnifyingGlassIcon },
-            { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
+            { label: 'Search Console', path: '/seo-analytics',  icon: GlobeAltIcon },
+            { label: 'GA4 Analytics',  path: '/ga4-analytics',  icon: ChartPieIcon },
+            { label: 'Google Ads',     path: '/google-ads',     icon: MegaphoneIcon },
+            { label: 'Bing Search',    path: '/bing-analytics', icon: MagnifyingGlassIcon },
         ],
     },
     {
-        section: 'Writing',
+        section: 'Create',
         items: [
-            { label: 'Documents',    path: '/documents',    icon: DocumentTextIcon },
+            { label: 'New Analysis',    path: '/new-analysis', icon: RocketLaunchIcon },
             { label: 'AI Presentation', path: '/presentation', icon: PresentationChartLineIcon },
+            { label: 'Documents',       path: '/documents',    icon: DocumentTextIcon },
+        ],
+    },
+    {
+        section: 'Tools',
+        items: [
+            { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
+            { label: 'History',         path: '/history',         icon: ClockIcon },
         ],
     },
 ];
