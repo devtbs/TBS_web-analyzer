@@ -19,6 +19,7 @@ import Home from './pages/Home';
 // force-graph, recharts, jspdf, …) only download when that route is actually visited.
 const MySites = lazy(() => import('./pages/MySites'));
 const Clients = lazy(() => import('./pages/Clients'));
+const ClientHub = lazy(() => import('./pages/ClientHub'));
 const Connections = lazy(() => import('./pages/Connections'));
 const NewAnalysis = lazy(() => import('./pages/NewAnalysis'));
 const History = lazy(() => import('./pages/History'));
@@ -187,6 +188,7 @@ function AppContent() {
                 {/* All protected pages share the same Layout wrapper */}
                 <Route element={<ProtectedLayout />}>
                     <Route path="/clients" element={<Clients />} />
+                    <Route path="/clients/:id" element={<ClientHub />} />
                     <Route path="/my-sites" element={<MySites />} />
                     <Route path="/dashboard" element={<Navigate to="/clients" replace />} />
                     <Route path="/seo-analytics" element={<SEOAnalytics />} />

@@ -5,13 +5,16 @@
  */
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
-export async function sseStream(path, onEvent, { signal } = {}) {
+export async function sseStream(path, onEvent, { signal, method = 'GET', body } = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
+        method,
         headers: {
             Authorization: `Bearer ${localStorage.getItem('access_token')}`,
             ...(localStorage.getItem('selected_account_id')
                 ? { 'X-Account-Id': localStorage.getItem('selected_account_id') } : {}),
+            ...(body != null ? { 'Content-Type': 'application/json' } : {}),
         },
+        ...(body != null ? { body: JSON.stringify(body) } : {}),
         signal,
     });
     if (!res.ok || !res.body) throw new Error(`Stream request failed (${res.status})`);

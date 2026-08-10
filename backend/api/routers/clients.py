@@ -308,3 +308,66 @@ async def clients_overview_stream(days: int = 28,
         yield _sse("done", {"count": count})
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.get("/api/clients/{client_id}/hub")
+async def client_hub(client_id: str, days: int = 28,
+                     current_user: UserInfo = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """Everything the client detail hub needs in one call: the client's asset tuple plus GSC / GA4 /
+    Ads headline metrics side by side. Each channel degrades independently — `null` = asset not
+    linked, `{error}` = fetch failed — so one dead channel never blanks the page. Only headline keys
+    are returned to keep the payload small; the deep-dive pages fetch the full breakdowns."""
+    from api.routers._shared import _gsc_service_for, _ga4_service_for, _ads_service_for
+
+    email = current_user.email
+    client = resolve_client(db, email, client_id)
+    if not client:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found.")
+    acct = client.get("google_account_id")
+
+    def _pick(totals, keys):
+        return {k: (totals or {}).get(k) for k in keys}
+
+    async def _gsc():
+        if not client.get("gsc_property"):
+            return None
+        try:
+            d = await _gsc_service_for(db, email, acct).get_search_analytics(
+                client["gsc_property"], days=days, group_by="daily")
+            return {"totals": _pick(d.get("totals"), ("clicks", "impressions", "ctr", "position")),
+                    "deltas": d.get("deltas", {}),
+                    "sparkline": [r.get("clicks", 0) for r in (d.get("chart_data") or [])]}
+        except Exception as e:
+            logger.warning("hub gsc %s: %s", client_id, str(e)[:120])
+            return {"error": "could not load Search Console — the account may need reconnecting"}
+
+    async def _ga4():
+        if not client.get("ga4_property_id"):
+            return None
+        try:
+            d = await _ga4_service_for(db, email, acct).get_overview(client["ga4_property_id"], days=days)
+            return {"totals": _pick(d.get("totals"), ("users", "sessions", "conversions", "revenue")),
+                    "deltas": d.get("deltas", {}),
+                    "sparkline": [r.get("sessions", 0) for r in (d.get("chart_data") or [])]}
+        except Exception as e:
+            logger.warning("hub ga4 %s: %s", client_id, str(e)[:120])
+            return {"error": "could not load Analytics"}
+
+    async def _ads():
+        if not client.get("ads_customer_id"):
+            return None
+        try:
+            svc = _ads_service_for(db, email, acct, required=False)
+            if not svc:
+                return {"error": "Google Ads not connected for this account"}
+            d = await svc.get_overview(client["ads_customer_id"], days=days)
+            return {"totals": _pick(d.get("totals"), ("cost", "clicks", "conversions", "conversions_value")),
+                    "deltas": d.get("deltas", {}), "currency": d.get("currency"),
+                    "sparkline": [r.get("clicks", 0) for r in (d.get("chart_data") or [])]}
+        except Exception as e:
+            logger.warning("hub ads %s: %s", client_id, str(e)[:120])
+            return {"error": "could not load Google Ads"}
+
+    gsc, ga4, ads = await asyncio.gather(_gsc(), _ga4(), _ads())
+    return {"client": client, "gsc": gsc, "ga4": ga4, "ads": ads}
