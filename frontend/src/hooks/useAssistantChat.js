@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 
 /* Selected client context the assistant should be aware of (what the user has open). */
 export const readContext = () => ({
+    selected_client_id: localStorage.getItem('selected_client_id') || null,
     selected_property: localStorage.getItem('gsc_selected_property') || null,
     selected_customer: localStorage.getItem('google_ads_selected_customer') || null,
     selected_ga4_property: localStorage.getItem('ga4_selected_property') || null,

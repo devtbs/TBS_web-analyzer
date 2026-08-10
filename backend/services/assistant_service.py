@@ -52,10 +52,12 @@ class ToolContext:
     selected_property: Optional[str] = None      # GSC property url
     selected_customer: Optional[str] = None      # Google Ads customer id
     selected_ga4_property: Optional[str] = None   # GA4 property id
+    selected_client_id: Optional[str] = None      # the picked Client (expands to all of the above)
 
 
 # ── Tool schemas (OpenAI function-calling format) ───────────────────────────
-READ_TOOLS = {"get_context", "list_gsc_properties", "list_ga4_properties",
+READ_TOOLS = {"get_context", "list_clients", "get_client",
+              "list_gsc_properties", "list_ga4_properties",
               "gsc_overview", "gsc_movers", "gsc_ctr_opportunities", "paid_vs_organic",
               "list_ads_customers", "ga4_overview", "ads_overview",
               "gsc_striking_distance", "gsc_cannibalization"}
@@ -66,10 +68,28 @@ SELECT_TOOLS = {"ask_client_choice"}
 TOOL_SCHEMAS = [
     {"type": "function", "function": {
         "name": "get_context",
-        "description": "Return the client the user currently has selected in the UI (GSC property, "
-                       "GA4 property id, Google Ads customer id). Call this first to resolve 'this "
-                       "property/account' references.",
+        "description": "Return the CLIENT the user currently has selected (with its GSC property, "
+                       "GA4 property id and Ads customer id already resolved). Call this first to "
+                       "resolve 'this client' / 'this property' references.",
         "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "list_clients",
+        "description": "List the user's managed clients (name + domain + which channels are linked). "
+                       "Use this to resolve a client mentioned by name, or to answer 'which clients "
+                       "do I have'.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "get_client",
+        "description": "Resolve ONE client to all its assets at once — GSC property, GA4 property id, "
+                       "Ads customer id and brand terms. Call this after the user names a client, "
+                       "then feed the returned ids to gsc_overview / ads_overview / paid_vs_organic. "
+                       "Saves asking the user to pick a property/account separately.",
+        "parameters": {"type": "object", "properties": {
+            "client_id": {"type": "string", "description": "Client id from list_clients."},
+            "name": {"type": "string", "description": "Or a client name/domain to match (case-insensitive)."},
+        }},
     }},
     {"type": "function", "function": {
         "name": "list_gsc_properties",
@@ -228,12 +248,39 @@ async def _handle(name: str, args: dict, ctx: ToolContext) -> dict:
     from api.routers._shared import _resolve_token, _gsc_service_for, _ga4_service_for
 
     if name == "get_context":
+        from api.routers.clients import resolve_client
+        client = resolve_client(ctx.db, ctx.user_email, ctx.selected_client_id) if ctx.selected_client_id else None
         return {
-            "selected_gsc_property": ctx.selected_property,
-            "selected_ga4_property_id": ctx.selected_ga4_property,
-            "selected_ads_customer_id": ctx.selected_customer,
-            "note": "These are what the user currently has open in the UI.",
+            "selected_client": client,   # full asset tuple when a client is selected
+            "selected_gsc_property": (client or {}).get("gsc_property") or ctx.selected_property,
+            "selected_ga4_property_id": (client or {}).get("ga4_property_id") or ctx.selected_ga4_property,
+            "selected_ads_customer_id": (client or {}).get("ads_customer_id") or ctx.selected_customer,
+            "note": "The selected client's assets — use these ids directly for the data tools.",
         }
+
+    if name == "list_clients":
+        from database import Client
+        rows = (ctx.db.query(Client)
+                .filter(Client.user_email == ctx.user_email, Client.archived == False)  # noqa: E712
+                .order_by(Client.name).all())
+        return {"clients": [{"id": c.id, "name": c.name, "domain": c.domain,
+                             "has_gsc": bool(c.gsc_property), "has_ga4": bool(c.ga4_property_id),
+                             "has_ads": bool(c.ads_customer_id)} for c in rows][:200]}
+
+    if name == "get_client":
+        from api.routers.clients import resolve_client
+        from database import Client
+        cid = args.get("client_id")
+        if not cid and args.get("name"):
+            q = args["name"].strip().lower()
+            match = next((c for c in ctx.db.query(Client).filter(
+                Client.user_email == ctx.user_email, Client.archived == False).all()  # noqa: E712
+                if q in (c.name or "").lower() or q in (c.domain or "").lower()), None)
+            cid = match.id if match else None
+        client = resolve_client(ctx.db, ctx.user_email, cid) if cid else None
+        if not client:
+            return {"error": "No matching client — call list_clients to see the available names."}
+        return client
 
     if name == "list_gsc_properties":
         from services.gsc_service import get_user_properties
@@ -627,6 +674,8 @@ def _activity_label(name: str) -> str:
         "list_ads_customers": "Listing Google Ads accounts…",
         "ga4_overview": "Fetching GA4 traffic…",
         "ads_overview": "Fetching Google Ads performance…",
+        "list_clients": "Looking up your clients…",
+        "get_client": "Resolving the client…",
         "gsc_overview": "Pulling the organic search overview…",
         "gsc_movers": "Finding the biggest movers…",
         "gsc_ctr_opportunities": "Looking for CTR quick wins…",
