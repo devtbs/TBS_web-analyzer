@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import {
@@ -21,7 +21,7 @@ const HEALTH = {
 };
 
 /* One channel metric card. `data`: null = not linked, {error} = failed, else {totals, deltas, sparkline}. */
-function ChannelCard({ title, Icon, data, rows, onOpen }) {
+function ChannelCard({ title, Icon, data, rows, onOpen, matching }) {
     const linked = data && !data.error;
     const spark = ((data && data.sparkline) || []).map((v, i) => ({ i, v }));
     return (
@@ -34,7 +34,9 @@ function ChannelCard({ title, Icon, data, rows, onOpen }) {
                 <span className="font-bold text-slate-700 text-[14px]">{title}</span>
             </div>
             {!data ? (
-                <div className="px-5 py-8 text-center text-[13px] text-slate-400">Not linked — add it in Edit.</div>
+                <div className="px-5 py-8 text-center text-[13px] text-slate-400">
+                    {matching ? 'Checking for a match…' : 'Not linked — add it in Edit.'}
+                </div>
             ) : data.error ? (
                 <div className="px-5 py-8 text-center text-[13px] text-red-500">{data.error}</div>
             ) : (
@@ -87,6 +89,8 @@ export default function ClientHub() {
     const [decks, setDecks] = useState([]);
     const [editing, setEditing] = useState(false);
     const [genMsg, setGenMsg] = useState(null);   // inline generate progress; null = idle
+    const [matching, setMatching] = useState(false);  // auto-linking GA4/Ads in the background
+    const matchedRef = useRef(null);                  // client id we've already auto-matched this mount
 
     const client = data?.client;
 
@@ -97,17 +101,35 @@ export default function ClientHub() {
             // Selecting the client wires the account + property keys so the deep-dive links and the
             // scoped deck generation all target the right Google account.
             if (res.data.client) selectClient(res.data.client);
+            return res.data.client;
         } catch {
             toast.error('Could not load client');
         } finally { setLoading(false); }
     }, [id]);
+
+    // Auto-link GA4/Ads (using the client's own account) for anything not linked yet — once per open.
+    const tryAutoMatch = useCallback(async (c) => {
+        if (!c || matchedRef.current === id) return;
+        if (c.ga4_property_id && c.ads_customer_id) return;   // nothing left to match
+        matchedRef.current = id;
+        setMatching(true);
+        try {
+            const res = await api.post(`/api/clients/${id}/automatch`);
+            if (Object.keys(res.data.changed || {}).length) {
+                const added = Object.keys(res.data.changed)
+                    .map(k => (k === 'ga4_property_id' ? 'GA4' : 'Ads')).join(' + ');
+                toast.success(`Auto-linked ${added}`);
+                await loadHub();   // refetch so the newly-linked channel's metrics render
+            }
+        } catch { /* best-effort */ } finally { setMatching(false); }
+    }, [id, loadHub]);
 
     const loadDecks = useCallback(async () => {
         try { setDecks((await api.get(`/api/documents?client_id=${id}`)).data || []); }
         catch { /* non-fatal */ }
     }, [id]);
 
-    useEffect(() => { loadHub(); loadDecks(); }, [loadHub, loadDecks]);
+    useEffect(() => { loadHub().then(tryAutoMatch); loadDecks(); }, [loadHub, loadDecks, tryAutoMatch]);
 
     // Health pill for the account backing this client.
     useEffect(() => {
@@ -202,11 +224,11 @@ export default function ClientHub() {
                 <ChannelCard title="Search Console" Icon={MagnifyingGlassIcon} data={data.gsc}
                     onOpen={() => navigate('/seo-analytics')}
                     rows={[{ key: 'clicks', label: 'Clicks' }, { key: 'impressions', label: 'Impressions' }]} />
-                <ChannelCard title="Analytics (GA4)" Icon={ChartPieIcon} data={data.ga4}
+                <ChannelCard title="Analytics (GA4)" Icon={ChartPieIcon} data={data.ga4} matching={matching}
                     onOpen={() => navigate('/ga4-analytics')}
                     rows={[{ key: 'users', label: 'Users' }, { key: 'sessions', label: 'Sessions' },
                            ...(data.ga4 && !data.ga4.error && data.ga4.totals?.revenue ? [{ key: 'revenue', label: 'Revenue' }] : [{ key: 'conversions', label: 'Conversions' }])]} />
-                <ChannelCard title="Google Ads" Icon={MegaphoneIcon} data={data.ads}
+                <ChannelCard title="Google Ads" Icon={MegaphoneIcon} data={data.ads} matching={matching}
                     onOpen={() => navigate('/google-ads')}
                     rows={[{ key: 'cost', label: 'Spend', prefix: (data.ads?.currency ? data.ads.currency + ' ' : '') },
                            { key: 'conversions', label: 'Conversions' },

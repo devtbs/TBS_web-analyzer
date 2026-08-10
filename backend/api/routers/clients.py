@@ -371,3 +371,53 @@ async def client_hub(client_id: str, days: int = 28,
 
     gsc, ga4, ads = await asyncio.gather(_gsc(), _ga4(), _ads())
     return {"client": client, "gsc": gsc, "ga4": ga4, "ads": ads}
+
+
+@router.post("/api/clients/{client_id}/automatch")
+async def client_automatch(client_id: str,
+                           current_user: UserInfo = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    """Best-effort auto-link of a client's GA4 property and Ads customer, using the client's OWN
+    Google account (unlike seed-time matching, which only checked the primary account — which is why
+    clients on a 2nd/3rd account came up unlinked). Only fills fields that are currently empty, and
+    only links an Ads account on an UNAMBIGUOUS single name match (a wrong Ads link is worse than
+    none). Returns the updated client + which fields changed."""
+    from api.routers._shared import _ga4_service_for, _ads_service_for
+    from services.report_generator import _brand_core
+
+    email = current_user.email
+    c = (db.query(Client)
+         .filter(Client.id == client_id, Client.user_email == email).first())
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found.")
+    acct = c.google_account_id
+    changed = {}
+
+    # GA4 — match the property whose data-stream host equals the client's domain.
+    if not c.ga4_property_id and c.domain:
+        try:
+            match = await _ga4_service_for(db, email, acct).find_property_for_domain(c.domain)
+            pid = (match or {}).get("property_id")
+            if pid:
+                c.ga4_property_id = pid
+                changed["ga4_property_id"] = pid
+        except Exception as e:
+            logger.info("automatch ga4 %s: %s", client_id, str(e)[:120])
+
+    # Ads — match the account whose name contains the client's brand token, only if exactly one.
+    if not c.ads_customer_id and c.domain:
+        try:
+            svc = _ads_service_for(db, email, acct, required=False)
+            if svc:
+                brand = _brand_core(c.domain)
+                custs = await svc.get_customers()
+                hits = [x for x in (custs or []) if brand and brand in (x.get("display", "").lower())]
+                if len(hits) == 1:
+                    c.ads_customer_id = hits[0]["customer_id"]
+                    changed["ads_customer_id"] = hits[0]["customer_id"]
+        except Exception as e:
+            logger.info("automatch ads %s: %s", client_id, str(e)[:120])
+
+    if changed:
+        db.commit()
+    return {"client": _serialize(c), "changed": changed}
