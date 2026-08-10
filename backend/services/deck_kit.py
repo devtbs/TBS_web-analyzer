@@ -198,6 +198,12 @@ tbody tr.more td{text-align:left;font-size:18px;font-style:italic;color:var(--k-
   padding:11px 0;border-bottom:1px solid rgba(0,0,0,.06);font-size:21px}
 .mover:last-child{border-bottom:0}
 .mover .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--k-ink)}
+/* "+N more" — appended by the list-fit pass when rows were dropped to fit. Quiet but present, so
+   the reader can tell the column was truncated rather than silently shortened. */
+.mover.more{justify-content:flex-start;font-size:17px;font-style:italic;color:var(--k-muted);
+  border-bottom:0}
+.card.more{align-items:center;justify-content:center;text-align:center;background:transparent;
+  border:1px dashed var(--k-line);color:var(--k-muted);font-size:19px;font-style:italic}
 
 /* ── priority rows ──────────────────────────────────────────────────────────────── */
 .prio{display:flex;align-items:center;gap:28px;border:1px solid var(--k-line);border-radius:16px;

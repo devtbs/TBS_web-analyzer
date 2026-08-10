@@ -2498,6 +2498,46 @@ def _fit_tables(html: str) -> str:
     return html + _TABLE_FIT_JS
 
 
+# Same principle as _TABLE_FIT_JS, for the two OTHER list structures that clip silently: card grids
+# and the risers/fallers mover columns. QA found these losing whole rows with no sign — one deck hid
+# 11 of 23 mover rows, including the entire rising-pages list, on a slide that looked finished. A
+# dropped item is only honest if the reader can tell it happened, so trailing items are removed and a
+# "+N more" tile/row is appended. Measured after layout because only the browser knows what fits.
+_LIST_FIT_JS = (
+    "<script>(function(){"
+    "function clipBox(el){var n=el.parentElement;"
+    "while(n&&!n.classList.contains('slide')){var o=getComputedStyle(n).overflowY;"
+    "if(o==='hidden'||o==='auto'||o==='scroll')return n;n=n.parentElement;}return n;}"
+    "function fit(box,item,make){"
+    "var clip=clipBox(box);if(!clip)return;"
+    "var limit=clip.getBoundingClientRect().bottom-6;var note=null,dropped=0,guard=0;"
+    "function items(){return Array.prototype.slice.call(box.children)"
+    ".filter(function(x){return x!==note&&x.matches(item);});}"
+    "function over(){var ref=note||items().slice(-1)[0];"
+    "return ref?ref.getBoundingClientRect().bottom>limit:false;}"
+    "while(over()&&guard++<400){var it=items();if(it.length<=1)break;"
+    "box.removeChild(it[it.length-1]);dropped++;"
+    "if(!note){note=make();box.appendChild(note);}"
+    "note.textContent='+'+dropped+' more';}"
+    "}"
+    "document.querySelectorAll('.slide .card-grid').forEach(function(g){"
+    "fit(g,'.card',function(){var d=document.createElement('div');d.className='card more';return d;});});"
+    "document.querySelectorAll('.slide .mover-col').forEach(function(c){"
+    "fit(c,'.mover',function(){var d=document.createElement('div');d.className='mover more';return d;});});"
+    "})();</script>"
+)
+
+
+def _fit_lists(html: str) -> str:
+    """Trim overflowing card grids and mover columns, declaring '+N more'. Before autofit, same as
+    _fit_tables, so autofit measures the already-trimmed slide."""
+    if "card-grid" not in html and "mover-col" not in html:
+        return html
+    if "</body>" in html:
+        return html.replace("</body>", _LIST_FIT_JS + "</body>", 1)
+    return html + _LIST_FIT_JS
+
+
 def _inject_autofit(html: str) -> str:
     """Scale-to-fit any content slide whose content overflows the 1080px canvas."""
     if "slide" not in html:
@@ -2598,6 +2638,7 @@ def _prepare_html_for_render(html: str) -> str:
     # Drop table rows that don't fit and declare the count — before autofit, so it
     # measures the real layout and autofit then sees the trimmed table.
     html = _fit_tables(html)
+    html = _fit_lists(html)
     html = _inject_autofit(html)
     if not any(k in html for k in ("Plotly.newPlot", "plot.ly", "plotly-spec")):
         return html
