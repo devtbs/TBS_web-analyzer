@@ -163,6 +163,37 @@ class AlertEvent(Base):
     read_at = Column(DateTime, nullable=True)
 
 
+class Client(Base):
+    """A managed client — one business, with the platform assets that belong to it.
+
+    The agency thinks in clients, not properties. This is a self-contained MAPPING row: it links a
+    client name/domain to its GSC property, GA4 property, Ads customer and Bing site, plus the brand
+    terms to exclude. It deliberately has NO foreign keys INTO analyses/documents/audits — the app
+    still runs off the resolved property ids, so no existing table needs altering (create_all only
+    adds missing tables, it never ALTERs). Rows auto-seed from GSC properties across every connected
+    account, which is also what makes a 2nd/3rd Google account's sites visible in one place.
+
+    `google_account_id` names which connected account owns the assets (NULL = the primary token on
+    the User row), so a client resolves to the right token even across multiple Gmails.
+    """
+    __tablename__ = "clients"
+    # One client per GSC property per user, so auto-seed is idempotent (re-seeding creates no dupes).
+    __table_args__ = (UniqueConstraint("user_email", "gsc_property", name="uq_user_client_gsc"),)
+
+    id                = Column(String, primary_key=True, index=True)
+    user_email        = Column(String, index=True, nullable=False)
+    name              = Column(String, nullable=False)
+    domain            = Column(String, nullable=True)
+    google_account_id = Column(Integer, nullable=True)   # NULL = primary token; else GoogleAccount.id
+    gsc_property      = Column(String, nullable=True)
+    ga4_property_id   = Column(String, nullable=True)
+    ads_customer_id   = Column(String, nullable=True)
+    bing_site         = Column(String, nullable=True)
+    brand_terms       = Column(Text, nullable=True)
+    archived          = Column(Boolean, default=False, nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 # Create tables
 def init_db():
     """Initialize database tables"""
