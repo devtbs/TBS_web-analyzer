@@ -119,6 +119,46 @@ class AdsService:
         async with GOOGLE_CALL_GATE:
             return await asyncio.to_thread(_run)
 
+    async def generate_keyword_ideas(self, seeds: List[str], customer_id: str = None,
+                                     language_id: str = "1000", geo_ids: List[str] = None) -> List[Dict]:
+        """Real monthly search volumes + related keyword ideas from the Keyword Planner.
+
+        Runs under `customer_id` (a client account) or, if absent, the configured MCC login customer —
+        idea generation only needs a valid billing account context, not the specific client. Returns
+        [{keyword, avg_monthly_searches, competition}] sorted by volume. Best-effort — the caller
+        wraps this in try/except so a failure just leaves volumes empty."""
+        from config import settings
+        cid = (customer_id or settings.GOOGLE_ADS_LOGIN_CUSTOMER_ID or "").replace("-", "").strip()
+        seeds = [s for s in (seeds or []) if s and s.strip()][:20]
+        if not cid or not seeds:
+            return []
+
+        def _run():
+            svc = self.client.get_service("KeywordPlanIdeaService")
+            req = self.client.get_type("GenerateKeywordIdeasRequest")
+            req.customer_id = cid
+            req.language = f"languageConstants/{language_id}"
+            req.include_adult_keywords = False
+            if geo_ids:
+                req.geo_target_constants.extend([f"geoTargetConstants/{g}" for g in geo_ids])
+            req.keyword_seed.keywords.extend(seeds)
+            return svc.generate_keyword_ideas(request=req)
+
+        from services.gsc_service import GOOGLE_CALL_GATE
+        async with GOOGLE_CALL_GATE:
+            resp = await asyncio.to_thread(_run)
+
+        out = []
+        for idea in resp:
+            m = idea.keyword_idea_metrics
+            out.append({
+                "keyword": idea.text,
+                "avg_monthly_searches": int(getattr(m, "avg_monthly_searches", 0) or 0),
+                "competition": getattr(getattr(m, "competition", None), "name", "") or "",
+            })
+        out.sort(key=lambda x: x["avg_monthly_searches"], reverse=True)
+        return out[:50]
+
     async def get_customers(self) -> List[Dict]:
         """List Google Ads accounts under the configured MCC, or all accessible accounts
         if no MCC login_customer_id is set."""

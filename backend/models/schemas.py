@@ -158,6 +158,13 @@ class OntologyRelation(BaseModel):
     context: str  # The context or domain where this relationship applies
 
 
+class KeywordVolume(BaseModel):
+    """Real monthly search volume for a keyword (Google Ads Keyword Planner)."""
+    keyword: str
+    avg_monthly_searches: int = 0
+    competition: Optional[str] = None
+
+
 class TopicalMapData(BaseModel):
     """Comprehensive topical map with semantic analysis"""
     # Basic Information
@@ -192,6 +199,9 @@ class TopicalMapData(BaseModel):
     # Taxonomy & Ontology (New Features)
     taxonomy: Optional[List[TaxonomyNode]] = None  # Hierarchical content taxonomy
     ontology: Optional[List[OntologyRelation]] = None  # Subject-Predicate-Object-Context relationships
+
+    # Real keyword search volumes (Google Ads Keyword Planner) — injected from grounding, not the LLM
+    keyword_volumes: Optional[List[KeywordVolume]] = None
 
 
 

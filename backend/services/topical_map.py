@@ -1,5 +1,5 @@
 from typing import Dict, List
-from models.schemas import TopicalMapData
+from models.schemas import TopicalMapData, KeywordVolume
 from .ai_service import ai_service
 import json
 import asyncio
@@ -294,6 +294,9 @@ Search Console queries). This is ground truth. You MUST:
 ✓ Build taxonomy, content_strategy.core_topics/outer_topics, and content_gaps from
   real_data.competitor_structure (the H1/H2/H3 the top-ranking pages actually use). content_gaps =
   subtopics the competitors cover that this site does not.
+✓ real_data.keyword_volumes has REAL monthly search volumes. Prioritize key_topics,
+  content_strategy.priority_areas and higher-priority content_articles toward the
+  higher-volume keywords. Never invent volume numbers.
 ✓ Where a real_data field is empty, fall back to your own analysis — but always prefer real_data
   when present.
 """
@@ -616,7 +619,12 @@ Generate 15 diverse articles mixing Core and Outer sections. Return ONLY the JSO
                 content_articles=content_articles,  # Initial articles from AI response
                 seo_optimization=seo_optimization,
                 taxonomy=taxonomy,
-                ontology=ontology
+                ontology=ontology,
+                # Real search volumes come straight from grounding (Keyword Planner), never the LLM.
+                keyword_volumes=[
+                    KeywordVolume(**kv) for kv in (real_data.get('keyword_volumes') or [])[:40]
+                    if isinstance(kv, dict) and kv.get('keyword')
+                ] or None,
             )
             
         except Exception as e:

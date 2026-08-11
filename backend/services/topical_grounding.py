@@ -89,8 +89,21 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         except Exception as e:
             logger.warning("grounding GSC failed for %s: %s", gsc_property, str(e)[:150])
 
-    # ── 4. (Phase 3) Real search volumes from Google Ads Keyword Planner ─────────────────────
-    # Wired in a later phase; left empty here so the schema/consumers are stable.
+    # ── 4. Real monthly search volumes from Google Ads Keyword Planner ───────────────────────
+    # Seeds + the real queries we already gathered make the best idea seeds. Runs whenever the
+    # account has an Ads connection; degrades to empty otherwise.
+    if db is not None and email:
+        try:
+            from services.ads_service import ads_is_configured
+            if ads_is_configured():
+                from api.routers._shared import _ads_service_for
+                svc = _ads_service_for(db, email, account_id, required=False)
+                if svc:
+                    idea_seeds = seeds + [q for q in out["serp"]["related_searches"][:6]]
+                    out["keyword_volumes"] = await svc.generate_keyword_ideas(
+                        idea_seeds, customer_id=ads_customer_id)
+        except Exception as e:
+            logger.warning("grounding ads volumes failed for %s: %s", domain, str(e)[:150])
 
     logger.info("grounding %s: %d competitors, %d PAA, %d related, %d scraped, %d gsc",
                 domain, len(out["serp"]["top_competitors"]), len(out["serp"]["people_also_ask"]),

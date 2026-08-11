@@ -628,6 +628,33 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 </div>
             </div>
 
+            {/* Keyword opportunities — REAL search volume (Google Ads Keyword Planner) */}
+            {activeMap.keyword_volumes?.length > 0 && (
+                <div id="export-keyword-volumes" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+                    <SectionHeader title="Keyword Opportunities — Real Search Volume" color="from-indigo-600 to-indigo-800" icon={GlobeAltIcon} elementId="export-keyword-volumes" />
+                    <div className="p-4 overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead>
+                                <tr className="text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
+                                    <th className="py-2 pr-4 font-bold">Keyword</th>
+                                    <th className="py-2 pr-4 font-bold text-right">Monthly searches</th>
+                                    <th className="py-2 font-bold">Competition</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {activeMap.keyword_volumes.slice(0, 30).map((kv, idx) => (
+                                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/60">
+                                        <td className="py-2 pr-4 font-medium text-slate-800">{kv.keyword}</td>
+                                        <td className="py-2 pr-4 text-right font-bold text-indigo-700 tabular-nums">{(kv.avg_monthly_searches || 0).toLocaleString()}</td>
+                                        <td className="py-2 text-slate-500 capitalize">{(kv.competition || '').toLowerCase()}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
             {/* Business Overview - Two Column */}
             <div id="export-business-overview" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
                 <SectionHeader title="Business Overview" color="from-slate-800 to-slate-900" icon={GlobeAltIcon} elementId="export-business-overview" />
