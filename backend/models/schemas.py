@@ -167,6 +167,13 @@ class KeywordVolume(BaseModel):
     competition: Optional[str] = None
 
 
+class KeywordCluster(BaseModel):
+    """A group of opportunity keywords that share SERP results — i.e. one content piece."""
+    label: str
+    total_volume: int = 0
+    keywords: List[dict] = []          # [{keyword, volume, kd}]
+
+
 class TopicalMapData(BaseModel):
     """Comprehensive topical map with semantic analysis"""
     # Basic Information
@@ -202,8 +209,9 @@ class TopicalMapData(BaseModel):
     taxonomy: Optional[List[TaxonomyNode]] = None  # Hierarchical content taxonomy
     ontology: Optional[List[OntologyRelation]] = None  # Subject-Predicate-Object-Context relationships
 
-    # Real keyword search volumes (Google Ads Keyword Planner) — injected from grounding, not the LLM
+    # Real keyword search volumes + SERP-overlap clusters — injected from grounding, not the LLM
     keyword_volumes: Optional[List[KeywordVolume]] = None
+    keyword_clusters: Optional[List[KeywordCluster]] = None
 
 
 

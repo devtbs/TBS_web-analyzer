@@ -1,5 +1,5 @@
 from typing import Dict, List
-from models.schemas import TopicalMapData, KeywordVolume
+from models.schemas import TopicalMapData, KeywordVolume, KeywordCluster
 from .ai_service import ai_service
 import json
 import asyncio
@@ -313,6 +313,10 @@ Search Console queries). This is ground truth. You MUST:
   volumes or KD.
 ✓ real_data.adjacent_topics and real_data.competitor_topics are closely-related subject areas around
   the core theme — use them to broaden outer_topics / content_gaps beyond the exact seed queries.
+✓ real_data.keyword_clusters are opportunity keywords GROUPED BY REAL SERP OVERLAP — each cluster is
+  ONE page/article (keywords Google ranks the same URLs for). Use these clusters as the backbone of
+  the taxonomy and content_articles: one article per cluster, titled from the cluster label, and
+  keep a cluster's keywords together on that single page (do not split them across pages).
 ✓ Where a real_data field is empty, fall back to your own analysis — but always prefer real_data
   when present.
 """
@@ -636,10 +640,15 @@ Generate 15 diverse articles mixing Core and Outer sections. Return ONLY the JSO
                 seo_optimization=seo_optimization,
                 taxonomy=taxonomy,
                 ontology=ontology,
-                # Real search volumes come straight from grounding (Keyword Planner), never the LLM.
+                # Real search volumes come straight from grounding (Mangools), never the LLM.
                 keyword_volumes=[
                     KeywordVolume(**kv) for kv in (real_data.get('keyword_volumes') or [])[:40]
                     if isinstance(kv, dict) and kv.get('keyword')
+                ] or None,
+                # SERP-overlap content clusters (also grounding-computed, deterministic).
+                keyword_clusters=[
+                    KeywordCluster(**kc) for kc in (real_data.get('keyword_clusters') or [])[:20]
+                    if isinstance(kc, dict) and kc.get('label')
                 ] or None,
             )
             

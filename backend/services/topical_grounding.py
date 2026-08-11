@@ -119,6 +119,7 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         "adjacent_topics": [],
         "gsc_queries": [],
         "keyword_volumes": [],   # NEW opportunities (already-ranked queries excluded)
+        "keyword_clusters": [],  # opportunities grouped into content pieces by SERP overlap
         "already_ranked": [],    # queries the site already ranks <=10 for (for context)
     }
     own = _bare(domain)
@@ -251,7 +252,20 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
     except Exception as e:
         logger.warning("grounding keyword volumes failed for %s: %s", domain, str(e)[:150])
 
-    logger.info("grounding %s: %d competitors, %d comp-topics, %d gsc, %d opps (%d already-ranked)",
+    # ── 5. Cluster the opportunities into content pieces by SERP overlap (no third-party API). ─
+    try:
+        if out["keyword_volumes"]:
+            from services.keyword_clustering import cluster_by_serp
+            from services.serp_service import serp_service
+            loc = serp_service._detect_location_from_domain(domain)
+            rows = [{"keyword": k["keyword"], "volume": k.get("avg_monthly_searches"), "kd": k.get("kd")}
+                    for k in out["keyword_volumes"]]
+            out["keyword_clusters"] = await cluster_by_serp(rows, location=loc)
+    except Exception as e:
+        logger.warning("grounding clustering failed for %s: %s", domain, str(e)[:150])
+
+    logger.info("grounding %s: %d competitors, %d comp-topics, %d gsc, %d opps (%d already-ranked), %d clusters",
                 domain, len(out["serp"]["top_competitors"]), len(out["competitor_topics"]),
-                len(out["gsc_queries"]), len(out["keyword_volumes"]), len(out["already_ranked"]))
+                len(out["gsc_queries"]), len(out["keyword_volumes"]), len(out["already_ranked"]),
+                len(out["keyword_clusters"]))
     return out

@@ -663,6 +663,31 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 </div>
             )}
 
+            {/* Content clusters — opportunity keywords grouped by real SERP overlap (one page each) */}
+            {activeMap.keyword_clusters?.length > 0 && (
+                <div id="export-keyword-clusters" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+                    <SectionHeader title="Content Clusters — Grouped by Real SERP Overlap" color="from-teal-600 to-teal-800" icon={GlobeAltIcon} elementId="export-keyword-clusters" />
+                    <p className="px-4 pt-3 text-[12px] text-slate-500">Each cluster = one page to create. Keywords are grouped because Google ranks the same URLs for them.</p>
+                    <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {activeMap.keyword_clusters.slice(0, 16).map((c, idx) => (
+                            <div key={idx} className="rounded-xl border border-slate-200/70 p-3.5">
+                                <div className="flex items-center justify-between gap-2 mb-2">
+                                    <span className="font-bold text-slate-800 text-[14px] truncate">{c.label}</span>
+                                    <span className="shrink-0 text-[12px] font-bold text-teal-700 tabular-nums">{(c.total_volume || 0).toLocaleString()}/mo</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(c.keywords || []).slice(0, 10).map((k, i) => (
+                                        <span key={i} className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[11px] font-medium">
+                                            {k.keyword}{k.volume ? ` · ${Number(k.volume).toLocaleString()}` : ''}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Business Overview - Two Column */}
             <div id="export-business-overview" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
                 <SectionHeader title="Business Overview" color="from-slate-800 to-slate-900" icon={GlobeAltIcon} elementId="export-business-overview" />
