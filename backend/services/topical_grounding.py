@@ -20,9 +20,36 @@ SEED_CAP = 6            # SerpAPI credits per analysis
 COMPETITOR_SCRAPE_CAP = 6
 GSC_QUERY_CAP = 50
 
+# Sites that show up in organic results but are NOT niche competitors — job boards, news, social,
+# directories, encyclopaedias, marketplaces. Filtered out so the map's competitors are real rivals.
+NOISE_DOMAIN_BITS = (
+    "wikipedia.", "linkedin.", "facebook.", "instagram.", "youtube.", "twitter.", "x.com", "tiktok.",
+    "reddit.", "quora.", "pinterest.", "medium.com", "blogspot.", "wordpress.com",
+    "jobsdb", "jobstreet", "indeed.", "glassdoor", "jobthai",
+    "bangkokpost", "nationthailand", "thairath", "posttoday", "sanook.", "kapook.", "pantip.",
+    "investopedia.", "tradingview.", "amazon.", "booking.", "agoda.", "tripadvisor", "lazada.",
+    "shopee.", "yellowpages", "yelp.", "google.", "bing.",
+)
+
 
 def _bare(domain: str) -> str:
     return (domain or "").lower().replace("https://", "").replace("http://", "").replace("www.", "").strip("/").split("/")[0]
+
+
+def _is_noise(domain: str) -> bool:
+    d = (domain or "").lower()
+    return any(bit in d for bit in NOISE_DOMAIN_BITS)
+
+
+def _brand_tokens(domains, own: str) -> set:
+    """Second-level labels of competitors + the client — used to strip brand/navigational keywords
+    (e.g. 'fbs', 'fxcm', the client's own name) from the search-volume list."""
+    toks = set()
+    for d in list(domains) + [own]:
+        core = _bare(d).split(".")[0]
+        if core and len(core) > 2:
+            toks.add(core)
+    return toks
 
 
 async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, email: Optional[str] = None,
@@ -47,7 +74,8 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
     try:
         from services.serp_service import serp_service
         serp = await serp_service.get_serp_insights(seeds, domain=domain, max_keywords=SEED_CAP)
-        comps = [c for c in (serp.get("top_competitors") or []) if _bare(c.get("domain", "")) != own]
+        comps = [c for c in (serp.get("top_competitors") or [])
+                 if _bare(c.get("domain", "")) != own and not _is_noise(c.get("domain", ""))]
         out["serp"]["top_competitors"] = comps
         out["serp"]["people_also_ask"] = serp.get("people_also_ask") or []
         out["serp"]["related_searches"] = serp.get("related_searches") or []
@@ -100,8 +128,13 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
                 svc = _ads_service_for(db, email, account_id, required=False)
                 if svc:
                     idea_seeds = seeds + [q for q in out["serp"]["related_searches"][:6]]
-                    out["keyword_volumes"] = await svc.generate_keyword_ideas(
-                        idea_seeds, customer_id=ads_customer_id)
+                    vols = await svc.generate_keyword_ideas(idea_seeds, customer_id=ads_customer_id)
+                    # Drop competitor/own brand terms — they're navigational, not topic opportunities.
+                    brand_toks = _brand_tokens([c.get("domain", "") for c in out["serp"]["top_competitors"]], own)
+                    out["keyword_volumes"] = [
+                        v for v in vols
+                        if not any(t in v["keyword"].lower().replace(" ", "") for t in brand_toks)
+                    ]
         except Exception as e:
             logger.warning("grounding ads volumes failed for %s: %s", domain, str(e)[:150])
 
