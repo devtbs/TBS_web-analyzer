@@ -91,7 +91,7 @@ async def stream_progress(
     )
 
 
-async def process_analysis(analysis_id: str, urls: List[str]):
+async def process_analysis(analysis_id: str, urls: List[str], user_email: str = None):
     """Background task to process analysis with AI"""
     from database import SessionLocal
     db = SessionLocal()
@@ -122,7 +122,23 @@ async def process_analysis(analysis_id: str, urls: List[str]):
         # Generate topical maps with AI
         await progress_tracker.update(analysis_id, 3, 'topical_map', 'Creating topical maps and content strategy...')
         print(f"[{analysis_id}] Generating topical maps with AI...")
-        topical_maps = await topical_generator.generate_multiple(scraped_data)
+        # If the analyzed site is one of the user's clients, ground the map in its real GSC queries.
+        gsc_property = account_id = None
+        try:
+            if user_email and urls:
+                from database import Client
+                from urllib.parse import urlparse
+                d = (urlparse(urls[0]).netloc or urls[0]).replace('www.', '')
+                c = (db.query(Client)
+                     .filter(Client.user_email == user_email, Client.archived == False,  # noqa: E712
+                             Client.domain == d, Client.gsc_property.isnot(None)).first())
+                if c:
+                    gsc_property, account_id = c.gsc_property, c.google_account_id
+                    print(f"[{analysis_id}] Grounding with GSC for client {c.name}")
+        except Exception as e:
+            print(f"[{analysis_id}] client resolve skipped: {str(e)[:100]}")
+        topical_maps = await topical_generator.generate_multiple(
+            scraped_data, db=db, email=user_email, gsc_property=gsc_property, account_id=account_id)
         await check_cancelled()
 
         # Generate comparison with AI (if multiple URLs)
@@ -198,7 +214,7 @@ async def analyze_urls(
     analysis_id = database_store.create_analysis(db, current_user.email, request.urls)
 
     # Process in background
-    background_tasks.add_task(process_analysis, analysis_id, request.urls)
+    background_tasks.add_task(process_analysis, analysis_id, request.urls, current_user.email)
 
     return AnalysisResponse(
         analysis_id=analysis_id,

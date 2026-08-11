@@ -42,20 +42,23 @@ class SerpService:
         # Default to US for .com, .net, .org, etc.
         return 'th'
     
-    async def get_serp_insights(self, keywords: List[str], domain: str = None) -> Dict:
+    async def get_serp_insights(self, keywords: List[str], domain: str = None, max_keywords: int = 3) -> Dict:
         """
         Get SERP insights for multiple keywords
         Returns competitor rankings, PAA questions, related searches
+
+        max_keywords caps how many keywords we spend SerpAPI credits on (default 3 for the legacy
+        post-hoc enrichment; the grounding step passes a higher cap to cover the niche).
         """
         if not self.api_key:
             print("⚠️  SerpAPI key not configured, skipping SERP analysis")
             return self._empty_insights()
-        
+
         # Detect location from domain
         location = self._detect_location_from_domain(domain) if domain else 'th'
-        print(f"🔍 Fetching SERP data for {len(keywords[:3])} keywords (location: {location.upper()})...")
-        
-        # Limit to 3 keywords to conserve API credits
+        keywords = keywords[:max_keywords]
+        print(f"🔍 Fetching SERP data for {len(keywords)} keywords (location: {location.upper()})...")
+
         insights = {
             'top_competitors': [],
             'people_also_ask': [],
@@ -65,8 +68,8 @@ class SerpService:
         }
         
         try:
-            # Process keywords in parallel (but limit to 3 to save credits)
-            tasks = [self._fetch_keyword_data(kw, location) for kw in keywords[:3]]
+            # Process the (already-capped) keywords in parallel
+            tasks = [self._fetch_keyword_data(kw, location) for kw in keywords]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
             # Aggregate results
@@ -138,6 +141,7 @@ class SerpService:
             for result in results['organic_results'][:10]:
                 competitors.append({
                     'domain': self._extract_domain(result.get('link', '')),
+                    'url': result.get('link', ''),
                     'title': result.get('title', ''),
                     'position': result.get('position', 0)
                 })

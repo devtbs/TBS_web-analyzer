@@ -35,11 +35,40 @@ class TopicalMapGenerator:
         
         # Return unique themes
         return list(set(themes))[:15]
-    
+
+    def _grounding_seeds(self, content_data: Dict, central_entity: str) -> List[str]:
+        """Pick a handful of short, search-like seed keywords from the site to query the SERP with.
+        Prefers concise heading/theme phrases (real search queries, not full sentences)."""
+        candidates: List[str] = []
+        candidates += (content_data.get('existing_content_themes') or [])
+        candidates += (content_data.get('h1_headings') or [])
+        candidates += (content_data.get('h2_headings') or [])
+        seen, seeds = set(), []
+        for c in candidates:
+            phrase = (c or "").strip()
+            wc = len(phrase.split())
+            if not phrase or wc < 1 or wc > 6:   # keep query-like phrases only
+                continue
+            key = phrase.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            seeds.append(phrase)
+        # Always include a brand/industry seed so a thin site still gets niche SERP data.
+        if central_entity and central_entity.lower() not in seen:
+            seeds.insert(0, central_entity)
+        return seeds[:6]
+
     async def generate_topical_map_with_ai(
         self,
         scraped_data: Dict,
         competitor_context: List[Dict] = None,
+        *,
+        db=None,
+        email: str = None,
+        gsc_property: str = None,
+        account_id: int = None,
+        ads_customer_id: str = None,
     ) -> TopicalMapData:
         """
         Generate comprehensive topical map using AI with detailed 8-part semantic analysis.
@@ -138,7 +167,20 @@ class TopicalMapGenerator:
             ],
             'existing_content_themes': self._extract_content_themes(additional_pages)
         }
-        
+
+        # ── Ground the map in REAL data: top-ranking competitors, real searches (PAA/related),
+        # the subtopics winning pages cover, and (for a connected client) its own GSC queries.
+        # Degrades gracefully — if nothing comes back, the model falls back to its own analysis.
+        from .topical_grounding import gather_grounding
+        seed_keywords = self._grounding_seeds(content_data, central_entity)
+        real_data = await gather_grounding(
+            domain, seed_keywords, db=db, email=email,
+            gsc_property=gsc_property, account_id=account_id, ads_customer_id=ads_customer_id)
+        content_data['real_data'] = real_data
+        has_grounding = bool(real_data.get('serp', {}).get('top_competitors')
+                             or real_data.get('competitor_structure')
+                             or real_data.get('gsc_queries'))
+
         # System prompt for AI analysis
         system_prompt = """You are an expert SEO strategist and business analyst specializing in semantic website analysis and content strategy.
 Analyze the provided website data and create a comprehensive topical map following the 8-part semantic analysis framework.
@@ -239,8 +281,23 @@ DEPTH REQUIREMENTS (minimum counts per field):
 • taxonomy: at least 3 L1 nodes, each with 2+ L2 children, each with 2+ L3 grandchildren (minimum 15 nodes total)
 • ontology: at least 8 rows covering different relationship types
 • content_strategy: at least 6 items each for core_topics, outer_topics, content_gaps
+
+GROUNDING RULES — the Website Data contains a `real_data` block with REAL Google data (top-ranking
+competitors, People-Also-Ask, related searches, the winning pages' headings, and the site's own
+Search Console queries). This is ground truth. You MUST:
+✓ Set competitive_analysis.top_competitors to the domains in real_data.serp.top_competitors (the
+  actual sites ranking for this niche). Do NOT invent competitors.
+✓ Build query_templates and content questions from real_data.serp.people_also_ask,
+  real_data.serp.related_searches and real_data.gsc_queries — these are REAL searches. Classify them
+  by intent (informational/commercial/transactional/navigational/contextual). Do NOT fabricate
+  queries or search volumes.
+✓ Build taxonomy, content_strategy.core_topics/outer_topics, and content_gaps from
+  real_data.competitor_structure (the H1/H2/H3 the top-ranking pages actually use). content_gaps =
+  subtopics the competitors cover that this site does not.
+✓ Where a real_data field is empty, fall back to your own analysis — but always prefer real_data
+  when present.
 """
-        
+
         try:
             # Import AI service at the start
             from .ai_service import ai_service
@@ -401,11 +458,28 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                           "source_context to start with 'Gap vs [competitor domain]: ...'"
                     ).format(domain=domain)
 
+                # Real searches + competitor subtopics to base article ideas on (ground truth).
+                rd = content_data.get('real_data', {})
+                real_q = (rd.get('serp', {}).get('people_also_ask', [])[:10]
+                          + rd.get('serp', {}).get('related_searches', [])[:10]
+                          + [g.get('query') for g in rd.get('gsc_queries', [])[:15] if g.get('query')])
+                comp_subtopics = []
+                for cs in rd.get('competitor_structure', [])[:6]:
+                    comp_subtopics += (cs.get('h2', [])[:6])
+                real_block = ''
+                if real_q or comp_subtopics:
+                    real_block = (
+                        "\n\nREAL SEARCH DATA (base article ideas on THESE actual searches/subtopics, "
+                        "do not invent):\n"
+                        f"  Real queries people search: {real_q[:25]}\n"
+                        f"  Subtopics top-ranking competitors cover: {comp_subtopics[:25]}"
+                    )
+
                 articles_prompt = f"""Generate 15 SEO article ideas for {domain} ({result.get('business_model', 'business')}).
 
 Key topics: {', '.join(key_topics[:5])}
 Core content areas: {', '.join(core_topics[:4])}
-Outer content areas: {', '.join(outer_topics[:4])}{comp_block}
+Outer content areas: {', '.join(outer_topics[:4])}{comp_block}{real_block}
 
 Return ONLY a JSON array (no markdown):
 [
@@ -711,7 +785,9 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
         # If all retries exhausted, return empty list
         return []
     
-    async def generate_multiple(self, scraped_data_list: List[Dict]) -> List[TopicalMapData]:
+    async def generate_multiple(self, scraped_data_list: List[Dict], *, db=None, email: str = None,
+                                gsc_property: str = None, account_id: int = None,
+                                ads_customer_id: str = None) -> List[TopicalMapData]:
         """
         Generate topical maps for multiple URLs.
 
@@ -752,7 +828,10 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
         # ── Step 3: generate primary map with competitor context ──
         tasks = []
         if primary_data:
-            tasks.append(self.generate_topical_map_with_ai(primary_data, competitor_context=competitor_context or None))
+            tasks.append(self.generate_topical_map_with_ai(
+                primary_data, competitor_context=competitor_context or None,
+                db=db, email=email, gsc_property=gsc_property,
+                account_id=account_id, ads_customer_id=ads_customer_id))
         
         if tasks:
             # Use return_exceptions=True to allow partial success
