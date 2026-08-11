@@ -67,6 +67,7 @@ def _norm(rows) -> List[Dict]:
             "kd": r.get("seo"),                 # keyword difficulty 0-100 (may be null on thin kws)
             "cpc": (r.get("cpc") or {}).get("value") if isinstance(r.get("cpc"), dict) else r.get("cpc"),
             "ppc": r.get("ppc"),
+            "position": r.get("position"),      # only present for competitor-keywords (where they rank)
         })
     return out
 
@@ -101,4 +102,32 @@ async def get_related_keywords(seed: str, location_id: int = None, language_id: 
         return rows
     except Exception as e:
         logger.warning("mangools related-keywords '%s' failed: %s", seed, str(e)[:150])
+        return []
+
+
+async def get_competitor_keywords(url: str, location_id: int = None, language_id: int = None) -> List[Dict]:
+    """Keywords a specific domain or URL ranks for (volume/KD/CPC + its position). Cached 24h."""
+    if not mangools_configured() or not url or not url.strip():
+        return []
+    loc = location_id or _DEFAULT_LOCATION
+    lang = _DEFAULT_LANGUAGE if language_id is None else language_id
+    key = ("competitor", url.strip().lower(), loc, lang)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
+    def _run():
+        params = {"url": url, "location_id": loc, "language_id": lang}
+        with httpx.Client(timeout=30) as c:
+            resp = c.get(f"{_BASE}/kwfinder/competitor-keywords", params=params, headers=_headers())
+            resp.raise_for_status()
+            return resp.json()
+
+    try:
+        data = await asyncio.to_thread(_run)
+        rows = _norm(data.get("keywords", []))
+        _CACHE[key] = (time.time(), rows)
+        return rows
+    except Exception as e:
+        logger.warning("mangools competitor-keywords '%s' failed: %s", url, str(e)[:150])
         return []

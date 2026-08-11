@@ -162,6 +162,41 @@ class SerpService:
             'related': related
         }
     
+    async def get_serp_preview(self, query: str, location: str = None) -> Dict:
+        """Full SERP for a single query — for the research wizard's live 'Test Search' step.
+        Returns top-10 organic (title/url/domain/position/snippet), PAA, related, knowledge panel."""
+        empty = {"query": query, "organic": [], "people_also_ask": [], "related_searches": [], "knowledge_graph": None}
+        if not self.api_key or not query:
+            return empty
+        loc = location or 'th'
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._serp_preview_sync, query, loc)
+        except Exception as e:
+            print(f"⚠️  SERP preview error: {str(e)}")
+            return empty
+
+    def _serp_preview_sync(self, query: str, location: str) -> Dict:
+        params = {"q": query, "api_key": self.api_key, "num": 10, "gl": location, "hl": "en"}
+        results = GoogleSearch(params).get_dict()
+        organic = [{
+            "position": r.get("position"),
+            "title": r.get("title", ""),
+            "url": r.get("link", ""),
+            "domain": self._extract_domain(r.get("link", "")),
+            "snippet": r.get("snippet", ""),
+        } for r in (results.get("organic_results") or [])[:10]]
+        kg = results.get("knowledge_graph") or {}
+        knowledge = ({"title": kg.get("title"), "type": kg.get("type"),
+                      "description": kg.get("description")} if kg else None)
+        return {
+            "query": query,
+            "organic": organic,
+            "people_also_ask": [q.get("question", "") for q in (results.get("related_questions") or [])],
+            "related_searches": [s.get("query", "") for s in (results.get("related_searches") or [])],
+            "knowledge_graph": knowledge,
+        }
+
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL"""
         from urllib.parse import urlparse

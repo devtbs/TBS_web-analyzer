@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import GSCPropertySelector from '../components/gsc/GSCPropertySelector';
+import ResearchWizard from '../components/research/ResearchWizard';
 import {
     PlusIcon,
     XMarkIcon,
@@ -39,6 +40,7 @@ const NewAnalysis = () => {
     const location = useLocation();
     const [urls, setUrls] = useState(['']);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [mode, setMode] = useState('research');   // 'research' wizard | 'quick' (site analysis)
     const [useGSC, setUseGSC] = useState(true);
     const [tabLoading, setTabLoading] = useState(false);
     const tabTimerRef = useRef(null);
@@ -171,6 +173,19 @@ const NewAnalysis = () => {
                         transition={{ duration: 0.4, ease: 'easeOut' }}
                         className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 sm:p-8 relative"
                     >
+                        {/* ── Top-level mode: guided research wizard vs quick site analysis ── */}
+                        <div className="flex justify-center gap-2 mb-6">
+                            <button onClick={() => setMode('research')}
+                                className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'research' ? 'bg-[#26397A] text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
+                                Guided Research
+                            </button>
+                            <button onClick={() => setMode('quick')}
+                                className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'quick' ? 'bg-[#26397A] text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
+                                Quick Analysis
+                            </button>
+                        </div>
+
+                        {mode === 'research' ? <ResearchWizard /> : (<>
                         {/* ── Mode Toggle ── */}
                         <div className="flex justify-center mb-6">
                             <div className="bg-slate-50/80 rounded-full p-2 flex relative w-full sm:w-[560px]">
@@ -356,7 +371,7 @@ const NewAnalysis = () => {
                                 )}
                             </motion.button>
                         </div>
-                        
+                        </>)}
                     </motion.div>
                 </div>
             </div>

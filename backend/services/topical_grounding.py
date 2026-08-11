@@ -106,10 +106,54 @@ async def _adjacent_topic_seeds(domain: str, seeds: List[str], gsc_queries: List
         return []
 
 
+async def _grounding_from_research(out: Dict, domain: str, own: str, research: Dict) -> Dict:
+    """Build the real_data block from the wizard's curated selection (keywords/clusters/domains)."""
+    domains = [_bare(d) for d in (research.get("domains") or []) if d]
+    out["serp"]["top_competitors"] = [{"domain": d, "url": f"https://{d}/"} for d in domains if d != own]
+    out["seed_keywords"] = [s for s in [research.get("seed")] if s]
+
+    # The user's selected keywords → the opportunity table (already ranked-by the wizard).
+    out["keyword_volumes"] = [
+        {"keyword": k.get("keyword"), "avg_monthly_searches": k.get("volume") or k.get("avg_monthly_searches") or 0,
+         "kd": k.get("kd"), "cpc": k.get("cpc"), "competition": None}
+        for k in (research.get("keywords") or []) if k.get("keyword")
+    ][:60]
+    out["keyword_clusters"] = research.get("clusters") or []
+
+    # Scrape the chosen competitor domains for the subtopics they cover (grounds the taxonomy).
+    urls = [f"https://{d}/" for d in domains][:COMPETITOR_SCRAPE_CAP]
+    if urls:
+        try:
+            from services.scraper import scraper
+            pages = await scraper.scrape_multiple(urls)
+            for p in pages or []:
+                if p.get("status") != "success":
+                    continue
+                h = p.get("headings") or {}
+                out["competitor_structure"].append({
+                    "url": p.get("url"), "domain": _bare(p.get("url", "")),
+                    "title": (p.get("title") or "")[:200],
+                    "h1": (h.get("h1") or [])[:5], "h2": (h.get("h2") or [])[:25], "h3": (h.get("h3") or [])[:30],
+                })
+                for hh in (h.get("h2") or [])[:6]:
+                    out["competitor_topics"].append(hh)
+        except Exception as e:
+            logger.warning("research grounding scrape failed: %s", str(e)[:120])
+    out["competitor_topics"] = list(dict.fromkeys(out["competitor_topics"]))[:40]
+    logger.info("grounding(research) %s: %d kw, %d clusters, %d domains",
+                domain, len(out["keyword_volumes"]), len(out["keyword_clusters"]), len(domains))
+    return out
+
+
 async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, email: Optional[str] = None,
                            gsc_property: Optional[str] = None, account_id: Optional[int] = None,
-                           ads_customer_id: Optional[str] = None) -> Dict:
-    """Assemble the real_data block. Never raises — returns whatever it could gather."""
+                           ads_customer_id: Optional[str] = None, research: Optional[Dict] = None) -> Dict:
+    """Assemble the real_data block. Never raises — returns whatever it could gather.
+
+    When `research` (from the New Analysis wizard) is provided, the map is built from the user's
+    CURATED picks — their selected keywords, clusters and competitor domains — instead of auto-deriving
+    from GSC/SERP. We still scrape the chosen domains for their page subtopics.
+    """
     heading_seeds = [s for s in (seed_keywords or []) if s and s.strip()][:SEED_CAP]
     out: Dict = {
         "seed_keywords": [],
@@ -123,6 +167,10 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         "already_ranked": [],    # queries the site already ranks <=10 for (for context)
     }
     own = _bare(domain)
+
+    # ── Curated (wizard) mode: use the user's selections directly. ───────────────────────────
+    if research and (research.get("keywords") or research.get("domains") or research.get("clusters")):
+        return await _grounding_from_research(out, domain, own, research)
 
     # ── 0. The site's own ranking queries (GSC) — real ground truth AND the best SERP seeds. ────
     if gsc_property and db is not None and email:

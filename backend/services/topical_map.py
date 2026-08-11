@@ -69,6 +69,7 @@ class TopicalMapGenerator:
         gsc_property: str = None,
         account_id: int = None,
         ads_customer_id: str = None,
+        research: dict = None,
     ) -> TopicalMapData:
         """
         Generate comprehensive topical map using AI with detailed 8-part semantic analysis.
@@ -187,7 +188,8 @@ class TopicalMapGenerator:
         seed_keywords = self._grounding_seeds(content_data, central_entity)
         real_data = await gather_grounding(
             domain, seed_keywords, db=db, email=email,
-            gsc_property=gsc_property, account_id=account_id, ads_customer_id=ads_customer_id)
+            gsc_property=gsc_property, account_id=account_id, ads_customer_id=ads_customer_id,
+            research=research)
         content_data['real_data'] = real_data
         has_grounding = bool(real_data.get('serp', {}).get('top_competitors')
                              or real_data.get('competitor_structure')
@@ -822,7 +824,7 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
     
     async def generate_multiple(self, scraped_data_list: List[Dict], *, db=None, email: str = None,
                                 gsc_property: str = None, account_id: int = None,
-                                ads_customer_id: str = None) -> List[TopicalMapData]:
+                                ads_customer_id: str = None, research: dict = None) -> List[TopicalMapData]:
         """
         Generate topical maps for multiple URLs.
 
@@ -866,7 +868,7 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
             tasks.append(self.generate_topical_map_with_ai(
                 primary_data, competitor_context=competitor_context or None,
                 db=db, email=email, gsc_property=gsc_property,
-                account_id=account_id, ads_customer_id=ads_customer_id))
+                account_id=account_id, ads_customer_id=ads_customer_id, research=research))
         
         if tasks:
             # Use return_exceptions=True to allow partial success

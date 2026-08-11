@@ -5,6 +5,9 @@ from datetime import datetime
 
 class URLAnalysisRequest(BaseModel):
     urls: List[str] = Field(..., min_items=1, max_items=5)
+    # Optional curated selection from the New Analysis research wizard (seed, domains, keywords,
+    # clusters). When present the topical map is built from these instead of auto-grounding.
+    research: Optional[dict] = None
 
 
 class UserInfo(BaseModel):
