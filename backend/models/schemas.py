@@ -213,6 +213,9 @@ class TopicalMapData(BaseModel):
     keyword_volumes: Optional[List[KeywordVolume]] = None
     keyword_clusters: Optional[List[KeywordCluster]] = None
 
+    # The site pages actually digested (root + top pages by GSC clicks / sitemap) — for transparency.
+    pages_analyzed: Optional[List[str]] = None
+
 
 
 

@@ -23,7 +23,7 @@ class TopicalMapGenerator:
     def _extract_content_themes(self, pages: List[Dict]) -> List[str]:
         """Extract main content themes from existing pages (across the whole crawled set)."""
         themes = []
-        for page in pages[:20]:
+        for page in pages[:30]:
             # Extract themes from H1 and H2 headings
             h1s = page.get('headings', {}).get('h1', [])
             h2s = page.get('headings', {}).get('h2', [])[:4]
@@ -108,7 +108,7 @@ class TopicalMapGenerator:
         from .sitemap_service import sitemap_service
         from .scraper import scraper
         deep = bool(gsc_property or email)          # the primary site gets full-site coverage
-        page_cap = 20 if deep else 5
+        page_cap = 30 if deep else 5
 
         page_urls = []
         if gsc_property and db is not None and email:
@@ -175,7 +175,7 @@ class TopicalMapGenerator:
                     'content_preview': page.get('content_preview', '')[:280],
                     'h2_count': page.get('h2_count', 0)
                 }
-                for page in additional_pages[:20]
+                for page in additional_pages[:30]
             ],
             'existing_content_themes': self._extract_content_themes(additional_pages)
         }
@@ -650,6 +650,8 @@ Generate 15 diverse articles mixing Core and Outer sections. Return ONLY the JSO
                     KeywordCluster(**kc) for kc in (real_data.get('keyword_clusters') or [])[:20]
                     if isinstance(kc, dict) and kc.get('label')
                 ] or None,
+                # The pages actually digested (root + the top pages we scraped) — for transparency.
+                pages_analyzed=[url] + [p['url'] for p in additional_pages if p.get('url')],
             )
             
         except Exception as e:

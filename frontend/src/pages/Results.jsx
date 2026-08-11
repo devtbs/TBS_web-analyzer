@@ -186,6 +186,9 @@ const Results = () => {
 
     const urlCount = results.full.urls?.length || 0;
     const nodeCount = results.knowledgeGraph?.nodes?.length || 0;
+    // Pages the topical map actually digested across the site (top pages by GSC clicks / sitemap).
+    const pagesAnalyzed = (Array.isArray(results.topicalMaps) ? results.topicalMaps : [])
+        .reduce((max, m) => Math.max(max, m?.pages_analyzed?.length || 0), 0);
 
     return (
         <div className="flex-1 w-full min-h-screen bg-slate-50">
@@ -300,9 +303,16 @@ const Results = () => {
                             <GlobeAltIcon className="w-[18px] h-[18px] text-emerald-500" />
                         </div>
                         <h2 className="font-bold text-slate-800 text-base">Analyzed URLs</h2>
-                        <span className="ml-auto text-[11px] font-black uppercase text-emerald-600 bg-emerald-50 border border-emerald-100/50 px-2.5 py-1 rounded-md tracking-wider">
-                            {urlCount} {urlCount === 1 ? 'Site' : 'Sites'}
-                        </span>
+                        <div className="ml-auto flex items-center gap-2">
+                            {pagesAnalyzed > 0 && (
+                                <span className="text-[11px] font-black uppercase text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-2.5 py-1 rounded-md tracking-wider">
+                                    {pagesAnalyzed} Pages Read
+                                </span>
+                            )}
+                            <span className="text-[11px] font-black uppercase text-emerald-600 bg-emerald-50 border border-emerald-100/50 px-2.5 py-1 rounded-md tracking-wider">
+                                {urlCount} {urlCount === 1 ? 'Site' : 'Sites'}
+                            </span>
+                        </div>
                     </div>
 
                     {/* URL list */}
