@@ -159,9 +159,11 @@ class OntologyRelation(BaseModel):
 
 
 class KeywordVolume(BaseModel):
-    """Real monthly search volume for a keyword (Google Ads Keyword Planner)."""
+    """Real monthly search volume for a keyword (Mangools KWFinder, or Ads Keyword Planner fallback)."""
     keyword: str
     avg_monthly_searches: int = 0
+    kd: Optional[int] = None          # keyword difficulty 0-100 (Mangools)
+    cpc: Optional[float] = None
     competition: Optional[str] = None
 
 

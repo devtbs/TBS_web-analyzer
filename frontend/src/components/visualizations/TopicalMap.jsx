@@ -628,27 +628,35 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 </div>
             </div>
 
-            {/* Keyword opportunities — REAL search volume (Google Ads Keyword Planner) */}
+            {/* NEW keyword opportunities — real volume + KD, excludes queries already ranked for */}
             {activeMap.keyword_volumes?.length > 0 && (
                 <div id="export-keyword-volumes" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-                    <SectionHeader title="Keyword Opportunities — Real Search Volume" color="from-indigo-600 to-indigo-800" icon={GlobeAltIcon} elementId="export-keyword-volumes" />
+                    <SectionHeader title="New Keyword Opportunities — Real Volume &amp; Difficulty" color="from-indigo-600 to-indigo-800" icon={GlobeAltIcon} elementId="export-keyword-volumes" />
+                    <p className="px-4 pt-3 text-[12px] text-slate-500">Ranked by search volume. Excludes queries the site already ranks for. <span className="font-semibold">KD</span> = keyword difficulty (lower = easier to rank).</p>
                     <div className="p-4 overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead>
                                 <tr className="text-[11px] uppercase tracking-wide text-slate-400 border-b border-slate-100">
                                     <th className="py-2 pr-4 font-bold">Keyword</th>
-                                    <th className="py-2 pr-4 font-bold text-right">Monthly searches</th>
-                                    <th className="py-2 font-bold">Competition</th>
+                                    <th className="py-2 pr-4 font-bold text-right">Volume</th>
+                                    <th className="py-2 pr-4 font-bold text-right">KD</th>
+                                    <th className="py-2 font-bold text-right">CPC</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {activeMap.keyword_volumes.slice(0, 30).map((kv, idx) => (
-                                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/60">
-                                        <td className="py-2 pr-4 font-medium text-slate-800">{kv.keyword}</td>
-                                        <td className="py-2 pr-4 text-right font-bold text-indigo-700 tabular-nums">{(kv.avg_monthly_searches || 0).toLocaleString()}</td>
-                                        <td className="py-2 text-slate-500 capitalize">{(kv.competition || '').toLowerCase()}</td>
-                                    </tr>
-                                ))}
+                                {activeMap.keyword_volumes.slice(0, 40).map((kv, idx) => {
+                                    const kd = kv.kd;
+                                    const kdCls = kd == null ? 'text-slate-400'
+                                        : kd <= 30 ? 'text-emerald-600' : kd <= 50 ? 'text-amber-600' : 'text-red-500';
+                                    return (
+                                        <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/60">
+                                            <td className="py-2 pr-4 font-medium text-slate-800">{kv.keyword}</td>
+                                            <td className="py-2 pr-4 text-right font-bold text-indigo-700 tabular-nums">{(kv.avg_monthly_searches || 0).toLocaleString()}</td>
+                                            <td className={`py-2 pr-4 text-right font-bold tabular-nums ${kdCls}`}>{kd == null ? '—' : kd}</td>
+                                            <td className="py-2 text-right text-slate-500 tabular-nums">{kv.cpc ? `$${Number(kv.cpc).toFixed(2)}` : '—'}</td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

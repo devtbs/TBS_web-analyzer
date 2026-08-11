@@ -11,6 +11,7 @@ The topical-map generator embeds the returned block as `real_data` and instructs
 ORGANIZE it into the schema rather than invent competitors/queries. Every source degrades
 gracefully — a failure in one leaves its slice empty and the rest proceeds.
 """
+import json
 import logging
 from typing import Dict, List, Optional
 
@@ -52,6 +53,59 @@ def _brand_tokens(domains, own: str) -> set:
     return toks
 
 
+_GENERIC_SLUGS = {"home", "index", "about", "about-us", "contact", "contact-us", "blog", "news",
+                  "privacy", "terms", "login", "signup", "cart", "checkout", "search", "page",
+                  "category", "tag", "en", "th", "faq", "sitemap"}
+
+
+def _slug_to_phrase(url: str) -> str:
+    """Turn a competitor page URL into a searchable topic phrase (last path segment → words)."""
+    from urllib.parse import urlparse, unquote
+    try:
+        path = urlparse(url).path
+    except Exception:
+        return ""
+    seg = [s for s in path.split("/") if s]
+    if not seg:
+        return ""
+    last = unquote(seg[-1]).rsplit(".", 1)[0]
+    if not last or last.lower() in _GENERIC_SLUGS or last.isdigit():
+        return ""
+    phrase = last.replace("-", " ").replace("_", " ").strip()
+    wc = len(phrase.split())
+    return phrase if 1 <= wc <= 8 else ""
+
+
+async def _adjacent_topic_seeds(domain: str, seeds: List[str], gsc_queries: List[Dict],
+                                competitor_topics: List[str]) -> List[str]:
+    """Broaden into CLOSELY-RELATED subject areas around the theme (wine → wine pairing, cheese,
+    vineyards, wine regions, decanting) — adjacent topics, not reworded seeds. These become extra
+    Mangools seeds so opportunities span the whole subject, not just the exact query. Best-effort."""
+    try:
+        from services.ai_service import ai_service
+        ctx = {
+            "domain": domain,
+            "known_queries": [q.get("query") for q in gsc_queries[:15] if q.get("query")],
+            "seeds": seeds,
+            "competitor_topics": competitor_topics[:15],
+        }
+        prompt = (
+            "Given this website's subject area, list 10 CLOSELY-RELATED topic areas worth expanding "
+            "content into — adjacent subjects around the same theme, NOT reworded versions of the "
+            "seeds (e.g. for a wine school: wine pairing, cheese, vineyards, wine regions, decanting, "
+            "wine investment, wine storage). Short searchable noun phrases. "
+            'Return JSON: {"topics": ["...", "..."]}\n\n'
+            f"Context: {json.dumps(ctx, ensure_ascii=False)}"
+        )
+        res = await ai_service.extract_json(prompt, "You are an SEO topic strategist. Return only JSON.",
+                                            use_deepseek=True)
+        topics = res.get("topics") if isinstance(res, dict) else (res if isinstance(res, list) else [])
+        return [t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()][:10]
+    except Exception as e:
+        logger.warning("adjacent topics failed for %s: %s", domain, str(e)[:120])
+        return []
+
+
 async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, email: Optional[str] = None,
                            gsc_property: Optional[str] = None, account_id: Optional[int] = None,
                            ads_customer_id: Optional[str] = None) -> Dict:
@@ -61,8 +115,11 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         "seed_keywords": [],
         "serp": {"top_competitors": [], "people_also_ask": [], "related_searches": []},
         "competitor_structure": [],
+        "competitor_topics": [],
+        "adjacent_topics": [],
         "gsc_queries": [],
-        "keyword_volumes": [],
+        "keyword_volumes": [],   # NEW opportunities (already-ranked queries excluded)
+        "already_ranked": [],    # queries the site already ranks <=10 for (for context)
     }
     own = _bare(domain)
 
@@ -123,28 +180,78 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         except Exception as e:
             logger.warning("grounding scrape failed for %s: %s", domain, str(e)[:150])
 
-    # ── 4. Real monthly search volumes from Google Ads Keyword Planner ───────────────────────
-    # Seeds + the real queries we already gathered make the best idea seeds. Runs whenever the
-    # account has an Ads connection; degrades to empty otherwise.
-    if db is not None and email:
+    # ── 3. Mine the 1-2 most prominent competitors' sitemaps for the topics THEY cover ───────
+    top_comp_domains = [_bare(c.get("domain", "")) for c in out["serp"]["top_competitors"][:2] if c.get("domain")]
+    competitor_topics: List[str] = []
+    for cd in top_comp_domains:
         try:
+            from services.sitemap_service import sitemap_service
+            urls = await sitemap_service.get_priority_pages(f"https://{cd}/", max_pages=25)
+            for u in urls or []:
+                ph = _slug_to_phrase(u)
+                if ph:
+                    competitor_topics.append(ph)
+        except Exception as e:
+            logger.warning("grounding competitor sitemap %s failed: %s", cd, str(e)[:120])
+    out["competitor_topics"] = list(dict.fromkeys(competitor_topics))[:40]
+
+    # Broaden into closely-related subject areas around the theme (wine → pairing, cheese, regions…).
+    out["adjacent_topics"] = await _adjacent_topic_seeds(domain, seeds, out["gsc_queries"], out["competitor_topics"])
+
+    # Queries the site ALREADY ranks well for (pos<=10) — "already optimized", excluded from opps.
+    won = {(q.get("query") or "").lower() for q in out["gsc_queries"]
+           if q.get("position") is not None and q["position"] <= 10}
+    out["already_ranked"] = sorted(
+        [{"query": q["query"], "position": round(q["position"], 1)} for q in out["gsc_queries"]
+         if q.get("position") is not None and q["position"] <= 10],
+        key=lambda x: x["position"])[:30]
+    own_brand = _brand_tokens([c.get("domain", "") for c in out["serp"]["top_competitors"]], own)
+
+    def _is_opportunity(kw_lower: str) -> bool:
+        if kw_lower in won:
+            return False                                  # already ranking well → not new
+        if any(t in kw_lower.replace(" ", "") for t in own_brand):
+            return False                                  # brand/navigational, not a topic
+        return True
+
+    # ── 4. Keyword opportunities with REAL volume + KD (Mangools KWFinder). ───────────────────
+    try:
+        from services.mangools_service import mangools_configured, get_related_keywords, location_for_domain
+        if mangools_configured():
+            loc = location_for_domain(domain)
+            idea_seeds = list(dict.fromkeys(
+                seeds + out["adjacent_topics"][:6] + out["serp"]["related_searches"][:3]
+                + out["competitor_topics"][:3]))[:12]
+            candidates: Dict[str, Dict] = {}
+            for s in idea_seeds:
+                for kw in await get_related_keywords(s, location_id=loc):
+                    k = kw["keyword"].lower()
+                    if not _is_opportunity(k):
+                        continue
+                    if k not in candidates or (kw["volume"] or 0) > (candidates[k]["volume"] or 0):
+                        candidates[k] = kw
+            ranked = sorted(candidates.values(), key=lambda x: (x["volume"] or 0), reverse=True)
+            out["keyword_volumes"] = [
+                {"keyword": o["keyword"], "avg_monthly_searches": o["volume"],
+                 "kd": o["kd"], "cpc": o["cpc"], "competition": None}
+                for o in ranked[:40]
+            ]
+        elif db is not None and email:
+            # Fallback: Google Ads Keyword Planner (only when Mangools isn't configured).
             from services.ads_service import ads_is_configured
             if ads_is_configured():
                 from api.routers._shared import _ads_service_for
                 svc = _ads_service_for(db, email, account_id, required=False)
                 if svc:
-                    idea_seeds = seeds + [q for q in out["serp"]["related_searches"][:6]]
+                    idea_seeds = seeds + out["serp"]["related_searches"][:6]
                     vols = await svc.generate_keyword_ideas(idea_seeds, customer_id=ads_customer_id)
-                    # Drop competitor/own brand terms — they're navigational, not topic opportunities.
-                    brand_toks = _brand_tokens([c.get("domain", "") for c in out["serp"]["top_competitors"]], own)
                     out["keyword_volumes"] = [
-                        v for v in vols
-                        if not any(t in v["keyword"].lower().replace(" ", "") for t in brand_toks)
-                    ]
-        except Exception as e:
-            logger.warning("grounding ads volumes failed for %s: %s", domain, str(e)[:150])
+                        v for v in vols if _is_opportunity(v["keyword"].lower())
+                    ][:40]
+    except Exception as e:
+        logger.warning("grounding keyword volumes failed for %s: %s", domain, str(e)[:150])
 
-    logger.info("grounding %s: %d competitors, %d PAA, %d related, %d scraped, %d gsc",
-                domain, len(out["serp"]["top_competitors"]), len(out["serp"]["people_also_ask"]),
-                len(out["serp"]["related_searches"]), len(out["competitor_structure"]), len(out["gsc_queries"]))
+    logger.info("grounding %s: %d competitors, %d comp-topics, %d gsc, %d opps (%d already-ranked)",
+                domain, len(out["serp"]["top_competitors"]), len(out["competitor_topics"]),
+                len(out["gsc_queries"]), len(out["keyword_volumes"]), len(out["already_ranked"]))
     return out

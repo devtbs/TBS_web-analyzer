@@ -306,9 +306,13 @@ Search Console queries). This is ground truth. You MUST:
 ✓ Build taxonomy, content_strategy.core_topics/outer_topics, and content_gaps from
   real_data.competitor_structure (the H1/H2/H3 the top-ranking pages actually use). content_gaps =
   subtopics the competitors cover that this site does not.
-✓ real_data.keyword_volumes has REAL monthly search volumes. Prioritize key_topics,
-  content_strategy.priority_areas and higher-priority content_articles toward the
-  higher-volume keywords. Never invent volume numbers.
+✓ real_data.keyword_volumes are NEW keyword OPPORTUNITIES with REAL monthly search volume + KD
+  (difficulty) — the queries the site does NOT already rank for (already-ranked ones are in
+  real_data.already_ranked and are EXCLUDED on purpose). Build content_strategy.priority_areas and
+  the higher-priority content_articles around these, favouring high volume + low KD. Never invent
+  volumes or KD.
+✓ real_data.adjacent_topics and real_data.competitor_topics are closely-related subject areas around
+  the core theme — use them to broaden outer_topics / content_gaps beyond the exact seed queries.
 ✓ Where a real_data field is empty, fall back to your own analysis — but always prefer real_data
   when present.
 """

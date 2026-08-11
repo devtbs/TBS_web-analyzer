@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
     SERANKING_API_KEY: str = ""  # SE Ranking Project API — TBS's account key (API > Dashboard)
+    MANGOOLS_API_KEY: str = ""   # KWFinder REST API (x-access-token) — real keyword volume + KD
     # PageSpeed Insights (technical audit Core Web Vitals). Keyless works at very
     # low volume but is quickly rate-limited (429); set a free key for reliability.
     PAGESPEED_API_KEY: str = ""
