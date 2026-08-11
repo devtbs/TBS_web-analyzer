@@ -21,20 +21,20 @@ class TopicalMapGenerator:
     """
     
     def _extract_content_themes(self, pages: List[Dict]) -> List[str]:
-        """Extract main content themes from existing pages"""
+        """Extract main content themes from existing pages (across the whole crawled set)."""
         themes = []
-        for page in pages[:5]:
+        for page in pages[:20]:
             # Extract themes from H1 and H2 headings
             h1s = page.get('headings', {}).get('h1', [])
-            h2s = page.get('headings', {}).get('h2', [])[:3]
-            
+            h2s = page.get('headings', {}).get('h2', [])[:4]
+
             if h1s:
                 themes.extend(h1s)
             if h2s:
                 themes.extend(h2s)
-        
+
         # Return unique themes
-        return list(set(themes))[:15]
+        return list(dict.fromkeys(themes))[:30]
 
     def _grounding_seeds(self, content_data: Dict, central_entity: str) -> List[str]:
         """Pick a handful of short, search-like seed keywords from the site to query the SERP with.
@@ -102,43 +102,55 @@ class TopicalMapGenerator:
         domain = parsed.netloc.replace('www.', '')
         central_entity = domain.split('.')[0].title()
         
-        # Fetch sitemap and scrape additional pages for better analysis
-        print(f"🔍 Fetching sitemap for {domain}...")
+        # Digest the site's REAL pages, not just the homepage. For the primary client site we take
+        # the top pages by GSC clicks (the content that actually matters); otherwise we fall back to
+        # sitemap priority. Competitor maps stay shallow (5) to bound cost.
         from .sitemap_service import sitemap_service
         from .scraper import scraper
-        
-        sitemap_urls = await sitemap_service.get_priority_pages(url, max_pages=5)
-        print(f"📄 Found {len(sitemap_urls)} priority pages from sitemap")
-        
-        # Scrape additional pages in parallel with FULL content for better analysis
-        async def scrape_page(sitemap_url):
-            if sitemap_url == url:  # Skip the main page
+        deep = bool(gsc_property or email)          # the primary site gets full-site coverage
+        page_cap = 20 if deep else 5
+
+        page_urls = []
+        if gsc_property and db is not None and email:
+            try:
+                from api.routers._shared import _gsc_service_for
+                gsvc = _gsc_service_for(db, email, account_id)
+                top_pages = await gsvc.get_top_pages(gsc_property, days=90)
+                page_urls = [p.get('url') for p in (top_pages or []) if p.get('url')][:page_cap]
+                print(f"📄 {len(page_urls)} top pages from GSC clicks")
+            except Exception as e:
+                print(f"  GSC top pages skipped: {str(e)[:100]}")
+        if not page_urls:
+            page_urls = await sitemap_service.get_priority_pages(url, max_pages=page_cap)
+            print(f"📄 {len(page_urls)} priority pages from sitemap")
+
+        # Scrape the chosen pages in parallel (bounded content per page to keep the prompt sane).
+        async def scrape_page(page_url):
+            if page_url == url:  # Skip the main page (already have it)
                 return None
             try:
-                page_data = await scraper.scrape_url(sitemap_url)
+                page_data = await scraper.scrape_url(page_url)
                 if page_data.get('status') == 'success':
-                    # Get full content for content strategy analysis
                     if page_data.get('source') == 'firecrawl' and page_data.get('markdown'):
-                        content_preview = page_data.get('markdown', '')[:2000]
+                        content_preview = page_data.get('markdown', '')[:1200]
                     else:
-                        content_preview = page_data.get('text_content', '')[:1500]
-                    
+                        content_preview = page_data.get('text_content', '')[:1000]
                     return {
-                        'url': sitemap_url,
+                        'url': page_url,
                         'title': page_data.get('title', ''),
                         'headings': page_data.get('headings', {}),
                         'content_preview': content_preview,
                         'h2_count': len(page_data.get('headings', {}).get('h2', []))
                     }
             except Exception as e:
-                print(f"  -> Skipped {sitemap_url}: {str(e)}")
+                print(f"  -> Skipped {page_url}: {str(e)}")
             return None
-        
-        # Scrape pages in parallel
-        tasks = [scrape_page(sitemap_url) for sitemap_url in sitemap_urls[:5]]
+
+        tasks = [scrape_page(p) for p in page_urls[:page_cap]]
         results = await asyncio.gather(*tasks)
         additional_pages = [page for page in results if page is not None]
-        
+        sitemap_urls = page_urls
+
         print(f"✅ Successfully scraped {len(additional_pages)} additional pages")
         
         # Prepare comprehensive content data
@@ -154,16 +166,16 @@ class TopicalMapGenerator:
             'sample_links': [{'text': link.get('text', ''), 'url': link.get('url', '')} for link in links[:30]],
             'sitemap_pages': len(sitemap_urls),
             'additional_pages_analyzed': len(additional_pages),
-            'site_structure': [     
+            'site_structure': [
                 {
                     'url': page['url'],
                     'title': page['title'],
                     'h1': page['headings'].get('h1', [])[:3],
-                    'h2': page['headings'].get('h2', [])[:5],
-                    'content_preview': page.get('content_preview', '')[:500],
+                    'h2': page['headings'].get('h2', [])[:6],
+                    'content_preview': page.get('content_preview', '')[:280],
                     'h2_count': page.get('h2_count', 0)
                 }
-                for page in additional_pages[:5]
+                for page in additional_pages[:20]
             ],
             'existing_content_themes': self._extract_content_themes(additional_pages)
         }

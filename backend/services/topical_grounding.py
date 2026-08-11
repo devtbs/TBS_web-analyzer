@@ -56,18 +56,38 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
                            gsc_property: Optional[str] = None, account_id: Optional[int] = None,
                            ads_customer_id: Optional[str] = None) -> Dict:
     """Assemble the real_data block. Never raises — returns whatever it could gather."""
-    seeds = [s for s in (seed_keywords or []) if s and s.strip()][:SEED_CAP]
+    heading_seeds = [s for s in (seed_keywords or []) if s and s.strip()][:SEED_CAP]
     out: Dict = {
-        "seed_keywords": seeds,
+        "seed_keywords": [],
         "serp": {"top_competitors": [], "people_also_ask": [], "related_searches": []},
         "competitor_structure": [],
         "gsc_queries": [],
         "keyword_volumes": [],
     }
+    own = _bare(domain)
+
+    # ── 0. The site's own ranking queries (GSC) — real ground truth AND the best SERP seeds. ────
+    if gsc_property and db is not None and email:
+        try:
+            from api.routers._shared import _gsc_service_for
+            svc = _gsc_service_for(db, email, account_id)
+            rows = await svc.get_top_queries(gsc_property, days=90)
+            out["gsc_queries"] = [
+                {"query": r.get("query"), "clicks": r.get("clicks"),
+                 "impressions": r.get("impressions"), "position": r.get("position")}
+                for r in (rows or [])[:GSC_QUERY_CAP] if r.get("query")
+            ]
+        except Exception as e:
+            logger.warning("grounding GSC failed for %s: %s", gsc_property, str(e)[:150])
+
+    # Seed the SERP with the site's REAL ranking queries when we have them — far more relevant than
+    # homepage headings (a wine school seeds wine queries, not generic nav labels). Blend in a couple
+    # of heading seeds for breadth; fall back to headings entirely when there's no GSC data.
+    gsc_terms = [q["query"] for q in out["gsc_queries"][:5] if q.get("query")]
+    seeds = ((gsc_terms[:4] + heading_seeds[:2]) if gsc_terms else heading_seeds)[:SEED_CAP]
+    out["seed_keywords"] = seeds
     if not seeds:
         return out
-
-    own = _bare(domain)
 
     # ── 1. SERP: real competitors + PAA + related searches ──────────────────────────────────
     competitor_urls: List[str] = []
@@ -102,20 +122,6 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
                 })
         except Exception as e:
             logger.warning("grounding scrape failed for %s: %s", domain, str(e)[:150])
-
-    # ── 3. (Phase 2) The client's own ranking queries from Search Console ────────────────────
-    if gsc_property and db is not None and email:
-        try:
-            from api.routers._shared import _gsc_service_for
-            svc = _gsc_service_for(db, email, account_id)
-            rows = await svc.get_top_queries(gsc_property, days=90)
-            out["gsc_queries"] = [
-                {"query": r.get("query"), "clicks": r.get("clicks"),
-                 "impressions": r.get("impressions"), "position": r.get("position")}
-                for r in (rows or [])[:GSC_QUERY_CAP] if r.get("query")
-            ]
-        except Exception as e:
-            logger.warning("grounding GSC failed for %s: %s", gsc_property, str(e)[:150])
 
     # ── 4. Real monthly search volumes from Google Ads Keyword Planner ───────────────────────
     # Seeds + the real queries we already gathered make the best idea seeds. Runs whenever the
