@@ -16,7 +16,7 @@ function recoverFromStaleChunk() {
 window.addEventListener('vite:preloadError', (e) => { e.preventDefault(); recoverFromStaleChunk(); });
 window.addEventListener('unhandledrejection', (e) => {
     const msg = String(e?.reason?.message || e?.reason || '');
-    if (/dynamically imported module|Importing a module script failed|Failed to fetch/i.test(msg)) {
+    if (/dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(msg)) {
         recoverFromStaleChunk();
     }
 });

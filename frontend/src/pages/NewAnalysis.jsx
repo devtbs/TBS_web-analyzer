@@ -99,8 +99,10 @@ const NewAnalysis = () => {
             if (selectedProperties.length === 0 && selectedPages.length === 0) {
                 toast.error('Please select at least one property or page'); return;
             }
-            // Each selected site expands into all of its connected URLs (loaded on select).
-            validUrls = selectedProperties.flatMap(p => (p.urls?.length ? p.urls : [p.url]));
+            // Analyze the SITE by its root URL — the topical-map generator scrapes the site's
+            // sitemap/pages itself. (Sending every page URL both blew past the 5-site limit and made
+            // the pipeline treat one site's pages as separate competitor sites.)
+            validUrls = selectedProperties.map(p => p.url);
         } else {
             validUrls = urls.filter(url => url.trim() !== '');
             if (validUrls.length === 0 && selectedPages.length === 0) {
@@ -117,9 +119,12 @@ const NewAnalysis = () => {
             }
         }
         validUrls = [...new Set([...validUrls, ...selectedPages])];
-        // Manual entry stays capped at 5; selecting a whole site (GSC) is intentionally uncapped.
-        if (!useGSC && validUrls.length > 5) {
-            toast.error(`Maximum 5 URLs allowed. You have ${validUrls.length}.`); return;
+        // The backend analyses up to 5 targets at once. Manual entry errors past that; GSC selection
+        // trims to the first 5 with a heads-up rather than failing the request.
+        if (validUrls.length > 5) {
+            if (!useGSC) { toast.error(`Maximum 5 URLs allowed. You have ${validUrls.length}.`); return; }
+            toast(`Analyzing the first 5 of ${validUrls.length} selected.`);
+            validUrls = validUrls.slice(0, 5);
         }
         setIsAnalyzing(true);
         try {
@@ -131,7 +136,10 @@ const NewAnalysis = () => {
             sessionStorage.removeItem('selectedPages');
             navigate(`/results/${response.data.analysis_id}`);
         } catch (error) {
-            toast.error(error.response?.data?.detail || 'Analysis failed');
+            const detail = error.response?.data?.detail;
+            const msg = Array.isArray(detail) ? (detail[0]?.msg || 'Invalid request')
+                : (typeof detail === 'string' ? detail : 'Analysis failed');
+            toast.error(msg);
             setIsAnalyzing(false);
         }
     };
