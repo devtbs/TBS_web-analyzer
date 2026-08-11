@@ -110,7 +110,7 @@ async def _grounding_from_research(out: Dict, domain: str, own: str, research: D
     """Build the real_data block from the wizard's curated selection (keywords/clusters/domains)."""
     domains = [_bare(d) for d in (research.get("domains") or []) if d]
     out["serp"]["top_competitors"] = [{"domain": d, "url": f"https://{d}/"} for d in domains if d != own]
-    out["seed_keywords"] = [s for s in [research.get("seed")] if s]
+    out["seed_keywords"] = [s for s in (research.get("seeds") or [research.get("seed")]) if s]
 
     # The user's selected keywords → the opportunity table (already ranked-by the wizard).
     out["keyword_volumes"] = [

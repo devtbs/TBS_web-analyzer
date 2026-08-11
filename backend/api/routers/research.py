@@ -32,16 +32,82 @@ def _loc_id(domain: Optional[str], location_id: Optional[int]) -> int:
     return location_for_domain(domain) if domain else _DEFAULT_LOCATION
 
 
+@router.post("/api/research/suggest-queries")
+async def research_suggest_queries(body: dict = Body(...),
+                                   current_user: UserInfo = Depends(get_current_user)):
+    """Step 1 — analyze the selected site and let the AI propose 10 search queries grounded in the
+    real business (avoids the generic-seed problem, e.g. 'wine' → winehq.org)."""
+    from urllib.parse import urlparse
+    from services.scraper import scraper
+    from services.sitemap_service import sitemap_service
+    from services.ai_service import ai_service
+    import json
+
+    url = (body.get("url") or "").strip()
+    if not url:
+        return {"queries": [], "site": None}
+    if not url.startswith("http"):
+        url = "https://" + url
+    domain = urlparse(url).netloc.replace("www.", "") or url
+
+    # Light scrape: homepage + a few priority pages (fast — this isn't the full analysis).
+    pages = []
+    try:
+        extra = await sitemap_service.get_priority_pages(url, max_pages=5)
+        targets = [url] + [u for u in (extra or []) if u != url][:5]
+        scraped = await scraper.scrape_multiple(targets)
+        for p in scraped or []:
+            if p.get("status") != "success":
+                continue
+            h = p.get("headings") or {}
+            pages.append({"title": p.get("title", ""), "h1": (h.get("h1") or [])[:3],
+                          "h2": (h.get("h2") or [])[:8],
+                          "text": (p.get("markdown") or p.get("text_content") or "")[:800]})
+    except Exception as e:
+        logger.warning("suggest-queries scrape failed for %s: %s", domain, str(e)[:120])
+
+    prompt = (
+        "From this website, suggest 10 short SEARCH QUERIES (2-5 words) that represent its core "
+        "topics, products or services — the kind of terms real people search — that we can use to "
+        "research competitors. Be specific to the business, not generic single words. "
+        'Return JSON: {"queries": ["...", "..."]}\n\n'
+        f"Site: {domain}\nPages: {json.dumps(pages, ensure_ascii=False)[:6000]}"
+    )
+    try:
+        res = await ai_service.extract_json(prompt, "You are an SEO keyword strategist. Return only JSON.",
+                                            use_deepseek=True)
+        queries = res.get("queries") if isinstance(res, dict) else (res if isinstance(res, list) else [])
+        queries = [q.strip() for q in (queries or []) if isinstance(q, str) and q.strip()][:10]
+    except Exception as e:
+        logger.warning("suggest-queries AI failed for %s: %s", domain, str(e)[:120])
+        queries = []
+    return {"queries": queries, "site": url, "domain": domain}
+
+
 @router.post("/api/research/serp")
 async def research_serp(body: dict = Body(...), current_user: UserInfo = Depends(get_current_user)):
-    """Step 1 — live Google SERP for a seed query + the top related queries with real volume."""
+    """SERP step — single query (rich preview) or multiple queries (aggregated competitors)."""
     from services.serp_service import serp_service
     from services.mangools_service import get_related_keywords
 
+    domain = body.get("domain")
+    queries = [q for q in (body.get("queries") or []) if q and q.strip()]
+
+    # Multi-query mode (wizard v2): aggregate the competitor domains that rank ACROSS the selected
+    # queries — the sites that show up repeatedly are the real niche rivals.
+    if queries:
+        agg = await serp_service.get_serp_insights(queries, domain=domain, max_keywords=len(queries))
+        return {
+            "competitors": agg.get("top_competitors") or [],
+            "people_also_ask": agg.get("people_also_ask") or [],
+            "related_searches": agg.get("related_searches") or [],
+            "queries": queries,
+        }
+
+    # Single-query mode (back-compat): rich organic preview + top related queries with volume.
     query = (body.get("query") or "").strip()
     if not query:
         return {"serp": None, "top_queries": []}
-    domain = body.get("domain")
     serp = await serp_service.get_serp_preview(query, location=_serp_gl(domain))
     related = await get_related_keywords(query, location_id=_loc_id(domain, body.get("location_id")))
     top_queries = sorted(related, key=lambda x: (x.get("volume") or 0), reverse=True)[:10]
@@ -56,7 +122,9 @@ async def research_keywords(body: dict = Body(...),
     """Step 3 — merge Mangools related-keywords(seed) + competitor-keywords(each selected domain)."""
     from services.mangools_service import get_related_keywords, get_competitor_keywords
 
-    seed = (body.get("seed") or "").strip()
+    seeds: List[str] = [s for s in (body.get("seeds") or []) if s and s.strip()][:8]
+    if not seeds and body.get("seed"):
+        seeds = [body["seed"].strip()]
     domains: List[str] = [d for d in (body.get("domains") or []) if d and d.strip()][:8]
     loc = _loc_id(body.get("domain"), body.get("location_id"))
 
@@ -73,7 +141,7 @@ async def research_keywords(body: dict = Body(...),
                 kw = {**kw, "kd": cur["kd"]}
             candidates[k] = kw
 
-    if seed:
+    for seed in seeds:
         for kw in await get_related_keywords(seed, location_id=loc):
             _merge(kw)
     for d in domains:
