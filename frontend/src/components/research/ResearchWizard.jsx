@@ -107,6 +107,7 @@ export default function ResearchWizard({ clientId = null }) {
     const [selectedKw, setSelectedKw] = useState(new Set());
     const [excludeRanked, setExcludeRanked] = useState(true);   // default: surface NEW opportunities
     const [maxKd, setMaxKd] = useState(null);                   // 'worth working on' difficulty ceiling
+    const [minVol, setMinVol] = useState(0);                    // hide low-volume long-tail noise
     const [groupSimilar, setGroupSimilar] = useState(true);     // collapse near-duplicate rewordings
 
     // Step 5 — clusters
@@ -130,7 +131,7 @@ export default function ResearchWizard({ clientId = null }) {
         step, countryGl, manualUrl,
         aiQueries, selectedQueries: [...selectedQueries],
         competitors, selectedDomains: [...selectedDomains], manualDomains,
-        keywords, selectedKw: [...selectedKw], excludeRanked, maxKd, groupSimilar,
+        keywords, selectedKw: [...selectedKw], excludeRanked, maxKd, minVol, groupSimilar,
         clusters,
     });
 
@@ -147,6 +148,7 @@ export default function ResearchWizard({ clientId = null }) {
         setSelectedKw(new Set(s.selectedKw || []));
         setExcludeRanked(s.excludeRanked !== false);
         setMaxKd(s.maxKd ?? null);
+        setMinVol(s.minVol ?? 0);
         setGroupSimilar(s.groupSimilar !== false);
         setClusters(s.clusters || []);
         setStep(s.step || 1);
@@ -187,7 +189,8 @@ export default function ResearchWizard({ clientId = null }) {
     const allDomains = () => [...new Set([...selectedDomains, ...manualDomains])];
     // Collapse rewordings (optional), then KD filter (keeps easy + unknown, hides known-hard).
     const visibleKw = (groupSimilar ? dedupeNear(keywords) : keywords)
-        .filter(k => maxKd == null || k.kd == null || k.kd <= maxKd);
+        .filter(k => maxKd == null || k.kd == null || k.kd <= maxKd)
+        .filter(k => (k.volume || 0) >= minVol);
 
     const exportCsv = () => {
         const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -446,6 +449,14 @@ export default function ResearchWizard({ clientId = null }) {
                     <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                         <p className="text-[13px] font-bold text-slate-600">{visibleKw.length} shown · {selectedKw.size} selected</p>
                         <div className="flex items-center gap-3 flex-wrap">
+                            {/* Min volume — hide the ultra-long-tail (vol ~10) noise */}
+                            <div className="flex items-center gap-1 text-[12px]">
+                                <span className="text-slate-400 mr-1">Min vol</span>
+                                {[['All', 0], ['≥50', 50], ['≥100', 100], ['≥500', 500]].map(([lbl, v]) => (
+                                    <button key={lbl} onClick={() => setMinVol(v)}
+                                        className={`px-2 py-1 rounded-md font-semibold ${minVol === v ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
+                                ))}
+                            </div>
                             {/* KD ceiling — 'worth working on' = easier to rank */}
                             <div className="flex items-center gap-1 text-[12px]">
                                 <span className="text-slate-400 mr-1">Max KD</span>
