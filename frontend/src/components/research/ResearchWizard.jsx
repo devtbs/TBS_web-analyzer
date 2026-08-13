@@ -28,6 +28,21 @@ const guessCountry = (domain) => {
     return (COUNTRIES.find(c => c.gl === tld) || {}).gl || 'th';
 };
 const kdColor = (kd) => kd == null ? 'text-slate-400' : kd <= 30 ? 'text-emerald-600' : kd <= 50 ? 'text-amber-600' : 'text-red-500';
+
+// Near-duplicate collapse: keywords that reduce to the same word-set are rewordings of one topic
+// (e.g. "wine pairing" / "pairing wine" / "paired wine") — keep the highest-volume representative.
+const _STOP = new Set(['with', 'and', 'for', 'the', 'to', 'of', 'a', 'an', 'in', 'on', 'vs', 'your', 'my', 'is', 'are']);
+const _stem = (w) => (w.length > 4 ? w.replace(/(ings|ing|ed|es|s)$/, '') : w);
+const _sig = (kw) => (kw || '').toLowerCase().split(/\s+/).filter(w => w && !_STOP.has(w)).map(_stem).sort().join(' ');
+const dedupeNear = (list) => {
+    const by = new Map();
+    for (const k of list) {
+        const s = _sig(k.keyword);
+        const cur = by.get(s);
+        if (!cur || (k.volume || 0) > (cur.volume || 0)) by.set(s, k);
+    }
+    return [...by.values()].sort((a, b) => (b.volume || 0) - (a.volume || 0));
+};
 const STEPS = ['Site', 'Queries', 'Competitors', 'Keywords', 'Clusters'];
 
 const Stepper = ({ step }) => (
@@ -81,13 +96,26 @@ export default function ResearchWizard() {
     const [selectedKw, setSelectedKw] = useState(new Set());
     const [excludeRanked, setExcludeRanked] = useState(true);   // default: surface NEW opportunities
     const [maxKd, setMaxKd] = useState(null);                   // 'worth working on' difficulty ceiling
+    const [groupSimilar, setGroupSimilar] = useState(true);     // collapse near-duplicate rewordings
 
     // Step 5 — clusters
     const [clusters, setClusters] = useState([]);
 
     const allDomains = () => [...new Set([...selectedDomains, ...manualDomains])];
-    // KD filter keeps easy + unknown-difficulty terms, hides only the known-hard ones.
-    const visibleKw = keywords.filter(k => maxKd == null || k.kd == null || k.kd <= maxKd);
+    // Collapse rewordings (optional), then KD filter (keeps easy + unknown, hides known-hard).
+    const visibleKw = (groupSimilar ? dedupeNear(keywords) : keywords)
+        .filter(k => maxKd == null || k.kd == null || k.kd <= maxKd);
+
+    const exportCsv = () => {
+        const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const lines = [['Keyword', 'Volume', 'KD', 'CPC'].join(',')]
+            .concat(visibleKw.map(k => [esc(k.keyword), k.volume || 0, k.kd ?? '', k.cpc ?? ''].join(',')));
+        const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `keywords-${siteDomain || 'export'}.csv`; a.click();
+        URL.revokeObjectURL(url);
+    };
 
     const analyzeSite = async () => {
         if (!site) { toast.error('Select a site or enter a URL'); return; }
@@ -288,12 +316,17 @@ export default function ResearchWizard() {
                                         className={`px-2 py-1 rounded-md font-semibold ${maxKd === v ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
                                 ))}
                             </div>
+                            <label className="flex items-center gap-2 text-[13px] text-slate-500">
+                                <input type="checkbox" checked={groupSimilar} onChange={e => setGroupSimilar(e.target.checked)} className="rounded border-slate-300 text-emerald-600" />
+                                Group similar
+                            </label>
                             {gscProperty && (
                                 <label className="flex items-center gap-2 text-[13px] text-slate-500">
                                     <input type="checkbox" checked={excludeRanked} onChange={e => setExcludeRanked(e.target.checked)} className="rounded border-slate-300 text-emerald-600" />
                                     Hide already-ranked
                                 </label>
                             )}
+                            <button onClick={exportCsv} className="text-[13px] font-semibold text-slate-500 hover:text-slate-700 underline">Export CSV</button>
                         </div>
                     </div>
                     <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[420px] overflow-y-auto mb-4">
