@@ -32,6 +32,34 @@ def _loc_id(domain: Optional[str], location_id: Optional[int]) -> int:
     return location_for_domain(domain) if domain else _DEFAULT_LOCATION
 
 
+async def _filter_relevant(keywords: List[str], seeds: List[str], domain: str) -> Optional[set]:
+    """Competitor-keywords return a domain's WHOLE footprint (brands, off-topic pages). Keep only the
+    keywords topically relevant to the site's subject (defined by the AI seeds). Returns a lowercase
+    keep-set, or None to keep everything (LLM unavailable) — best-effort."""
+    import json
+    from services.ai_service import ai_service
+    topic = ", ".join([s for s in seeds if s]) or domain
+    prompt = (
+        f"A website about: {topic} (domain: {domain}).\n"
+        "From the KEYWORDS list, return ONLY those topically relevant to that website — terms a "
+        "person interested in this subject would search (including closely-related concepts like "
+        "pairings or materials). DROP unrelated brand names, restaurants, other industries and "
+        "off-topic terms. Keep the keyword strings exactly as given.\n"
+        'Return JSON: {"keep": ["...", "..."]}\n\n'
+        f"KEYWORDS: {json.dumps(keywords, ensure_ascii=False)}"
+    )
+    try:
+        res = await ai_service.extract_json(prompt, "You are an SEO relevance filter. Return only JSON.",
+                                            use_deepseek=True)
+        keep = res.get("keep") if isinstance(res, dict) else (res if isinstance(res, list) else None)
+        if keep is None:
+            return None
+        return {k.strip().lower() for k in keep if isinstance(k, str) and k.strip()}
+    except Exception as e:
+        logger.warning("relevance filter failed: %s", str(e)[:120])
+        return None
+
+
 @router.post("/api/research/suggest-queries")
 async def research_suggest_queries(body: dict = Body(...),
                                    current_user: UserInfo = Depends(get_current_user)):
@@ -149,6 +177,14 @@ async def research_keywords(body: dict = Body(...),
             _merge(kw)
 
     rows = list(candidates.values())
+
+    # Relevance filter: competitor domains drag in their whole footprint (brands, other industries).
+    # Keep only keywords on-topic for the site (unless the caller opts out).
+    if domains and rows and body.get("relevance_filter", True):
+        rows.sort(key=lambda x: (x.get("volume") or 0), reverse=True)
+        keep = await _filter_relevant([r["keyword"] for r in rows[:150]], seeds, body.get("domain") or "")
+        if keep:
+            rows = [r for r in rows if (r.get("keyword") or "").lower() in keep]
 
     # Optional: hide keywords the client already ranks well for (GSC position <= 10).
     if body.get("exclude_ranked") and body.get("gsc_property"):
