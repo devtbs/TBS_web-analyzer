@@ -263,8 +263,26 @@ async def research_keywords(body: dict = Body(...),
             logger.warning("research exclude_ranked failed: %s", str(e)[:120])
 
     rows.sort(key=lambda x: (x.get("volume") or 0), reverse=True)
+    rows = rows[:200]
+
+    # Backfill KD: related-keywords often returns a null difficulty even when Mangools has a cached
+    # score. Do one keyword-imports lookup (batched, 24h-cached) for the rows still missing KD.
+    missing_kd = [r["keyword"] for r in rows if r.get("kd") is None and r.get("keyword")]
+    if missing_kd:
+        try:
+            from services.mangools_service import get_keyword_difficulty
+            kd_map = await get_keyword_difficulty(missing_kd, location_id=loc)
+            if kd_map:
+                for r in rows:
+                    if r.get("kd") is None:
+                        v = kd_map.get((r.get("keyword") or "").lower())
+                        if v is not None:
+                            r["kd"] = v
+        except Exception as e:
+            logger.warning("research KD backfill failed: %s", str(e)[:120])
+
     return {
-        "keywords": rows[:200],
+        "keywords": rows,
         # Transparency: what the filters did, so the wizard can explain "why a keyword isn't here".
         "meta": {
             "raw_count": raw_count,

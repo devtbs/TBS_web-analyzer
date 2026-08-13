@@ -105,6 +105,58 @@ async def get_related_keywords(seed: str, location_id: int = None, language_id: 
         return []
 
 
+async def get_keyword_difficulty(keywords: List[str], location_id: int = None,
+                                 language_id: int = None) -> Dict[str, int]:
+    """Best-effort KD backfill via KWFinder keyword-imports (POST, up to 700 kws/call).
+
+    related-keywords often returns a null `seo` (difficulty) for a row even when Mangools has a cached
+    score — keyword-imports does the fuller lookup and returns it. Returns {keyword_lower: kd}; only
+    non-null scores are included. Cached 24h per keyword so re-runs are free. Never raises.
+    """
+    kws = [k for k in (keywords or []) if k and k.strip()]
+    if not mangools_configured() or not kws:
+        return {}
+    loc = location_id or _DEFAULT_LOCATION
+    lang = _DEFAULT_LANGUAGE if language_id is None else language_id
+
+    out: Dict[str, int] = {}
+    todo: List[str] = []
+    for k in kws:
+        c = _cache_get(("kd", k.strip().lower(), loc, lang))
+        if c is not None:
+            if c is not False:            # False = cached "no score", skip re-fetching
+                out[k.strip().lower()] = c
+        else:
+            todo.append(k)
+    if not todo:
+        return out
+
+    def _run(batch):
+        body = {"keywords": batch, "location_id": loc, "language_id": lang}
+        headers = {**_headers(), "content-type": "application/json"}
+        with httpx.Client(timeout=45) as c:
+            resp = c.post(f"{_BASE}/kwfinder/keyword-imports", json=body, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
+    try:
+        for i in range(0, len(todo), 700):
+            batch = todo[i:i + 700]
+            data = await asyncio.to_thread(_run, batch)
+            got = {(r.get("kw") or "").strip().lower(): r.get("seo")
+                   for r in (data.get("keywords") or [])}
+            for k in batch:
+                kl = k.strip().lower()
+                seo = got.get(kl)
+                # Cache the score (or False for "no score") so we don't re-query it for 24h.
+                _CACHE[("kd", kl, loc, lang)] = (time.time(), seo if seo is not None else False)
+                if seo is not None:
+                    out[kl] = seo
+    except Exception as e:
+        logger.warning("mangools keyword-imports KD failed: %s", str(e)[:150])
+    return out
+
+
 async def get_competitor_keywords(url: str, location_id: int = None, language_id: int = None) -> List[Dict]:
     """Keywords a specific domain or URL ranks for (volume/KD/CPC + its position). Cached 24h."""
     if not mangools_configured() or not url or not url.strip():
