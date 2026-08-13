@@ -174,7 +174,17 @@ async def research_keywords(body: dict = Body(...),
                 kw = {**kw, "kd": cur["kd"]}
             candidates[k] = kw
 
-    for seed in seeds:
+    # Broaden beyond the site's own topics into CLOSELY-RELATED subject areas, so the pool contains
+    # new territory (wine → wine regions, grape varieties, food pairing) — not just what it ranks for.
+    expand = list(seeds)
+    try:
+        from services.topical_grounding import _adjacent_topic_seeds
+        adj = await _adjacent_topic_seeds(body.get("domain") or "", seeds, [], [])
+        expand = list(dict.fromkeys(seeds + adj[:4]))
+    except Exception as e:
+        logger.warning("research adjacency failed: %s", str(e)[:120])
+
+    for seed in expand:
         for kw in await get_related_keywords(seed, location_id=loc):
             _merge(kw)
     for d in domains:

@@ -56,7 +56,7 @@ export default function ResearchWizard() {
     // Step 4 — keywords
     const [keywords, setKeywords] = useState([]);
     const [selectedKw, setSelectedKw] = useState(new Set());
-    const [excludeRanked, setExcludeRanked] = useState(false);
+    const [excludeRanked, setExcludeRanked] = useState(true);   // default: surface NEW opportunities
 
     // Step 5 — clusters
     const [clusters, setClusters] = useState([]);
@@ -264,7 +264,7 @@ export default function ResearchWizard() {
                     <div className="flex items-center justify-between">
                         <BackBtn to={3} />
                         <div className="flex gap-2">
-                            {excludeRanked && <button onClick={fetchKeywords} disabled={busy} className="px-4 py-2.5 border border-slate-300 rounded-lg text-[14px] font-semibold text-slate-600">Apply filter</button>}
+                            {gscProperty && <button onClick={fetchKeywords} disabled={busy} className="px-4 py-2.5 border border-slate-300 rounded-lg text-[14px] font-semibold text-slate-600">Apply filter</button>}
                             <button onClick={runCluster} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                                 {busy ? 'Clustering…' : <>Cluster ({selectedKw.size}) <ArrowRightIcon className="w-4 h-4" /></>}
                             </button>
