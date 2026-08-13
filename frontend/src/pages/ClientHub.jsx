@@ -89,6 +89,7 @@ export default function ClientHub() {
     const [decks, setDecks] = useState([]);
     const [editing, setEditing] = useState(false);
     const [genMsg, setGenMsg] = useState(null);   // inline generate progress; null = idle
+    const [research, setResearch] = useState([]); // saved keyword-research runs for this client
     const [matching, setMatching] = useState(false);  // auto-linking GA4/Ads in the background
     const matchedRef = useRef(null);                  // client id we've already auto-matched this mount
 
@@ -129,7 +130,12 @@ export default function ClientHub() {
         catch { /* non-fatal */ }
     }, [id]);
 
-    useEffect(() => { loadHub().then(tryAutoMatch); loadDecks(); }, [loadHub, loadDecks, tryAutoMatch]);
+    const loadResearch = useCallback(async () => {
+        try { setResearch((await api.get('/api/research/runs', { params: { client_id: id } })).data.runs || []); }
+        catch { /* non-fatal */ }
+    }, [id]);
+
+    useEffect(() => { loadHub().then(tryAutoMatch); loadDecks(); loadResearch(); }, [loadHub, loadDecks, loadResearch, tryAutoMatch]);
 
     // Health pill for the account backing this client.
     useEffect(() => {
@@ -253,6 +259,38 @@ export default function ClientHub() {
                         </button>
                         <button onClick={() => { selectClient(client); navigate('/presentation'); }}
                             className="text-[13px] font-semibold text-slate-500 hover:text-slate-700">More options</button>
+                    </div>
+                )}
+            </div>
+
+            {/* Keyword research */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 mb-6">
+                <div className="flex items-center gap-4 flex-wrap mb-1">
+                    <div className="min-w-0 flex-1">
+                        <p className="font-bold text-slate-800 text-[15px]">Keyword research &amp; topical maps</p>
+                        <p className="text-[13px] text-slate-500">Saved research sessions for this client — reopen to continue or rebuild the map.</p>
+                    </div>
+                    <button onClick={() => navigate(`/new-analysis?client=${id}`)}
+                        className="flex items-center gap-2 border border-slate-300 text-slate-700 rounded-lg px-4 py-2.5 font-bold text-[14px] hover:bg-slate-50">
+                        <SparklesIcon className="w-4 h-4" /> New research
+                    </button>
+                </div>
+                {research.length > 0 && (
+                    <div className="mt-3 border border-slate-200 rounded-xl divide-y divide-slate-100">
+                        {research.map(r => (
+                            <div key={r.id} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[14px] font-semibold text-slate-800 truncate">{r.name}</p>
+                                    <p className="text-[12px] text-slate-400">{r.keyword_count} keywords · {r.cluster_count} clusters · step {r.step}{r.analysis_id ? ' · map built' : ''}</p>
+                                </div>
+                                {r.analysis_id && (
+                                    <button onClick={() => navigate(`/results/${r.analysis_id}`)}
+                                        className="text-[13px] font-semibold text-emerald-700 hover:underline shrink-0">View map</button>
+                                )}
+                                <button onClick={() => navigate(`/new-analysis?client=${id}`)}
+                                    className="text-[13px] font-semibold text-slate-500 hover:text-slate-700 shrink-0">Open</button>
+                            </div>
+                        ))}
                     </div>
                 )}
             </div>

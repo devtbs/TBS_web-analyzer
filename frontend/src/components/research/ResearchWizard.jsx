@@ -63,10 +63,21 @@ const Stepper = ({ step }) => (
 
 const toggle = (set, setter, val) => { const n = new Set(set); n.has(val) ? n.delete(val) : n.add(val); setter(n); };
 
-export default function ResearchWizard() {
+export default function ResearchWizard({ clientId = null }) {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [busy, setBusy] = useState(false);
+
+    // Save / resume
+    const [runId, setRunId] = useState(null);
+    const [savedRuns, setSavedRuns] = useState([]);
+    const [saving, setSaving] = useState(false);
+    const [lastSaved, setLastSaved] = useState(null);
+
+    // Credit/quota visibility
+    const [quota, setQuota] = useState(null);
+    // Transparency: what the last keyword fetch filtered out
+    const [kwMeta, setKwMeta] = useState(null);
 
     // Step 1 — site
     const [siteProps, setSiteProps] = useState([]);
@@ -100,6 +111,78 @@ export default function ResearchWizard() {
 
     // Step 5 — clusters
     const [clusters, setClusters] = useState([]);
+
+    // Load credit balance + any saved runs (for this client, if embedded in the hub) on mount.
+    useEffect(() => {
+        api.get('/api/research/quota').then(r => setQuota(r.data)).catch(() => {});
+        loadRuns();
+    }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+
+    const loadRuns = async () => {
+        try {
+            const r = await api.get('/api/research/runs', { params: clientId ? { client_id: clientId } : {} });
+            setSavedRuns(r.data.runs || []);
+        } catch { /* non-fatal */ }
+    };
+
+    // Snapshot the whole wizard so a run can be reopened and continued later.
+    const snapshot = () => ({
+        step, countryGl, manualUrl,
+        aiQueries, selectedQueries: [...selectedQueries],
+        competitors, selectedDomains: [...selectedDomains], manualDomains,
+        keywords, selectedKw: [...selectedKw], excludeRanked, maxKd, groupSimilar,
+        clusters,
+    });
+
+    const restore = (s) => {
+        if (!s) return;
+        setManualUrl(s.manualUrl || '');
+        setCountryGl(s.countryGl || 'th');
+        setAiQueries(s.aiQueries || []);
+        setSelectedQueries(new Set(s.selectedQueries || []));
+        setCompetitors(s.competitors || []);
+        setSelectedDomains(new Set(s.selectedDomains || []));
+        setManualDomains(s.manualDomains || []);
+        setKeywords(s.keywords || []);
+        setSelectedKw(new Set(s.selectedKw || []));
+        setExcludeRanked(s.excludeRanked !== false);
+        setMaxKd(s.maxKd ?? null);
+        setGroupSimilar(s.groupSimilar !== false);
+        setClusters(s.clusters || []);
+        setStep(s.step || 1);
+    };
+
+    const saveRun = async () => {
+        if (!site) { toast.error('Nothing to save yet — select a site first'); return; }
+        setSaving(true);
+        try {
+            const res = await api.post('/api/research/runs', {
+                id: runId, name: siteDomain || 'Research', domain: siteDomain,
+                site_url: site, client_id: clientId, gl: country.gl, location_id: country.locId,
+                step, state: snapshot(),
+            });
+            setRunId(res.data.id);
+            setLastSaved(new Date());
+            loadRuns();
+            toast.success('Research saved');
+        } catch { toast.error('Save failed'); } finally { setSaving(false); }
+    };
+
+    const openRun = async (id) => {
+        setBusy(true);
+        try {
+            const res = await api.get(`/api/research/runs/${id}`);
+            setRunId(res.data.id);
+            restore(res.data.state);
+            toast.success('Loaded saved research');
+        } catch { toast.error('Could not open that run'); } finally { setBusy(false); }
+    };
+
+    const deleteRun = async (id, e) => {
+        e?.stopPropagation();
+        try { await api.delete(`/api/research/runs/${id}`); if (id === runId) setRunId(null); loadRuns(); }
+        catch { toast.error('Delete failed'); }
+    };
 
     const allDomains = () => [...new Set([...selectedDomains, ...manualDomains])];
     // Collapse rewordings (optional), then KD filter (keeps easy + unknown, hides known-hard).
@@ -157,6 +240,7 @@ export default function ResearchWizard() {
                 exclude_ranked: excludeRanked, gsc_property: gscProperty || undefined, expand,
             });
             const kws = res.data.keywords || [];
+            setKwMeta(res.data.meta || null);
             if (expand) {
                 const seen = new Set(keywords.map(k => k.keyword.toLowerCase()));
                 const added = kws.filter(k => !seen.has(k.keyword.toLowerCase()));
@@ -191,9 +275,23 @@ export default function ResearchWizard() {
                 urls: [site.startsWith('http') ? site : `https://${site}`],
                 research: { seeds: [...selectedQueries], domains: allDomains(), keywords: chosen, clusters },
             });
+            // Persist the run + link it to the analysis it produced, so the client hub can jump straight
+            // back to the built map. Best-effort — never block navigation on the save.
+            try {
+                await api.post('/api/research/runs', {
+                    id: runId, name: siteDomain || 'Research', domain: siteDomain, site_url: site,
+                    client_id: clientId, gl: country.gl, location_id: country.locId, step,
+                    state: snapshot(), analysis_id: res.data.analysis_id,
+                });
+            } catch { /* non-fatal */ }
             navigate(`/results/${res.data.analysis_id}`);
         } catch (e) { toast.error(e.response?.data?.detail || 'Build failed'); setBusy(false); }
     };
+
+    // Per-run credit estimate — SERP charges per query (competitors + clustering); Mangools per
+    // seed (+~4 adjacency) and per competitor domain. Rough, but stops silent quota burn.
+    const serpEst = Math.max(selectedQueries.size, 0) + (clusters.length ? 0 : Math.min(selectedKw.size, 18));
+    const mangoolsEst = selectedQueries.size + 4 + allDomains().length;
 
     const BackBtn = ({ to }) => (
         <button onClick={() => setStep(to)} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500"><ArrowLeftIcon className="w-4 h-4" /> Back</button>
@@ -201,16 +299,56 @@ export default function ResearchWizard() {
 
     return (
         <div className="max-w-[900px] mx-auto">
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                 <div className="flex-1"><Stepper step={step} /></div>
-                <label className="flex items-center gap-2 text-[13px] text-slate-500 shrink-0">
-                    <GlobeAltIcon className="w-4 h-4 text-slate-400" /> Market
-                    <select value={countryGl} onChange={e => setCountryGl(e.target.value)}
-                        className="border border-slate-300 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/30">
-                        {COUNTRIES.map(c => <option key={c.gl} value={c.gl}>{c.label}</option>)}
-                    </select>
-                </label>
+                <div className="flex items-center gap-2 shrink-0">
+                    <label className="flex items-center gap-2 text-[13px] text-slate-500">
+                        <GlobeAltIcon className="w-4 h-4 text-slate-400" /> Market
+                        <select value={countryGl} onChange={e => setCountryGl(e.target.value)}
+                            className="border border-slate-300 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/30">
+                            {COUNTRIES.map(c => <option key={c.gl} value={c.gl}>{c.label}</option>)}
+                        </select>
+                    </label>
+                    <button onClick={saveRun} disabled={saving || !site}
+                        className="px-3 py-1.5 rounded-lg border border-slate-300 text-[13px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                        {saving ? 'Saving…' : runId ? 'Save' : 'Save research'}
+                    </button>
+                </div>
             </div>
+
+            {/* Credit balance + this-run estimate — so a demo never silently burns paid API quota. */}
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap text-[12px] text-slate-400">
+                <span>
+                    {quota?.serpapi && !quota.serpapi.error && quota.serpapi.left != null
+                        ? <>SerpAPI: <b className="text-slate-600">{quota.serpapi.left.toLocaleString()}</b> searches left</>
+                        : quota?.serpapi?.error ? 'SerpAPI balance unavailable' : ' '}
+                    {lastSaved && <span className="ml-3 text-emerald-600">✓ saved {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                </span>
+                <span title="Rough API cost of the next fetch">
+                    Est. this run: ~{serpEst} SERP · ~{mangoolsEst} Mangools lookups
+                </span>
+            </div>
+
+            {/* Saved research — resume a past run (also the client-hub entry point). */}
+            {savedRuns.length > 0 && step === 1 && (
+                <div className="mb-5 border border-slate-200 rounded-xl divide-y divide-slate-100">
+                    <p className="px-4 py-2 text-[12px] font-bold text-slate-500 bg-slate-50 rounded-t-xl">Saved research ({savedRuns.length})</p>
+                    <div className="max-h-[200px] overflow-y-auto">
+                        {savedRuns.map(r => (
+                            <div key={r.id} onClick={() => openRun(r.id)}
+                                className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50">
+                                <Favicon url={`https://${r.domain}/`} size={16} className="rounded" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[13px] font-semibold text-slate-800 truncate">{r.name}</p>
+                                    <p className="text-[11px] text-slate-400">{r.keyword_count} keywords · {r.cluster_count} clusters · step {r.step}{r.analysis_id ? ' · map built' : ''}</p>
+                                </div>
+                                <span className="text-[11px] text-slate-400">{r.updated_at ? new Date(r.updated_at).toLocaleDateString() : ''}</span>
+                                <button onClick={(e) => deleteRun(r.id, e)} className="text-slate-300 hover:text-red-500 text-[16px] leading-none px-1">×</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Step 1 — Select site */}
             {step === 1 && (
@@ -305,7 +443,7 @@ export default function ResearchWizard() {
             {/* Step 4 — Keywords */}
             {step === 4 && (
                 <div>
-                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                         <p className="text-[13px] font-bold text-slate-600">{visibleKw.length} shown · {selectedKw.size} selected</p>
                         <div className="flex items-center gap-3 flex-wrap">
                             {/* KD ceiling — 'worth working on' = easier to rank */}
@@ -329,6 +467,13 @@ export default function ResearchWizard() {
                             <button onClick={exportCsv} className="text-[13px] font-semibold text-slate-500 hover:text-slate-700 underline">Export CSV</button>
                         </div>
                     </div>
+                    {/* Why a keyword isn't here — makes the filter/dedupe explainable to a boss/client. */}
+                    <p className="text-[12px] text-slate-400 mb-3">
+                        {kwMeta && `${kwMeta.raw_count} found`}
+                        {kwMeta?.filtered_off_topic > 0 && ` · ${kwMeta.filtered_off_topic} off-topic filtered`}
+                        {kwMeta?.hidden_ranked > 0 && ` · ${kwMeta.hidden_ranked} already-ranked hidden`}
+                        {groupSimilar && keywords.length - visibleKw.length > 0 && ` · ${keywords.length - visibleKw.length} similar grouped`}
+                    </p>
                     <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[420px] overflow-y-auto mb-4">
                         <table className="w-full text-[13px]">
                             <thead className="bg-slate-50 sticky top-0"><tr className="text-[11px] uppercase text-slate-400">

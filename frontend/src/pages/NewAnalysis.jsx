@@ -38,6 +38,8 @@ const Favicon = ({ url, size = 20 }) => {
 const NewAnalysis = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    // When opened from a client hub (/new-analysis?client=<id>), tie saved research to that client.
+    const researchClientId = new URLSearchParams(location.search).get('client');
     const [urls, setUrls] = useState(['']);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [mode, setMode] = useState('research');   // 'research' wizard | 'quick' (site analysis)
@@ -185,7 +187,7 @@ const NewAnalysis = () => {
                             </button>
                         </div>
 
-                        {mode === 'research' ? <ResearchWizard /> : (<>
+                        {mode === 'research' ? <ResearchWizard clientId={researchClientId} /> : (<>
                         {/* ── Mode Toggle ── */}
                         <div className="flex justify-center mb-6">
                             <div className="bg-slate-50/80 rounded-full p-2 flex relative w-full sm:w-[560px]">

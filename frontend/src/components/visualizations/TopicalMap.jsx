@@ -364,6 +364,64 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         }, 500);
     };
 
+    // Structured, EDITABLE deliverables (vs the PNG/PDF snapshots): the content plan as Markdown
+    // (paste into a doc/brief) and as CSV (drop into a content calendar / sheet). This is the
+    // "last mile" — hand the client the actual map as data, not just a picture.
+    const _dl = (text, filename, mime) => {
+        const blob = new Blob(['﻿' + text], { type: `${mime};charset=utf-8;` });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+    };
+    const _slug = (activeMap.central_entity || 'topical-map').replace(/\s+/g, '-').toLowerCase();
+
+    const exportMapMarkdown = () => {
+        const L = [];
+        L.push(`# Topical Map — ${activeMap.central_entity || getDomain(activeMap.url)}`);
+        L.push(`\n_Site: ${activeMap.url || ''}_\n`);
+        if (activeMap.key_topics?.length) {
+            L.push(`## Key topics\n`);
+            activeMap.key_topics.forEach(t => L.push(`- ${t}`));
+            L.push('');
+        }
+        if (activeMap.keyword_clusters?.length) {
+            L.push(`## Content clusters\n`);
+            activeMap.keyword_clusters.forEach(c => {
+                const vol = c.total_volume ? ` (${c.total_volume.toLocaleString()}/mo)` : '';
+                L.push(`### ${c.label || 'Cluster'}${vol}`);
+                (c.keywords || []).forEach(k => L.push(`- ${k.keyword || k}`));
+                L.push('');
+            });
+        }
+        if (mergedArticles.length) {
+            L.push(`## Content plan (${mergedArticles.length} pages)\n`);
+            L.push(`| Title | Section | Type | Source |`);
+            L.push(`| --- | --- | --- | --- |`);
+            mergedArticles.forEach(a => L.push(
+                `| ${(a.title || '').replace(/\|/g, '/')} | ${a.section || ''} | ${a.article_type || ''} | ${a._isPrimary ? 'Primary' : (a._domain || 'Competitor')} |`));
+            L.push('');
+        }
+        _dl(L.join('\n'), `${_slug}-content-plan.md`, 'text/markdown');
+    };
+
+    const exportMapCsv = () => {
+        const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+        const rows = [['Title', 'Section', 'Type', 'Source', 'Cluster'].join(',')];
+        // Map each article to a cluster label when the keyword appears in one (best-effort).
+        const clusterOf = (title) => {
+            const t = (title || '').toLowerCase();
+            const hit = (activeMap.keyword_clusters || []).find(c =>
+                (c.keywords || []).some(k => t.includes((k.keyword || k || '').toLowerCase())));
+            return hit?.label || '';
+        };
+        mergedArticles.forEach(a => rows.push([
+            esc(a.title), esc(a.section), esc(a.article_type),
+            esc(a._isPrimary ? 'Primary' : (a._domain || 'Competitor')), esc(clusterOf(a.title)),
+        ].join(',')));
+        _dl(rows.join('\n'), `${_slug}-content-plan.csv`, 'text/csv');
+    };
+
     return (
         <>
         {/* ── Prompt settings panel ── */}
@@ -571,6 +629,22 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
 
                 <div className="flex items-center gap-2 self-start sm:self-auto sm:ml-auto">
+                    <button
+                        onClick={exportMapMarkdown}
+                        title="Editable content plan (Markdown) — paste into a doc or brief"
+                        className="flex items-center gap-2 px-3 py-2 sm:py-2.5 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Markdown
+                    </button>
+                    <button
+                        onClick={exportMapCsv}
+                        title="Content plan as CSV — drop into a content calendar / sheet"
+                        className="flex items-center gap-2 px-3 py-2 sm:py-2.5 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        CSV
+                    </button>
                     <button
                         onClick={exportAllToPDF}
                         className="flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"

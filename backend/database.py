@@ -198,6 +198,32 @@ class Client(Base):
     created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class ResearchRun(Base):
+    """A saved keyword-research session from the research wizard.
+
+    Persists the whole wizard state (site, market, AI queries, competitors, keywords, clusters, plus
+    which items were selected and the current step) as one JSON `state` blob so a run can be reopened
+    and continued later, or revisited from the client hub. `client_id` optionally ties it to a Client
+    (standalone id, not an FK — same convention as Document). `analysis_id` is set once the topical map
+    is built from the run. New table — create_all() adds it; no existing table is altered.
+    """
+    __tablename__ = "research_runs"
+
+    id          = Column(String, primary_key=True, index=True)
+    user_email  = Column(String, index=True, nullable=False)
+    client_id   = Column(String, index=True, nullable=True)
+    name        = Column(String, nullable=False)
+    domain      = Column(String, index=True, nullable=True)
+    site_url    = Column(String, nullable=True)
+    gl          = Column(String, nullable=True)
+    location_id = Column(Integer, nullable=True)
+    step        = Column(Integer, default=1, nullable=False)
+    state       = Column(JSON, nullable=False)   # full wizard state (see ResearchWizard.jsx)
+    analysis_id = Column(String, index=True, nullable=True)   # set once the map is built
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 # Create tables
 def init_db():
     """Initialize database tables"""

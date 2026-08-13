@@ -229,6 +229,9 @@ async def research_keywords(body: dict = Body(...),
             _merge(kw)
 
     rows = list(candidates.values())
+    raw_count = len(rows)
+    filtered_off_topic = 0
+    hidden_ranked = 0
 
     # Relevance filter: competitor domains drag in their whole footprint (brands, other industries).
     # Keep only keywords on-topic for the site (unless the caller opts out). Only DROP keywords the
@@ -239,9 +242,11 @@ async def research_keywords(body: dict = Body(...),
         keep = await _filter_relevant(judged, seeds, body.get("domain") or "")
         if keep:
             judged_set = {j.lower() for j in judged}
+            before = len(rows)
             rows = [r for r in rows
                     if (r.get("keyword") or "").lower() not in judged_set
                     or (r.get("keyword") or "").lower() in keep]
+            filtered_off_topic = before - len(rows)
 
     # Optional: hide keywords the client already ranks well for (GSC position <= 10).
     if body.get("exclude_ranked") and body.get("gsc_property"):
@@ -251,12 +256,23 @@ async def research_keywords(body: dict = Body(...),
             gsc_rows = await svc.get_top_queries(body["gsc_property"], days=90)
             won = {(r.get("query") or "").lower() for r in (gsc_rows or [])
                    if r.get("position") is not None and r["position"] <= 10}
+            before = len(rows)
             rows = [r for r in rows if (r.get("keyword") or "").lower() not in won]
+            hidden_ranked = before - len(rows)
         except Exception as e:
             logger.warning("research exclude_ranked failed: %s", str(e)[:120])
 
     rows.sort(key=lambda x: (x.get("volume") or 0), reverse=True)
-    return {"keywords": rows[:200]}
+    return {
+        "keywords": rows[:200],
+        # Transparency: what the filters did, so the wizard can explain "why a keyword isn't here".
+        "meta": {
+            "raw_count": raw_count,
+            "filtered_off_topic": filtered_off_topic,
+            "hidden_ranked": hidden_ranked,
+            "returned": min(len(rows), 200),
+        },
+    }
 
 
 @router.post("/api/research/cluster")
@@ -271,3 +287,125 @@ async def research_cluster(body: dict = Body(...), current_user: UserInfo = Depe
         return {"clusters": []}
     clusters = await cluster_by_serp(kws, location=_gl(body))
     return {"clusters": clusters}
+
+
+@router.get("/api/research/quota")
+async def research_quota(current_user: UserInfo = Depends(get_current_user)):
+    """Credit/quota visibility so a demo doesn't silently burn through paid API balance.
+
+    SerpAPI exposes a live account endpoint (searches left this month). Mangools' KWFinder REST has no
+    public remaining-quota endpoint, so we only report whether it's configured — the wizard shows a
+    per-run *estimate* of lookups client-side instead.
+    """
+    import asyncio
+    from config import settings
+    from services.mangools_service import mangools_configured
+
+    serp = None
+    if settings.SERPAPI_KEY:
+        def _fetch():
+            import requests
+            r = requests.get("https://serpapi.com/account",
+                             params={"api_key": settings.SERPAPI_KEY}, timeout=10)
+            r.raise_for_status()
+            return r.json()
+        try:
+            d = await asyncio.to_thread(_fetch)
+            serp = {
+                "plan": d.get("plan_name"),
+                "used": d.get("this_month_usage"),
+                "limit": d.get("searches_per_month"),
+                "left": d.get("total_searches_left"),
+            }
+        except Exception as e:
+            logger.warning("serpapi account fetch failed: %s", str(e)[:120])
+            serp = {"error": True}
+    return {"serpapi": serp, "mangools": {"configured": mangools_configured()}}
+
+
+# ---------------------------------------------------------------------------
+# Saved research runs (save / resume) — persist the wizard state so a run can be
+# reopened later or revisited from the client hub.
+# ---------------------------------------------------------------------------
+
+def _run_summary(r) -> dict:
+    """Lightweight row for lists — no heavy `state` blob."""
+    st = r.state or {}
+    kw = st.get("keywords") or []
+    return {
+        "id": r.id, "name": r.name, "domain": r.domain, "site_url": r.site_url,
+        "client_id": r.client_id, "gl": r.gl, "location_id": r.location_id,
+        "step": r.step, "analysis_id": r.analysis_id,
+        "keyword_count": len(kw), "cluster_count": len(st.get("clusters") or []),
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+
+@router.get("/api/research/runs")
+async def list_research_runs(client_id: Optional[str] = None,
+                             current_user: UserInfo = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    from database import ResearchRun
+    q = db.query(ResearchRun).filter(ResearchRun.user_email == current_user.email)
+    if client_id:
+        q = q.filter(ResearchRun.client_id == client_id)
+    runs = q.order_by(ResearchRun.updated_at.desc()).limit(100).all()
+    return {"runs": [_run_summary(r) for r in runs]}
+
+
+@router.get("/api/research/runs/{run_id}")
+async def get_research_run(run_id: str,
+                           current_user: UserInfo = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    from fastapi import HTTPException
+    from database import ResearchRun
+    r = (db.query(ResearchRun)
+         .filter(ResearchRun.id == run_id, ResearchRun.user_email == current_user.email).first())
+    if not r:
+        raise HTTPException(status_code=404, detail="Research run not found")
+    return {**_run_summary(r), "state": r.state or {}}
+
+
+@router.post("/api/research/runs")
+async def save_research_run(body: dict = Body(...),
+                            current_user: UserInfo = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    """Create or update (upsert by `id`) a saved research run."""
+    import uuid
+    from database import ResearchRun
+
+    state = body.get("state") or {}
+    run_id = body.get("id")
+    r = None
+    if run_id:
+        r = (db.query(ResearchRun)
+             .filter(ResearchRun.id == run_id, ResearchRun.user_email == current_user.email).first())
+    if r is None:
+        run_id = run_id or str(uuid.uuid4())
+        r = ResearchRun(id=run_id, user_email=current_user.email, state={})
+        db.add(r)
+    r.name = (body.get("name") or r.name or (body.get("domain") or "Untitled research"))[:200]
+    r.domain = body.get("domain") or r.domain
+    r.site_url = body.get("site_url") or r.site_url
+    r.client_id = body.get("client_id") if body.get("client_id") is not None else r.client_id
+    r.gl = body.get("gl") or r.gl
+    r.location_id = body.get("location_id") if body.get("location_id") is not None else r.location_id
+    r.step = int(body.get("step") or r.step or 1)
+    r.state = state
+    if body.get("analysis_id"):
+        r.analysis_id = body["analysis_id"]
+    db.commit()
+    return _run_summary(r)
+
+
+@router.delete("/api/research/runs/{run_id}")
+async def delete_research_run(run_id: str,
+                              current_user: UserInfo = Depends(get_current_user),
+                              db: Session = Depends(get_db)):
+    from database import ResearchRun
+    (db.query(ResearchRun)
+     .filter(ResearchRun.id == run_id, ResearchRun.user_email == current_user.email)
+     .delete())
+    db.commit()
+    return {"deleted": True}
