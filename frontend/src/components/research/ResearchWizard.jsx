@@ -57,11 +57,14 @@ export default function ResearchWizard() {
     const [keywords, setKeywords] = useState([]);
     const [selectedKw, setSelectedKw] = useState(new Set());
     const [excludeRanked, setExcludeRanked] = useState(true);   // default: surface NEW opportunities
+    const [maxKd, setMaxKd] = useState(null);                   // 'worth working on' difficulty ceiling
 
     // Step 5 — clusters
     const [clusters, setClusters] = useState([]);
 
     const allDomains = () => [...new Set([...selectedDomains, ...manualDomains])];
+    // KD filter keeps easy + unknown-difficulty terms, hides only the known-hard ones.
+    const visibleKw = keywords.filter(k => maxKd == null || k.kd == null || k.kd <= maxKd);
 
     const analyzeSite = async () => {
         if (!site) { toast.error('Select a site or enter a URL'); return; }
@@ -93,19 +96,27 @@ export default function ResearchWizard() {
         setManualDomain('');
     };
 
-    const fetchKeywords = async () => {
+    const fetchKeywords = async (expand = false) => {
         const domains = allDomains();
-        if (domains.length === 0) { toast.error('Pick or add at least one domain'); return; }
+        if (!expand && domains.length === 0) { toast.error('Pick or add at least one domain'); return; }
         setBusy(true);
         try {
             const res = await api.post('/api/research/keywords', {
                 seeds: [...selectedQueries], domains, domain: siteDomain,
-                exclude_ranked: excludeRanked, gsc_property: gscProperty || undefined,
+                exclude_ranked: excludeRanked, gsc_property: gscProperty || undefined, expand,
             });
             const kws = res.data.keywords || [];
-            setKeywords(kws);
-            setSelectedKw(new Set(kws.slice(0, 40).map(k => k.keyword)));
-            setStep(4);
+            if (expand) {
+                const seen = new Set(keywords.map(k => k.keyword.toLowerCase()));
+                const added = kws.filter(k => !seen.has(k.keyword.toLowerCase()));
+                setKeywords([...keywords, ...added]);
+                setSelectedKw(s => { const n = new Set(s); added.slice(0, 30).forEach(k => n.add(k.keyword)); return n; });
+                toast.success(added.length ? `Added ${added.length} more keywords` : 'No new keywords found');
+            } else {
+                setKeywords(kws);
+                setSelectedKw(new Set(kws.slice(0, 40).map(k => k.keyword)));
+                setStep(4);
+            }
         } catch { toast.error('Could not fetch keywords'); } finally { setBusy(false); }
     };
 
@@ -224,7 +235,7 @@ export default function ResearchWizard() {
                     )}
                     <div className="flex items-center justify-between">
                         <BackBtn to={2} />
-                        <button onClick={fetchKeywords} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
+                        <button onClick={() => fetchKeywords(false)} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                             {busy ? 'Fetching…' : <>Get keywords ({allDomains().length}) <ArrowRightIcon className="w-4 h-4" /></>}
                         </button>
                     </div>
@@ -235,13 +246,23 @@ export default function ResearchWizard() {
             {step === 4 && (
                 <div>
                     <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                        <p className="text-[13px] font-bold text-slate-600">{keywords.length} keywords · {selectedKw.size} selected</p>
-                        {gscProperty && (
-                            <label className="flex items-center gap-2 text-[13px] text-slate-500">
-                                <input type="checkbox" checked={excludeRanked} onChange={e => setExcludeRanked(e.target.checked)} className="rounded border-slate-300 text-emerald-600" />
-                                Hide keywords I already rank for
-                            </label>
-                        )}
+                        <p className="text-[13px] font-bold text-slate-600">{visibleKw.length} shown · {selectedKw.size} selected</p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                            {/* KD ceiling — 'worth working on' = easier to rank */}
+                            <div className="flex items-center gap-1 text-[12px]">
+                                <span className="text-slate-400 mr-1">Max KD</span>
+                                {[['All', null], ['≤20', 20], ['≤30', 30], ['≤50', 50]].map(([lbl, v]) => (
+                                    <button key={lbl} onClick={() => setMaxKd(v)}
+                                        className={`px-2 py-1 rounded-md font-semibold ${maxKd === v ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>{lbl}</button>
+                                ))}
+                            </div>
+                            {gscProperty && (
+                                <label className="flex items-center gap-2 text-[13px] text-slate-500">
+                                    <input type="checkbox" checked={excludeRanked} onChange={e => setExcludeRanked(e.target.checked)} className="rounded border-slate-300 text-emerald-600" />
+                                    Hide already-ranked
+                                </label>
+                            )}
+                        </div>
                     </div>
                     <div className="border border-slate-200 rounded-xl overflow-hidden max-h-[420px] overflow-y-auto mb-4">
                         <table className="w-full text-[13px]">
@@ -250,7 +271,7 @@ export default function ResearchWizard() {
                                 <th className="text-right py-2 px-2 font-bold">Vol</th><th className="text-right py-2 px-2 font-bold">KD</th>
                             </tr></thead>
                             <tbody>
-                                {keywords.map((k, i) => (
+                                {visibleKw.map((k, i) => (
                                     <tr key={i} className="border-t border-slate-50 hover:bg-slate-50">
                                         <td className="text-center"><input type="checkbox" checked={selectedKw.has(k.keyword)} onChange={() => toggle(selectedKw, setSelectedKw, k.keyword)} className="rounded border-slate-300 text-emerald-600" /></td>
                                         <td className="py-1.5 px-2 text-slate-800 font-medium">{k.keyword}</td>
@@ -264,7 +285,11 @@ export default function ResearchWizard() {
                     <div className="flex items-center justify-between">
                         <BackBtn to={3} />
                         <div className="flex gap-2">
-                            {gscProperty && <button onClick={fetchKeywords} disabled={busy} className="px-4 py-2.5 border border-slate-300 rounded-lg text-[14px] font-semibold text-slate-600">Apply filter</button>}
+                            {gscProperty && <button onClick={() => fetchKeywords(false)} disabled={busy} className="px-4 py-2.5 border border-slate-300 rounded-lg text-[14px] font-semibold text-slate-600">Apply filter</button>}
+                            <button onClick={() => fetchKeywords(true)} disabled={busy}
+                                className="flex items-center gap-2 px-4 py-2.5 border border-emerald-300 text-emerald-700 rounded-lg text-[14px] font-bold hover:bg-emerald-50 disabled:opacity-60">
+                                <SparklesIcon className="w-4 h-4" /> {busy ? 'Finding…' : 'Find more'}
+                            </button>
                             <button onClick={runCluster} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                                 {busy ? 'Clustering…' : <>Cluster ({selectedKw.size}) <ArrowRightIcon className="w-4 h-4" /></>}
                             </button>

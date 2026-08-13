@@ -147,6 +147,32 @@ async def research_serp(body: dict = Body(...), current_user: UserInfo = Depends
     return {"serp": serp, "top_queries": top_queries}
 
 
+async def _expand_topics(seeds: List[str], domain: str) -> List[str]:
+    """Generate richer discovery queries to find NEW keyword territory: question queries, specific
+    entities (grape varieties, regions, course levels…), and modifier combos (best/for beginners/
+    near me/price/vs). Each becomes a Mangools seed. Best-effort."""
+    import json
+    from services.ai_service import ai_service
+    topic = ", ".join([s for s in seeds if s]) or domain
+    prompt = (
+        f"A website about: {topic}.\n"
+        "Generate 15 SHORT search phrases to discover NEW keyword opportunities for this subject. "
+        "Mix three kinds:\n"
+        "- QUESTIONS people ask (how to…, what…, is…, best…, vs…)\n"
+        "- specific ENTITIES within the subject (e.g. named types, levels, regions, varieties)\n"
+        "- MODIFIER combos (for beginners, near me, price, in [country], online, certification)\n"
+        "Stay strictly within the subject. Return JSON: {\"topics\": [\"...\"]}"
+    )
+    try:
+        res = await ai_service.extract_json(prompt, "You are an SEO keyword researcher. Return only JSON.",
+                                            use_deepseek=True)
+        topics = res.get("topics") if isinstance(res, dict) else (res if isinstance(res, list) else [])
+        return [t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()][:15]
+    except Exception as e:
+        logger.warning("expand topics failed: %s", str(e)[:120])
+        return []
+
+
 @router.post("/api/research/keywords")
 async def research_keywords(body: dict = Body(...),
                             current_user: UserInfo = Depends(get_current_user),
@@ -184,6 +210,11 @@ async def research_keywords(body: dict = Body(...),
     except Exception as e:
         logger.warning("research adjacency failed: %s", str(e)[:120])
 
+    # "Find more": deeper discovery — questions, entities and modifier combos across the subject.
+    if body.get("expand"):
+        more = await _expand_topics(seeds, body.get("domain") or "")
+        expand = list(dict.fromkeys(expand + more))
+
     for seed in expand:
         for kw in await get_related_keywords(seed, location_id=loc):
             _merge(kw)
@@ -194,12 +225,17 @@ async def research_keywords(body: dict = Body(...),
     rows = list(candidates.values())
 
     # Relevance filter: competitor domains drag in their whole footprint (brands, other industries).
-    # Keep only keywords on-topic for the site (unless the caller opts out).
-    if domains and rows and body.get("relevance_filter", True):
+    # Keep only keywords on-topic for the site (unless the caller opts out). Only DROP keywords the
+    # LLM actually judged — anything beyond the judged window is kept, so long-tail questions survive.
+    if (domains or body.get("expand")) and rows and body.get("relevance_filter", True):
         rows.sort(key=lambda x: (x.get("volume") or 0), reverse=True)
-        keep = await _filter_relevant([r["keyword"] for r in rows[:150]], seeds, body.get("domain") or "")
+        judged = [r["keyword"] for r in rows[:200]]
+        keep = await _filter_relevant(judged, seeds, body.get("domain") or "")
         if keep:
-            rows = [r for r in rows if (r.get("keyword") or "").lower() in keep]
+            judged_set = {j.lower() for j in judged}
+            rows = [r for r in rows
+                    if (r.get("keyword") or "").lower() not in judged_set
+                    or (r.get("keyword") or "").lower() in keep]
 
     # Optional: hide keywords the client already ranks well for (GSC position <= 10).
     if body.get("exclude_ranked") and body.get("gsc_property"):
