@@ -42,20 +42,22 @@ class SerpService:
         # Default to US for .com, .net, .org, etc.
         return 'th'
     
-    async def get_serp_insights(self, keywords: List[str], domain: str = None, max_keywords: int = 3) -> Dict:
+    async def get_serp_insights(self, keywords: List[str], domain: str = None, max_keywords: int = 3,
+                                location: str = None) -> Dict:
         """
         Get SERP insights for multiple keywords
         Returns competitor rankings, PAA questions, related searches
 
         max_keywords caps how many keywords we spend SerpAPI credits on (default 3 for the legacy
         post-hoc enrichment; the grounding step passes a higher cap to cover the niche).
+        `location` (gl country code) overrides the domain-based guess when the caller knows the market.
         """
         if not self.api_key:
             print("⚠️  SerpAPI key not configured, skipping SERP analysis")
             return self._empty_insights()
 
-        # Detect location from domain
-        location = self._detect_location_from_domain(domain) if domain else 'th'
+        # Explicit location wins; otherwise detect from domain.
+        location = location or (self._detect_location_from_domain(domain) if domain else 'th')
         keywords = keywords[:max_keywords]
         print(f"🔍 Fetching SERP data for {len(keywords)} keywords (location: {location.upper()})...")
 

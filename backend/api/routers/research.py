@@ -25,6 +25,11 @@ def _serp_gl(domain: Optional[str]) -> str:
     return serp_service._detect_location_from_domain(domain) if domain else "th"
 
 
+def _gl(body: dict) -> str:
+    """SERP country code — explicit `gl` from the wizard wins, else guess from the domain TLD."""
+    return (body.get("gl") or "").strip().lower() or _serp_gl(body.get("domain"))
+
+
 def _loc_id(domain: Optional[str], location_id: Optional[int]) -> int:
     if location_id:
         return location_id
@@ -129,7 +134,8 @@ async def research_serp(body: dict = Body(...), current_user: UserInfo = Depends
     # Multi-query mode (wizard v2): aggregate the competitor domains that rank ACROSS the selected
     # queries — the sites that show up repeatedly are the real niche rivals.
     if queries:
-        agg = await serp_service.get_serp_insights(queries, domain=domain, max_keywords=len(queries))
+        agg = await serp_service.get_serp_insights(queries, domain=domain, max_keywords=len(queries),
+                                                   location=_gl(body))
         return {
             "competitors": agg.get("top_competitors") or [],
             "people_also_ask": agg.get("people_also_ask") or [],
@@ -141,7 +147,7 @@ async def research_serp(body: dict = Body(...), current_user: UserInfo = Depends
     query = (body.get("query") or "").strip()
     if not query:
         return {"serp": None, "top_queries": []}
-    serp = await serp_service.get_serp_preview(query, location=_serp_gl(domain))
+    serp = await serp_service.get_serp_preview(query, location=_gl(body))
     related = await get_related_keywords(query, location_id=_loc_id(domain, body.get("location_id")))
     top_queries = sorted(related, key=lambda x: (x.get("volume") or 0), reverse=True)[:10]
     return {"serp": serp, "top_queries": top_queries}
@@ -263,5 +269,5 @@ async def research_cluster(body: dict = Body(...), current_user: UserInfo = Depe
            for k in (body.get("keywords") or []) if k.get("keyword")]
     if not kws:
         return {"clusters": []}
-    clusters = await cluster_by_serp(kws, location=_serp_gl(body.get("domain")))
+    clusters = await cluster_by_serp(kws, location=_gl(body))
     return {"clusters": clusters}

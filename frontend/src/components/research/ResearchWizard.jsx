@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRightIcon, ArrowLeftIcon, SparklesIcon, PlusIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
@@ -10,6 +10,23 @@ import GSCPropertySelector from '../gsc/GSCPropertySelector';
    competitors → their keywords → cluster → build the full topical map from the curated selection. */
 
 const bareDomain = (u) => (u || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+// Country → SERP gl code + Mangools location_id.
+const COUNTRIES = [
+    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
+    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
+    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
+    { label: 'Philippines', gl: 'ph', locId: 2608 }, { label: 'Vietnam', gl: 'vn', locId: 2704 },
+    { label: 'India', gl: 'in', locId: 2356 }, { label: 'Japan', gl: 'jp', locId: 2392 },
+    { label: 'Canada', gl: 'ca', locId: 2124 }, { label: 'Germany', gl: 'de', locId: 2276 },
+    { label: 'France', gl: 'fr', locId: 2250 },
+];
+const guessCountry = (domain) => {
+    const d = (domain || '').toLowerCase();
+    if (d.endsWith('.co.uk')) return 'uk';
+    if (d.endsWith('.com.au')) return 'au';
+    const tld = d.split('.').pop();
+    return (COUNTRIES.find(c => c.gl === tld) || {}).gl || 'th';
+};
 const kdColor = (kd) => kd == null ? 'text-slate-400' : kd <= 30 ? 'text-emerald-600' : kd <= 50 ? 'text-amber-600' : 'text-red-500';
 const STEPS = ['Site', 'Queries', 'Competitors', 'Keywords', 'Clusters'];
 
@@ -42,6 +59,12 @@ export default function ResearchWizard() {
     const site = (manualUrl.trim() || siteProps[0]?.url || '');
     const siteDomain = bareDomain(site);
     const gscProperty = siteProps[0]?.url || '';
+
+    // Country/market for SERP + keyword volumes — defaults from the site's TLD, user can override.
+    const [countryGl, setCountryGl] = useState('th');
+    useEffect(() => { if (siteDomain) setCountryGl(guessCountry(siteDomain)); }, [siteDomain]);
+    const country = COUNTRIES.find(c => c.gl === countryGl) || COUNTRIES[0];
+    const loc = () => ({ gl: country.gl, location_id: country.locId });
 
     // Step 2 — AI queries
     const [aiQueries, setAiQueries] = useState([]);
@@ -84,7 +107,7 @@ export default function ResearchWizard() {
         if (queries.length === 0) { toast.error('Pick at least one query'); return; }
         setBusy(true);
         try {
-            const res = await api.post('/api/research/serp', { queries, domain: siteDomain });
+            const res = await api.post('/api/research/serp', { queries, domain: siteDomain, ...loc() });
             setCompetitors((res.data.competitors || []).filter(c => bareDomain(c.domain) !== siteDomain));
             setStep(3);
         } catch { toast.error('Competitor search failed'); } finally { setBusy(false); }
@@ -102,7 +125,7 @@ export default function ResearchWizard() {
         setBusy(true);
         try {
             const res = await api.post('/api/research/keywords', {
-                seeds: [...selectedQueries], domains, domain: siteDomain,
+                seeds: [...selectedQueries], domains, domain: siteDomain, ...loc(),
                 exclude_ranked: excludeRanked, gsc_property: gscProperty || undefined, expand,
             });
             const kws = res.data.keywords || [];
@@ -125,7 +148,7 @@ export default function ResearchWizard() {
         if (chosen.length < 2) { toast.error('Select at least 2 keywords'); return; }
         setBusy(true);
         try {
-            const res = await api.post('/api/research/cluster', { keywords: chosen, domain: siteDomain });
+            const res = await api.post('/api/research/cluster', { keywords: chosen, domain: siteDomain, ...loc() });
             setClusters(res.data.clusters || []);
             setStep(5);
         } catch { toast.error('Clustering failed'); } finally { setBusy(false); }
@@ -150,7 +173,16 @@ export default function ResearchWizard() {
 
     return (
         <div className="max-w-[900px] mx-auto">
-            <Stepper step={step} />
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <div className="flex-1"><Stepper step={step} /></div>
+                <label className="flex items-center gap-2 text-[13px] text-slate-500 shrink-0">
+                    <GlobeAltIcon className="w-4 h-4 text-slate-400" /> Market
+                    <select value={countryGl} onChange={e => setCountryGl(e.target.value)}
+                        className="border border-slate-300 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/30">
+                        {COUNTRIES.map(c => <option key={c.gl} value={c.gl}>{c.label}</option>)}
+                    </select>
+                </label>
+            </div>
 
             {/* Step 1 — Select site */}
             {step === 1 && (
