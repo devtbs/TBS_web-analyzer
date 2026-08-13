@@ -40,11 +40,16 @@ async def _filter_relevant(keywords: List[str], seeds: List[str], domain: str) -
     from services.ai_service import ai_service
     topic = ", ".join([s for s in seeds if s]) or domain
     prompt = (
-        f"A website about: {topic} (domain: {domain}).\n"
-        "From the KEYWORDS list, return ONLY those topically relevant to that website — terms a "
-        "person interested in this subject would search (including closely-related concepts like "
-        "pairings or materials). DROP unrelated brand names, restaurants, other industries and "
-        "off-topic terms. Keep the keyword strings exactly as given.\n"
+        f"The website's CORE SUBJECT is: {topic} (domain: {domain}).\n"
+        "From the KEYWORDS list, return ONLY keywords that a person specifically interested in THIS "
+        "core subject would search. Be STRICT:\n"
+        "- DROP keywords about other industries, general food/cooking/baking, brand names, "
+        "restaurants, and anything only loosely related.\n"
+        "- A tangential term (e.g. an ingredient or pairing) is relevant ONLY if it is directly tied "
+        "to the core subject; generic terms like 'vegan', 'pastries', 'baguette', 'cooking class' "
+        "are NOT relevant unless the core subject IS that industry.\n"
+        "- When unsure, DROP it.\n"
+        "Keep the keyword strings exactly as given.\n"
         'Return JSON: {"keep": ["...", "..."]}\n\n'
         f"KEYWORDS: {json.dumps(keywords, ensure_ascii=False)}"
     )
