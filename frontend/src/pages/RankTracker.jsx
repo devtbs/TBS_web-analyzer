@@ -197,7 +197,7 @@ export default function RankTracker() {
                                         </td>
                                     </tr>
                                 )}
-                                </>
+                                </Fragment>
                             ))}
                         </tbody>
                     </table>
