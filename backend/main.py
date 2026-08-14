@@ -45,12 +45,18 @@ async def startup_event():
         from apscheduler.triggers.cron import CronTrigger
         from services.alert_service import evaluate_all_users
 
+        from services.rank_tracker_service import collect_due
+
         scheduler = AsyncIOScheduler()
         scheduler.add_job(evaluate_all_users, CronTrigger(hour=7, minute=0),
                           id="daily_alerts", replace_existing=True)
+        # Daily rank collection. The job itself claims a one-per-day marker, so even though every
+        # gunicorn worker starts its own scheduler, only one worker actually spends SerpAPI credits.
+        scheduler.add_job(collect_due, CronTrigger(hour=6, minute=0),
+                          id="daily_rank_collect", replace_existing=True)
         scheduler.start()
         app.state.scheduler = scheduler
-        print("⏰ Alert scheduler started (daily 07:00)")
+        print("⏰ Schedulers started (alerts 07:00, rank collect 06:00)")
     except Exception as e:
         print(f"⚠️  Alert scheduler not started: {e}")
 

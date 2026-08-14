@@ -192,6 +192,19 @@ export default function ResearchWizard({ clientId = null }) {
         .filter(k => maxKd == null || k.kd == null || k.kd <= maxKd)
         .filter(k => (k.volume || 0) >= minVol);
 
+    // Push the selected keywords straight into the rank tracker for this site/client.
+    const trackSelected = async () => {
+        const kws = keywords.filter(k => selectedKw.has(k.keyword)).map(k => k.keyword);
+        if (!kws.length) { toast.error('Select keywords to track first'); return; }
+        try {
+            const res = await api.post('/api/ranktracker/keywords', {
+                keywords: kws, domain: siteDomain, client_id: clientId,
+                gl: country.gl, location_id: country.locId,
+            });
+            toast.success(`Tracking ${res.data.added} keyword${res.data.added !== 1 ? 's' : ''} — see Rank Tracker`);
+        } catch { toast.error('Could not add to rank tracker'); }
+    };
+
     const exportCsv = () => {
         const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
         const lines = [['Keyword', 'Volume', 'KD', 'CPC'].join(',')]
@@ -475,6 +488,7 @@ export default function ResearchWizard({ clientId = null }) {
                                     Hide already-ranked
                                 </label>
                             )}
+                            <button onClick={trackSelected} className="text-[13px] font-semibold text-teal-600 hover:text-teal-700 underline">Track selected</button>
                             <button onClick={exportCsv} className="text-[13px] font-semibold text-slate-500 hover:text-slate-700 underline">Export CSV</button>
                         </div>
                     </div>

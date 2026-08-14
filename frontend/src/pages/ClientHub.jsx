@@ -4,7 +4,7 @@ import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import {
     ArrowLeftIcon, PencilSquareIcon, SparklesIcon, DocumentTextIcon,
     MagnifyingGlassIcon, ChartPieIcon, MegaphoneIcon,
-    CheckCircleIcon, ExclamationCircleIcon,
+    CheckCircleIcon, ExclamationCircleIcon, ArrowTrendingUpIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
@@ -90,6 +90,7 @@ export default function ClientHub() {
     const [editing, setEditing] = useState(false);
     const [genMsg, setGenMsg] = useState(null);   // inline generate progress; null = idle
     const [research, setResearch] = useState([]); // saved keyword-research runs for this client
+    const [rankKws, setRankKws] = useState([]);   // tracked rank-tracker keywords for this client
     const [matching, setMatching] = useState(false);  // auto-linking GA4/Ads in the background
     const matchedRef = useRef(null);                  // client id we've already auto-matched this mount
 
@@ -135,7 +136,12 @@ export default function ClientHub() {
         catch { /* non-fatal */ }
     }, [id]);
 
-    useEffect(() => { loadHub().then(tryAutoMatch); loadDecks(); loadResearch(); }, [loadHub, loadDecks, loadResearch, tryAutoMatch]);
+    const loadRankKws = useCallback(async () => {
+        try { setRankKws((await api.get('/api/ranktracker/keywords', { params: { client_id: id } })).data.keywords || []); }
+        catch { /* non-fatal */ }
+    }, [id]);
+
+    useEffect(() => { loadHub().then(tryAutoMatch); loadDecks(); loadResearch(); loadRankKws(); }, [loadHub, loadDecks, loadResearch, loadRankKws, tryAutoMatch]);
 
     // Health pill for the account backing this client.
     useEffect(() => {
@@ -291,6 +297,33 @@ export default function ClientHub() {
                                     className="text-[13px] font-semibold text-slate-500 hover:text-slate-700 shrink-0">Open</button>
                             </div>
                         ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Rank tracking */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 mb-6">
+                <div className="flex items-center gap-4 flex-wrap mb-1">
+                    <div className="min-w-0 flex-1">
+                        <p className="font-bold text-slate-800 text-[15px]">Keyword rankings</p>
+                        <p className="text-[13px] text-slate-500">
+                            {rankKws.length ? `Tracking ${rankKws.length} keyword${rankKws.length !== 1 ? 's' : ''} — daily Google positions.` : 'Track this client’s keyword positions over time.'}
+                        </p>
+                    </div>
+                    <button onClick={() => navigate(`/rank-tracker?client=${id}`)}
+                        className="flex items-center gap-2 border border-slate-300 text-slate-700 rounded-lg px-4 py-2.5 font-bold text-[14px] hover:bg-slate-50">
+                        <ArrowTrendingUpIcon className="w-4 h-4" /> Rank tracker
+                    </button>
+                </div>
+                {rankKws.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {rankKws.slice(0, 8).map(k => (
+                            <span key={k.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-[12px] font-medium text-slate-600">
+                                {k.keyword}
+                                <b className={k.position == null ? 'text-slate-400' : k.position <= 10 ? 'text-emerald-600' : 'text-slate-700'}>{k.position == null ? '>100' : `#${k.position}`}</b>
+                            </span>
+                        ))}
+                        {rankKws.length > 8 && <span className="px-2 py-1 text-[12px] text-slate-400">+{rankKws.length - 8} more</span>}
                     </div>
                 )}
             </div>

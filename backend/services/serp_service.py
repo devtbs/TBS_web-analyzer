@@ -164,6 +164,30 @@ class SerpService:
             'related': related
         }
     
+    async def get_rank(self, keyword: str, domain: str, location: str = None) -> Dict:
+        """Find `domain`'s best organic position (1-100) for `keyword` — the rank-tracker probe.
+        Returns {position, url} or {position: None, url: None} if the domain isn't in the top 100."""
+        empty = {"position": None, "url": None}
+        if not self.api_key or not keyword or not domain:
+            return empty
+        loc = location or (self._detect_location_from_domain(domain) if domain else 'th')
+        target = domain.lower().replace('www.', '').strip('/')
+        try:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._rank_sync, keyword, target, loc)
+        except Exception as e:
+            print(f"⚠️  rank check '{keyword}' failed: {str(e)}")
+            return empty
+
+    def _rank_sync(self, keyword: str, target_domain: str, location: str) -> Dict:
+        params = {"q": keyword, "api_key": self.api_key, "num": 100, "gl": location, "hl": "en"}
+        results = GoogleSearch(params).get_dict()
+        for r in (results.get("organic_results") or []):
+            d = self._extract_domain(r.get("link", "")).lower()
+            if d == target_domain or d.endswith("." + target_domain) or target_domain.endswith("." + d):
+                return {"position": r.get("position"), "url": r.get("link", "")}
+        return {"position": None, "url": None}
+
     async def get_serp_preview(self, query: str, location: str = None) -> Dict:
         """Full SERP for a single query — for the research wizard's live 'Test Search' step.
         Returns top-10 organic (title/url/domain/position/snippet), PAA, related, knowledge panel."""

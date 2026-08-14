@@ -45,6 +45,7 @@ const Presentation = lazy(() => import('./pages/Presentation'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const Assistant = lazy(() => import('./pages/Assistant'));
 const TechnicalAuditPage = lazy(() => import('./pages/TechnicalAuditPage'));
+const RankTracker = lazy(() => import('./pages/RankTracker'));
 
 /* Lightweight fallback shown while a lazily-loaded page chunk downloads. */
 const PageSpinner = () => (
@@ -205,6 +206,7 @@ function AppContent() {
                     <Route path="/seo-analytics/cannibalization" element={<CannibalizationPage />} />
                     <Route path="/seo-analytics/topic-clusters" element={<TopicClustersPage />} />
                     <Route path="/new-analysis" element={<NewAnalysis />} />
+                    <Route path="/rank-tracker" element={<RankTracker />} />
                     <Route path="/history" element={<History />} />
                     <Route path="/select-pages" element={<PageSelector />} />
                     <Route path="/results/:analysisId" element={<Results />} />

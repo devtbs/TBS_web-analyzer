@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Text, JSON, Boolean, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, Column, String, DateTime, Date, Text, JSON, Boolean, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -222,6 +222,49 @@ class ResearchRun(Base):
     analysis_id = Column(String, index=True, nullable=True)   # set once the map is built
     created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class TrackedKeyword(Base):
+    """A keyword whose Google position we monitor over time (self-hosted rank tracker — replaces the
+    SE Ranking dependency). One row per keyword per client/site/market. `client_id` is a standalone id
+    (not an FK), same convention as Document/ResearchRun. New table — create_all() adds it."""
+    __tablename__ = "tracked_keywords"
+    __table_args__ = (UniqueConstraint("user_email", "client_id", "keyword", "location_id",
+                                       name="uq_tracked_keyword"),)
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    user_email  = Column(String, index=True, nullable=False)
+    client_id   = Column(String, index=True, nullable=True)
+    domain      = Column(String, index=True, nullable=False)   # the site we look for in the SERP
+    keyword     = Column(String, nullable=False)
+    gl          = Column(String, nullable=True)                # SERP country code (th/us/uk…)
+    location_id = Column(Integer, nullable=True)               # kept for parity with research market
+    active      = Column(Boolean, default=True, nullable=False)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RankSnapshot(Base):
+    """One position reading for a TrackedKeyword on a given day. position NULL = not in the top 100.
+    Unique on (tracked_keyword_id, checked_on) so a same-day re-run updates rather than duplicates."""
+    __tablename__ = "rank_snapshots"
+    __table_args__ = (UniqueConstraint("tracked_keyword_id", "checked_on", name="uq_rank_snapshot_day"),)
+
+    id                = Column(Integer, primary_key=True, autoincrement=True)
+    tracked_keyword_id = Column(Integer, index=True, nullable=False)
+    checked_on        = Column(Date, index=True, nullable=False)
+    position          = Column(Integer, nullable=True)   # 1-100, or NULL = outside top 100
+    url               = Column(Text, nullable=True)      # the ranking URL on our domain
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RankRunMarker(Base):
+    """One row per day the collector has claimed. gunicorn runs -w 4 and each worker starts its own
+    scheduler; the collector INSERTs today's marker first and bails if the insert conflicts, so only
+    one worker actually spends SerpAPI credits."""
+    __tablename__ = "rank_run_markers"
+
+    run_on     = Column(Date, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 # Create tables
