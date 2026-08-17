@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routers import (
     auth, gsc, analytics, ads, ranking, decks, analysis, content, alerts, audit, accounts,
-    assistant, bing, clients, research,
+    assistant, bing, clients, research, clustering,
 )
 from config import settings
 from database import init_db

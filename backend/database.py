@@ -267,6 +267,32 @@ class RankRunMarker(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class ClusteringRun(Base):
+    """A keyword-clustering job + its saved result (Keyword-Insights-style SERP-overlap clustering).
+
+    Doubles as the async job store: the POST creates a `queued` row, a background task flips it to
+    `running` (updating `progress`) then `done`/`error`, and the frontend polls the row. Persisting the
+    result matters because SERP fetching is expensive (1 SerpAPI credit per keyword) — a run must never
+    be throwaway. `client_id` is a standalone id (same convention as ResearchRun). create_all() adds it.
+    """
+    __tablename__ = "clustering_runs"
+
+    id          = Column(String, primary_key=True, index=True)
+    user_email  = Column(String, index=True, nullable=False)
+    client_id   = Column(String, index=True, nullable=True)
+    name        = Column(String, nullable=False)
+    domain      = Column(String, nullable=True)
+    gl          = Column(String, nullable=True)
+    location_id = Column(Integer, nullable=True)
+    params      = Column(JSON, nullable=True)   # {min_overlap, top_n, mode, keyword_count}
+    status      = Column(String, default="queued", nullable=False)  # queued|running|done|error
+    progress    = Column(JSON, nullable=True)   # {done, total}
+    result      = Column(JSON, nullable=True)   # [{pillar, intent, brief, gsc_status, keywords:[...]}]
+    error       = Column(Text, nullable=True)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 # Create tables
 def init_db():
     """Initialize database tables"""

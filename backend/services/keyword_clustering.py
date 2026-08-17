@@ -21,16 +21,20 @@ _SERP_CACHE: Dict[tuple, tuple] = {}
 _TTL = 24 * 60 * 60
 
 
-async def _serp_urls(keyword: str, location: str) -> set:
-    key = (keyword.lower(), location)
+_SEM = asyncio.Semaphore(6)   # cap concurrent SerpAPI calls during a large clustering run
+
+
+async def _serp_urls(keyword: str, location: str, top_n: int = TOP_N) -> set:
+    key = (keyword.lower(), location, top_n)
     hit = _SERP_CACHE.get(key)
     if hit and time.time() - hit[0] < _TTL:
         return hit[1]
     try:
         from services.serp_service import serp_service
-        data = await serp_service._fetch_keyword_data(keyword, location)
+        async with _SEM:
+            data = await serp_service._fetch_keyword_data(keyword, location)
         urls = {(c.get("url") or "").split("?")[0].rstrip("/")
-                for c in (data.get("competitors") or [])[:TOP_N] if c.get("url")}
+                for c in (data.get("competitors") or [])[:top_n] if c.get("url")}
     except Exception as e:
         logger.warning("cluster SERP '%s' failed: %s", keyword, str(e)[:120])
         urls = set()
@@ -38,19 +42,37 @@ async def _serp_urls(keyword: str, location: str) -> set:
     return urls
 
 
-async def cluster_by_serp(keyword_rows: List[Dict], location: str = "th") -> List[Dict]:
-    """Group opportunity keywords into content clusters by SERP overlap.
-
-    keyword_rows: [{keyword, volume, kd, ...}] (already ranked by volume). Returns clusters:
-    [{label, total_volume, keywords:[{keyword, volume, kd}]}] sorted by total volume desc.
+def _build_clusters(rows: List[Dict], serps: List[set], min_overlap: int, mode: str) -> List[Dict]:
+    """Turn per-keyword SERP URL-sets into clusters. `mode`:
+      - 'hard'    : union-find — transitive groups, each keyword in exactly one cluster.
+      - 'centric' : pillar-seeded — highest-volume unclustered keyword seeds a cluster and pulls in
+                    only keywords sharing >= min_overlap with THAT pillar (tighter, page-focused).
     """
-    rows = [r for r in (keyword_rows or []) if r.get("keyword")][:MAX_KEYWORDS]
-    if len(rows) < 2:
-        return []
-    kws = [r["keyword"] for r in rows]
-    serps = await asyncio.gather(*[_serp_urls(k, location) for k in kws])
+    n = len(rows)
+    if mode == "centric":
+        order = sorted(range(n), key=lambda i: (rows[i].get("volume") or 0), reverse=True)
+        used = [False] * n
+        groups: List[List[Dict]] = []
+        for i in order:
+            if used[i] or not serps[i]:
+                continue
+            members = [rows[i]]
+            used[i] = True
+            for j in order:
+                if used[j] or not serps[j]:
+                    continue
+                if len(serps[i] & serps[j]) >= min_overlap:
+                    members.append(rows[j])
+                    used[j] = True
+            groups.append(members)
+        # keywords with no SERP still form singletons
+        for i in range(n):
+            if not used[i]:
+                groups.append([rows[i]])
+        return groups
 
-    parent = list(range(len(kws)))
+    # hard / agglomerative (union-find)
+    parent = list(range(n))
 
     def find(i):
         while parent[i] != i:
@@ -58,26 +80,59 @@ async def cluster_by_serp(keyword_rows: List[Dict], location: str = "th") -> Lis
             i = parent[i]
         return i
 
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[rb] = ra
+    for i in range(n):
+        for j in range(i + 1, n):
+            if serps[i] and serps[j] and len(serps[i] & serps[j]) >= min_overlap:
+                ra, rb = find(i), find(j)
+                if ra != rb:
+                    parent[rb] = ra
+    grouped: Dict[int, List[Dict]] = {}
+    for i in range(n):
+        grouped.setdefault(find(i), []).append(rows[i])
+    return list(grouped.values())
 
-    for i in range(len(kws)):
-        for j in range(i + 1, len(kws)):
-            if serps[i] and serps[j] and len(serps[i] & serps[j]) >= MIN_OVERLAP:
-                union(i, j)
 
-    groups: Dict[int, List[Dict]] = {}
-    for i in range(len(kws)):
-        groups.setdefault(find(i), []).append(rows[i])
+async def cluster_by_serp(keyword_rows: List[Dict], location: str = "th", *,
+                          min_overlap: int = MIN_OVERLAP, top_n: int = TOP_N,
+                          mode: str = "hard", max_keywords: int = MAX_KEYWORDS,
+                          progress=None) -> List[Dict]:
+    """Group keywords into content clusters by SERP overlap (the Keyword-Insights technique).
+
+    keyword_rows: [{keyword, volume, kd, ...}]. `min_overlap` = shared top-N URLs needed to merge
+    (accuracy). `mode` = 'hard'|'centric'. `progress(done, total)` is an optional async callback for
+    long runs. Returns [{label, pillar, total_volume, avg_kd, keywords:[{keyword,volume,kd}]}] sorted
+    by total volume.
+    """
+    rows = [r for r in (keyword_rows or []) if r.get("keyword")][:max_keywords]
+    if len(rows) < 2:
+        return []
+    kws = [r["keyword"] for r in rows]
+
+    # Fetch SERPs with progress reporting (fetches run concurrently, bounded by _SEM).
+    serps: List[set] = [set()] * len(kws)
+    done = 0
+
+    async def _one(idx, kw):
+        nonlocal done
+        s = await _serp_urls(kw, location, top_n)
+        serps[idx] = s
+        done += 1
+        if progress and (done % 10 == 0 or done == len(kws)):
+            await progress(done, len(kws))
+
+    await asyncio.gather(*[_one(i, k) for i, k in enumerate(kws)])
+
+    groups = _build_clusters(rows, serps, min_overlap, mode)
 
     clusters = []
-    for members in groups.values():
+    for members in groups:
         members.sort(key=lambda r: (r.get("volume") or 0), reverse=True)
+        kds = [r.get("kd") for r in members if r.get("kd") is not None]
         clusters.append({
             "label": members[0]["keyword"],
+            "pillar": members[0]["keyword"],
             "total_volume": sum((r.get("volume") or 0) for r in members),
+            "avg_kd": round(sum(kds) / len(kds)) if kds else None,
             "keywords": [{"keyword": r["keyword"], "volume": r.get("volume"), "kd": r.get("kd")}
                          for r in members],
         })

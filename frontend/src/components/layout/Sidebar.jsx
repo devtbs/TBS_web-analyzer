@@ -127,6 +127,7 @@ const NAV_GROUPS = [
         section: 'Tools',
         items: [
             { label: 'Rank Tracker',    path: '/rank-tracker',    icon: ArrowTrendingUpIcon },
+            { label: 'Keyword Clustering', path: '/keyword-clustering', icon: RectangleGroupIcon },
             { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
             { label: 'Connections',     path: '/connections',     icon: CircleStackIcon },
             { label: 'History',         path: '/history',         icon: ClockIcon },
