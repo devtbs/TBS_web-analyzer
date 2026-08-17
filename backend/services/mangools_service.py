@@ -157,6 +157,53 @@ async def get_keyword_difficulty(keywords: List[str], location_id: int = None,
     return out
 
 
+async def get_keyword_metrics(keywords: List[str], location_id: int = None,
+                              language_id: int = None) -> Dict[str, Dict]:
+    """Real search volume + KD for an arbitrary keyword list via KWFinder keyword-imports
+    (POST, up to 700 kws/call). Returns {keyword_lower: {"volume": int|None, "kd": int|None}}.
+    Used to attach volume to keywords that arrive without it (e.g. GSC-imported or pasted). Cached
+    24h per keyword. Never raises."""
+    kws = [k for k in (keywords or []) if k and k.strip()]
+    if not mangools_configured() or not kws:
+        return {}
+    loc = location_id or _DEFAULT_LOCATION
+    lang = _DEFAULT_LANGUAGE if language_id is None else language_id
+
+    out: Dict[str, Dict] = {}
+    todo: List[str] = []
+    for k in kws:
+        c = _cache_get(("metrics", k.strip().lower(), loc, lang))
+        if c is not None:
+            out[k.strip().lower()] = c
+        else:
+            todo.append(k)
+    if not todo:
+        return out
+
+    def _run(batch):
+        body = {"keywords": batch, "location_id": loc, "language_id": lang}
+        headers = {**_headers(), "content-type": "application/json"}
+        with httpx.Client(timeout=45) as c:
+            resp = c.post(f"{_BASE}/kwfinder/keyword-imports", json=body, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
+    try:
+        for i in range(0, len(todo), 700):
+            batch = todo[i:i + 700]
+            data = await asyncio.to_thread(_run, batch)
+            got = {(r.get("kw") or "").strip().lower(): r for r in (data.get("keywords") or [])}
+            for k in batch:
+                kl = k.strip().lower()
+                r = got.get(kl) or {}
+                m = {"volume": int(r["sv"]) if r.get("sv") is not None else None, "kd": r.get("seo")}
+                _CACHE[("metrics", kl, loc, lang)] = (time.time(), m)
+                out[kl] = m
+    except Exception as e:
+        logger.warning("mangools keyword-metrics failed: %s", str(e)[:150])
+    return out
+
+
 async def get_competitor_keywords(url: str, location_id: int = None, language_id: int = None) -> List[Dict]:
     """Keywords a specific domain or URL ranks for (volume/KD/CPC + its position). Cached 24h."""
     if not mangools_configured() or not url or not url.strip():

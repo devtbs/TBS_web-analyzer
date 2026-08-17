@@ -111,6 +111,22 @@ async def run_job(run_id: str) -> None:
         run.progress = {"done": 0, "total": len(keywords)}
         db.commit()
 
+        # Attach REAL search volume + KD from Mangools (one batched, cached call). GSC-imported and
+        # pasted keywords arrive with no volume, which is why totals would otherwise all read 0/mo.
+        try:
+            from services.mangools_service import get_keyword_metrics
+            metrics = await get_keyword_metrics([k["keyword"] for k in keywords],
+                                                location_id=run.location_id)
+            for k in keywords:
+                m = metrics.get(k["keyword"].lower())
+                if m:
+                    if m.get("volume") is not None:
+                        k["volume"] = m["volume"]
+                    if m.get("kd") is not None:
+                        k["kd"] = m["kd"]
+        except Exception as e:
+            logger.warning("clustering volume enrich failed: %s", str(e)[:120])
+
         async def _progress(done, total):
             run.progress = {"done": done, "total": total}
             run.updated_at = datetime.utcnow()
