@@ -106,7 +106,9 @@ class CompetitiveAnalysis(BaseModel):
 
 
 class ContentArticle(BaseModel):
-    """Individual article in content plan (Part 6)"""
+    """A topical node in the content plan (Bridge-Topic-Suggester model): a distinct entity+context
+    page, not a keyword variant. The classic fields stay for back-compat; the *_entity/context/url/
+    internal_links/volume fields carry the new node structure."""
     title: str
     section: str  # "Core" or "Outer"
     article_type: str  # "informative", "service_page", "listicle", "tool_page"
@@ -115,6 +117,13 @@ class ContentArticle(BaseModel):
     category_l3: Optional[str] = None  # Level 3 sub-subcategory
     priority: int  # 1 (Core), 2 (Strategic), 3 (Support)
     source_context: str  # 3-5 sentences on integration strategy
+    # ── Bridge Topic Suggester node fields ──
+    main_entity: Optional[str] = None       # the principal thing the page is about
+    context: Optional[str] = None           # the angle/dimension (e.g. "Sizing", "Recovery")
+    suggested_url: Optional[str] = None      # respects existing architecture, or proposed
+    internal_links: Optional[List[str]] = None  # 2-4 related node titles/entities to link
+    search_volume: Optional[int] = None      # attached from Mangools (secondary signal)
+    kd: Optional[int] = None                 # keyword difficulty, if known
 
 
 class SEOOptimization(BaseModel):
@@ -204,6 +213,8 @@ class TopicalMapData(BaseModel):
     
     # Part 6: Content Plan
     content_articles: Optional[List[ContentArticle]] = None
+    # Bridge topics: semantic journeys that connect clusters, e.g. "Roof Damage → Inspection → Repair"
+    bridge_topics: Optional[List[str]] = None
     
     # Part 7: SEO Optimization
     seo_optimization: Optional[SEOOptimization] = None

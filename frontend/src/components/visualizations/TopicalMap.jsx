@@ -394,12 +394,18 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 L.push('');
             });
         }
+        if (activeMap.bridge_topics?.length) {
+            L.push(`## Bridge topics\n`);
+            activeMap.bridge_topics.forEach(b => L.push(`- ${b}`));
+            L.push('');
+        }
         if (mergedArticles.length) {
-            L.push(`## Content plan (${mergedArticles.length} pages)\n`);
-            L.push(`| Title | Section | Type | Source |`);
-            L.push(`| --- | --- | --- | --- |`);
+            L.push(`## Content plan — topical nodes (${mergedArticles.length})\n`);
+            L.push(`| Entity | Context | Title | URL | Vol | Internal links |`);
+            L.push(`| --- | --- | --- | --- | --- | --- |`);
+            const cl = (s) => String(s || '').replace(/\|/g, '/');
             mergedArticles.forEach(a => L.push(
-                `| ${(a.title || '').replace(/\|/g, '/')} | ${a.section || ''} | ${a.article_type || ''} | ${a._isPrimary ? 'Primary' : (a._domain || 'Competitor')} |`));
+                `| ${cl(a.main_entity)} | ${cl(a.context)} | ${cl(a.title)} | ${cl(a.suggested_url)} | ${a.search_volume ?? ''} | ${cl((a.internal_links || []).join('; '))} |`));
             L.push('');
         }
         _dl(L.join('\n'), `${_slug}-content-plan.md`, 'text/markdown');
@@ -407,17 +413,12 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
 
     const exportMapCsv = () => {
         const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const rows = [['Title', 'Section', 'Type', 'Source', 'Cluster'].join(',')];
-        // Map each article to a cluster label when the keyword appears in one (best-effort).
-        const clusterOf = (title) => {
-            const t = (title || '').toLowerCase();
-            const hit = (activeMap.keyword_clusters || []).find(c =>
-                (c.keywords || []).some(k => t.includes((k.keyword || k || '').toLowerCase())));
-            return hit?.label || '';
-        };
+        const rows = [['Main Entity', 'Context', 'Title', 'Suggested URL', 'Volume', 'Internal Links', 'Section', 'Type', 'Source'].join(',')];
         mergedArticles.forEach(a => rows.push([
-            esc(a.title), esc(a.section), esc(a.article_type),
-            esc(a._isPrimary ? 'Primary' : (a._domain || 'Competitor')), esc(clusterOf(a.title)),
+            esc(a.main_entity), esc(a.context), esc(a.title), esc(a.suggested_url),
+            a.search_volume ?? '', esc((a.internal_links || []).join('; ')),
+            esc(a.section), esc(a.article_type),
+            esc(a._isPrimary ? 'Primary' : (a._domain || 'Competitor')),
         ].join(',')));
         _dl(rows.join('\n'), `${_slug}-content-plan.csv`, 'text/csv');
     };
@@ -1457,6 +1458,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                         <span className="px-3 py-2 text-xs font-semibold text-slate-500 flex items-center">{filtered.length} of {mergedArticles.length}</span>
                                     </div>
                                     {/* Table */}
+                                    {activeMap.bridge_topics?.length > 0 && (
+                                        <div className="mb-4 rounded-xl border border-indigo-200/60 bg-indigo-50/40 p-4">
+                                            <h4 className="text-[10px] font-black text-indigo-800 mb-2 tracking-widest uppercase">Bridge Topics — semantic journeys that connect clusters</h4>
+                                            <div className="flex flex-col gap-1.5">
+                                                {activeMap.bridge_topics.map((b, bi) => (
+                                                    <div key={bi} className="text-sm font-semibold text-slate-700">{b}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                     <div className="overflow-x-auto">
                                         <table className="w-full border-collapse">
                                             <thead>
@@ -1465,6 +1476,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                     <th className="px-3 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Source</th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Section</th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Type</th>
+                                                    <th className="px-3 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Vol</th>
                                                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider text-center">Actions</th>
                                                 </tr>
                                             </thead>
@@ -1478,7 +1490,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                     return (
                                                         <>
                                                         <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isComp ? 'bg-violet-50/30' : ''}`}>
-                                                            <td className="px-4 py-3 text-sm text-slate-700">{article.title}</td>
+                                                            <td className="px-4 py-3 text-sm text-slate-700">
+                                                                {article.title}
+                                                                {(article.main_entity || article.suggested_url) && (
+                                                                    <div className="text-[11px] text-slate-400 mt-0.5">
+                                                                        {article.main_entity && <span className="font-semibold text-slate-500">{article.main_entity}</span>}
+                                                                        {article.context && <span> · {article.context}</span>}
+                                                                        {article.suggested_url && <span className="ml-1 font-mono text-indigo-500">{article.suggested_url}</span>}
+                                                                    </div>
+                                                                )}
+                                                            </td>
                                                             <td className="px-3 py-3">
                                                                 {isComp ? (
                                                                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black ${c.bg} ${c.text} border ${c.border}`}>
@@ -1501,6 +1522,9 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                 <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-slate-600 text-white">
                                                                     {article.article_type}
                                                                 </span>
+                                                            </td>
+                                                            <td className="px-3 py-3 text-right text-sm font-bold tabular-nums text-indigo-700">
+                                                                {article.search_volume != null ? article.search_volume.toLocaleString() : <span className="text-slate-300">—</span>}
                                                             </td>
                                                             <td className="px-4 py-3 text-center">
                                                                 <div className="flex items-center justify-center gap-1.5">
@@ -1535,8 +1559,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                         </tr>
                                                         {infoOpen && (
                                                             <tr key={`${idx}-info`} className="border-b border-slate-100 bg-amber-50/40">
-                                                                <td colSpan={5} className="px-6 py-3 text-xs text-slate-600 italic">
-                                                                    {article.source_context || 'No context available.'}
+                                                                <td colSpan={6} className="px-6 py-3 text-xs text-slate-600">
+                                                                    <span className="italic">{article.source_context || 'No context available.'}</span>
+                                                                    {article.internal_links?.length > 0 && (
+                                                                        <div className="mt-2 flex flex-wrap items-center gap-1.5 not-italic">
+                                                                            <span className="font-semibold text-slate-500">Internal links →</span>
+                                                                            {article.internal_links.map((l, li) => (
+                                                                                <span key={li} className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">{l}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
                                                                 </td>
                                                             </tr>
                                                         )}

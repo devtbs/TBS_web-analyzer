@@ -460,6 +460,7 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
             
             # ── CALL 2: Generate content_articles separately (competitor-aware) ──
             content_articles = None
+            bridge_topics = None
             try:
                 core_topics = result.get('content_strategy', {}).get('core_topics', [])
                 outer_topics = result.get('content_strategy', {}).get('outer_topics', [])
@@ -500,38 +501,122 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                         f"  Subtopics top-ranking competitors cover: {comp_subtopics[:25]}"
                     )
 
-                articles_prompt = f"""Generate 15 SEO article ideas for {domain} ({result.get('business_model', 'business')}).
+                # The site's OWN URL paths, so proposed URLs respect the real architecture (or are
+                # clearly proposed when none exist).
+                own_paths = []
+                for u in (page_urls or []):
+                    try:
+                        p = urlparse(u).path.rstrip('/')
+                        if p and p not in own_paths:
+                            own_paths.append(p)
+                    except Exception:
+                        pass
+                for lk in (links or [])[:40]:
+                    u = lk.get('url') if isinstance(lk, dict) else lk
+                    try:
+                        pr = urlparse(u or '')
+                        if domain in (pr.netloc or ''):
+                            p = pr.path.rstrip('/')
+                            if p and p not in own_paths:
+                                own_paths.append(p)
+                    except Exception:
+                        pass
+                url_block = (f"\n\nEXISTING SITE URLS (respect this architecture; extend these patterns — "
+                             f"do NOT invent a different structure):\n  {own_paths[:25]}"
+                             if own_paths else
+                             "\n\nNo existing URLs are known — present suggested URLs as PROPOSED architecture.")
 
-Key topics: {', '.join(key_topics[:5])}
-Core content areas: {', '.join(core_topics[:4])}
-Outer content areas: {', '.join(outer_topics[:4])}{comp_block}{real_block}
+                # ── Bridge Topic Suggester: distinct entity+context nodes, not keyword variants. ──
+                articles_prompt = f"""You are a Bridge Topic Suggester for {domain} ({result.get('business_model', 'business')}).
+Propose 20 NEW topical nodes that strengthen this site's topical graph. Each node is a DISTINCT
+page defined by a MAIN ENTITY + a CONTEXT (angle/dimension) — NOT a keyword variant.
 
-Return ONLY a JSON array (no markdown):
-[
-  {{
-    "title": "Specific SEO article title",
-    "section": "Core",
-    "article_type": "informative",
-    "category_l1": "Main Category",
-    "category_l2": "Subcategory",
-    "category_l3": "Sub-topic",
-    "priority": 1,
-    "source_context": "One sentence on content angle (start with 'Gap vs [competitor]: ' for gap articles)."
-  }}
-]
+Already covered: {', '.join(key_topics[:8])}
+Core areas: {', '.join(core_topics[:4])} | Outer areas: {', '.join(outer_topics[:4])}{url_block}{comp_block}{real_block}
 
-Generate 15 diverse articles mixing Core and Outer sections. Return ONLY the JSON array."""
+FIND GAPS OF THESE TYPES (use only those that fit the subject): missing sub-entity, missing
+attribute, missing process, missing classification/type, missing problem, missing solution, missing
+audience (only when workflows/requirements truly differ — no doorway pages), missing use case,
+missing lifecycle stage, missing commercial↔informational link. Reason by semantic relationships
+(part-of, used-for, caused-by, solved-by, alternative-to, prerequisite-of), not keyword similarity.
+Match journeys to the business model, e.g. SaaS: problem→feature→use case→product; ecommerce:
+knowledge→category→comparison→selection; service: problem→methodology→solution→service; healthcare:
+condition→symptoms→diagnosis→treatment. Balance breadth (cover major adjacent areas) and depth.
 
-                print(f"📝 Generating content articles (Call 2)...")
+HARD RULES:
+- Each node = a genuinely different entity or context. NEVER produce variants that differ only by
+  words like best / top / guide / online / service / company / cheap / near me.
+- Every node must justify its OWN independent URL (page independence). Do not split one idea into
+  "What is X", "X explained", "X guide" as separate nodes.
+- Avoid cannibalization: no two nodes with the same search intent.
+- suggested_url must extend the EXISTING url patterns above (or be labelled proposed if none).
+- internal_links: 2-4 related node entities/existing pages reflecting parent/child/sibling/bridge
+  relationships — not random keyword overlap.
+- title: a natural, human title tag (entity + context), not a stuffed keyword string.
+- Adapt to THIS domain's real subject. Do not import example industries.
+
+Also return 3-6 BRIDGE TOPICS: short semantic journeys that connect clusters, formatted
+"A → B → C" (e.g. "Roof Damage → Inspection → Repair → Replacement").
+
+Return ONLY JSON (no markdown):
+{{
+  "nodes": [
+    {{
+      "main_entity": "Resource Planning",
+      "context": "Agency capacity",
+      "title": "Resource Planning for Agencies: Capacity & Workloads",
+      "suggested_url": "/resource-planning/",
+      "internal_links": ["Project Management", "Time Tracking", "Capacity Planning"],
+      "section": "Core",
+      "article_type": "informative",
+      "category_l1": "Main cluster",
+      "priority": 1,
+      "source_context": "One sentence on why this node matters (start with 'Gap vs [competitor]: ' for gap nodes)."
+    }}
+  ],
+  "bridges": ["A → B → C"]
+}}
+
+Generate 20 distinct nodes. Return ONLY the JSON object."""
+
+                print(f"📝 Generating topical nodes (Bridge Topic Suggester)...")
                 articles_result = await ai_service.extract_json(
                     articles_prompt,
-                    "You are an SEO content strategist. Return ONLY a valid JSON array of article objects. No markdown.",
+                    "You are a Bridge Topic Suggester (semantic SEO). Output distinct entity+context page "
+                    "nodes, never keyword variants. Return ONLY valid JSON. No markdown.",
                     use_deepseek=True
                 )
                 from models.schemas import ContentArticle
-                articles_data = articles_result if isinstance(articles_result, list) else articles_result.get('articles', [])
+                if isinstance(articles_result, list):
+                    articles_data, bridges = articles_result, []
+                else:
+                    articles_data = articles_result.get('nodes') or articles_result.get('articles') or []
+                    bridges = articles_result.get('bridges') or []
+                # category_l1 is required by the schema — default it from the entity when omitted.
+                for a in articles_data:
+                    if isinstance(a, dict):
+                        a.setdefault('category_l1', a.get('main_entity') or a.get('title', 'Topic'))
+                        a.setdefault('source_context', a.get('context', ''))
                 content_articles = [ContentArticle(**a) for a in articles_data if isinstance(a, dict)]
-                print(f"✅ Generated {len(content_articles)} articles from Call 2")
+                bridge_topics = [b for b in bridges if isinstance(b, str) and b.strip()][:8]
+
+                # Attach REAL volume + KD to each node (per the "show volume" requirement) — one
+                # batched, cached Mangools lookup keyed on the node's main entity. Best-effort.
+                try:
+                    from services.mangools_service import (mangools_configured, get_keyword_metrics,
+                                                           location_for_domain)
+                    if mangools_configured() and content_articles:
+                        terms = [(a.main_entity or a.title) for a in content_articles]
+                        metrics = await get_keyword_metrics(terms, location_id=location_for_domain(domain))
+                        for a in content_articles:
+                            m = metrics.get((a.main_entity or a.title or '').lower())
+                            if m:
+                                a.search_volume = m.get("volume")
+                                if a.kd is None:
+                                    a.kd = m.get("kd")
+                except Exception as e:
+                    print(f"⚠️ node volume attach failed: {str(e)[:100]}")
+                print(f"✅ Generated {len(content_articles)} nodes + {len(bridge_topics)} bridges (Call 2)")
             except Exception as e:
                 print(f"⚠️ Article generation failed: {str(e)}, continuing without articles")
 
@@ -638,7 +723,8 @@ Generate 15 diverse articles mixing Core and Outer sections. Return ONLY the JSO
                 competitive_advantages=result.get('competitive_advantages', [])[:10],
                 technology_stack=result.get('technology_stack', [])[:10],
                 competitive_analysis=competitive_analysis,
-                content_articles=content_articles,  # Initial articles from AI response
+                content_articles=content_articles,  # Bridge-topic nodes from Call 2
+                bridge_topics=bridge_topics,
                 seo_optimization=seo_optimization,
                 taxonomy=taxonomy,
                 ontology=ontology,
