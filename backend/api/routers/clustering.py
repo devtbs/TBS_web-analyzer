@@ -66,6 +66,8 @@ async def create_run(body: dict = Body(...),
             "min_overlap": int(body.get("min_overlap") or 3),
             "top_n": int(body.get("top_n") or 10),
             "mode": body.get("mode") or "hard",
+            "discover": bool(body.get("discover")),
+            "exclude_ranked": bool(body.get("exclude_ranked", True)),
             "gsc_property": gsc_property, "account_id": acct or account_id,
         },
     )

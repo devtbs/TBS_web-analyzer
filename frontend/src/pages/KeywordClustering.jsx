@@ -35,6 +35,8 @@ export default function KeywordClustering() {
     const [minOverlap, setMinOverlap] = useState(3);
     const [mode, setMode] = useState('hard');
     const [topN, setTopN] = useState(10);
+    const [discover, setDiscover] = useState(false);       // expand into new keywords before clustering
+    const [excludeRanked, setExcludeRanked] = useState(true);
 
     const [quota, setQuota] = useState(null);
     const [estimate, setEstimate] = useState(null);
@@ -126,6 +128,7 @@ export default function KeywordClustering() {
                 keywords: keywordList, name: domain || undefined, domain, client_id: clientId,
                 gl: country.gl, location_id: country.locId,
                 min_overlap: minOverlap, top_n: topN, mode,
+                discover, exclude_ranked: excludeRanked,
             });
             setRunId(res.data.id);
             setRun(res.data);
@@ -233,13 +236,29 @@ export default function KeywordClustering() {
                                 </select>
                             </label>
                         </div>
+                        {/* Discover: expand the list into NEW keywords before clustering */}
+                        <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-2.5">
+                            <label className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
+                                <input type="checkbox" checked={discover} onChange={e => setDiscover(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
+                                Discover new keywords first
+                            </label>
+                            <p className="text-[11px] text-slate-500 mt-1">Expands your list via Mangools (related + competitor keywords) before clustering — finds terms you gave it AND new ones.</p>
+                            {discover && (
+                                <label className="flex items-center gap-2 text-[12px] text-slate-600 mt-2">
+                                    <input type="checkbox" checked={excludeRanked} onChange={e => setExcludeRanked(e.target.checked)} className="rounded border-slate-300 text-indigo-600" />
+                                    Hide keywords the site already ranks for
+                                </label>
+                            )}
+                        </div>
                     </div>
                 </div>
 
                 {/* Estimate + start */}
                 <div className="flex items-center justify-between gap-3 mt-4 flex-wrap border-t border-slate-100 pt-3">
                     <div className="text-[12px] text-slate-500">
-                        {estimate && <>Cost: <b className="text-slate-700">~{estimate.serp_cost} SerpAPI searches</b>{estimate.over_cap && <span className="text-amber-600"> (capped at {estimate.cap})</span>}</>}
+                        {discover
+                            ? <>Cost: <b className="text-amber-600">up to ~600 SerpAPI searches</b> (discovery expands your list before clustering)</>
+                            : estimate && <>Cost: <b className="text-slate-700">~{estimate.serp_cost} SerpAPI searches</b>{estimate.over_cap && <span className="text-amber-600"> (capped at {estimate.cap})</span>}</>}
                         {quota?.serpapi?.left != null && <span className="ml-3">Balance: {quota.serpapi.left.toLocaleString()} left</span>}
                         <span className="ml-3 text-slate-400">Duplicates within 24h are free.</span>
                     </div>

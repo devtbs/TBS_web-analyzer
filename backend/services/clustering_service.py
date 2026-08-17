@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 RUN_CAP = 600          # hard ceiling on keywords per run (= SerpAPI credits) — cost guardrail
 ENRICH_CAP = 60        # only AI-enrich / GSC-check this many top clusters (by volume)
+DISCOVER_SEED_CAP = 12     # how many input keywords we expand via Mangools (each = 1 Mangools lookup)
+DISCOVER_POOL_CAP = 400    # cap on newly-discovered keywords kept (by volume) before clustering
 
 
 def parse_keywords(raw: List) -> List[Dict]:
@@ -37,6 +39,56 @@ def parse_keywords(raw: List) -> List[Dict]:
         if cur is None or (vol or 0) > (cur.get("volume") or 0):
             by[k] = {"keyword": kw, "volume": vol}
     return list(by.values())
+
+
+async def _discover(seeds: List[Dict], *, domain: str, location_id, gl: str,
+                    exclude_ranked: bool, gsc_property, account_id, db, email) -> List[Dict]:
+    """Expand the seed keywords into NEW territory before clustering: Mangools related-keywords for
+    the top seeds + competitor-keywords for the site's domain, minus keywords the site already ranks
+    for (GSC). Returns the merged [{keyword, volume, kd}] pool (seeds + discovered), volume-ranked."""
+    from services.mangools_service import get_related_keywords, get_competitor_keywords
+
+    pool: Dict[str, Dict] = {s["keyword"].lower(): s for s in seeds}
+
+    def _merge(kw):
+        k = (kw.get("keyword") or "").strip().lower()
+        if not k:
+            return
+        cur = pool.get(k)
+        if cur is None or (kw.get("volume") or 0) > (cur.get("volume") or 0):
+            pool[k] = {"keyword": kw.get("keyword"), "volume": kw.get("volume"), "kd": kw.get("kd")}
+
+    # Expand the highest-signal seeds (cap the number of Mangools lookups for cost).
+    for s in seeds[:DISCOVER_SEED_CAP]:
+        for kw in await get_related_keywords(s["keyword"], location_id=location_id):
+            _merge(kw)
+    if domain:
+        for kw in await get_competitor_keywords(domain, location_id=location_id):
+            _merge(kw)
+
+    rows = list(pool.values())
+
+    # Drop what the site already ranks well for, so the run surfaces NEW opportunities.
+    if exclude_ranked and gsc_property:
+        try:
+            from api.routers._shared import _gsc_service_for
+            svc = _gsc_service_for(db, email, account_id)
+            gsc_rows = await svc.get_top_queries(gsc_property, days=90)
+            won = {(r.get("query") or "").lower() for r in (gsc_rows or [])
+                   if r.get("position") is not None and r["position"] <= 10}
+            seed_set = {s["keyword"].lower() for s in seeds}
+            # keep seeds even if ranked; only filter freshly-discovered ranked terms
+            rows = [r for r in rows
+                    if r["keyword"].lower() in seed_set or r["keyword"].lower() not in won]
+        except Exception as e:
+            logger.warning("discover exclude_ranked failed: %s", str(e)[:120])
+
+    rows.sort(key=lambda r: (r.get("volume") or 0), reverse=True)
+    # Keep all seeds + the top discovered, bounded so clustering cost stays in check.
+    seed_set = {s["keyword"].lower() for s in seeds}
+    kept_seeds = [r for r in rows if r["keyword"].lower() in seed_set]
+    discovered = [r for r in rows if r["keyword"].lower() not in seed_set][:DISCOVER_POOL_CAP]
+    return (kept_seeds + discovered)
 
 
 async def _enrich_intent_and_brief(clusters: List[Dict]) -> None:
@@ -106,8 +158,20 @@ async def run_job(run_id: str) -> None:
         if not run:
             return
         params = run.params or {}
-        keywords = parse_keywords(params.get("keywords") or [])[:RUN_CAP]
+        keywords = parse_keywords(params.get("keywords") or [])
         run.status = "running"
+        db.commit()
+
+        # DISCOVER: expand the seeds into new keyword territory (related + competitor keywords, minus
+        # already-ranked) BEFORE clustering, so one run both finds and groups new opportunities.
+        if params.get("discover"):
+            keywords = await _discover(
+                keywords, domain=run.domain or "", location_id=run.location_id, gl=run.gl or "th",
+                exclude_ranked=bool(params.get("exclude_ranked")),
+                gsc_property=params.get("gsc_property"), account_id=params.get("account_id"),
+                db=db, email=run.user_email)
+
+        keywords = keywords[:RUN_CAP]
         run.progress = {"done": 0, "total": len(keywords)}
         db.commit()
 
