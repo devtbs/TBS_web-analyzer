@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 SEED_CAP = 6            # SerpAPI credits per analysis
 COMPETITOR_SCRAPE_CAP = 6
 GSC_QUERY_CAP = 50
+MIN_KW_VOLUME = 50      # drop no/low-demand keywords from the map's opportunity list (real demand only)
 
 # Sites that show up in organic results but are NOT niche competitors — job boards, news, social,
 # directories, encyclopaedias, marketplaces. Filtered out so the map's competitors are real rivals.
@@ -280,10 +281,14 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
                     if k not in candidates or (kw["volume"] or 0) > (candidates[k]["volume"] or 0):
                         candidates[k] = kw
             ranked = sorted(candidates.values(), key=lambda x: (x["volume"] or 0), reverse=True)
+            # Only surface keywords with real search demand. Falling back to the top-by-volume set
+            # when nothing clears the floor keeps a genuinely tiny niche from yielding an empty table.
+            with_demand = [o for o in ranked if (o.get("volume") or 0) >= MIN_KW_VOLUME]
+            chosen = with_demand or ranked
             out["keyword_volumes"] = [
                 {"keyword": o["keyword"], "avg_monthly_searches": o["volume"],
                  "kd": o["kd"], "cpc": o["cpc"], "competition": None}
-                for o in ranked[:40]
+                for o in chosen[:40]
             ]
         elif db is not None and email:
             # Fallback: Google Ads Keyword Planner (only when Mangools isn't configured).
@@ -294,9 +299,10 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
                 if svc:
                     idea_seeds = seeds + out["serp"]["related_searches"][:6]
                     vols = await svc.generate_keyword_ideas(idea_seeds, customer_id=ads_customer_id)
-                    out["keyword_volumes"] = [
-                        v for v in vols if _is_opportunity(v["keyword"].lower())
-                    ][:40]
+                    opps = [v for v in vols if _is_opportunity(v["keyword"].lower())]
+                    with_demand = [v for v in opps
+                                   if (v.get("avg_monthly_searches") or v.get("volume") or 0) >= MIN_KW_VOLUME]
+                    out["keyword_volumes"] = (with_demand or opps)[:40]
     except Exception as e:
         logger.warning("grounding keyword volumes failed for %s: %s", domain, str(e)[:150])
 
