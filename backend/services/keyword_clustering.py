@@ -21,7 +21,21 @@ _SERP_CACHE: Dict[tuple, tuple] = {}
 _TTL = 24 * 60 * 60
 
 
-_SEM = asyncio.Semaphore(6)   # cap concurrent SerpAPI calls during a large clustering run
+# Cap concurrent SerpAPI calls during a large clustering run. A semaphore is created lazily PER EVENT
+# LOOP (an asyncio.Semaphore binds to the loop that first uses it, so a single module-level one breaks
+# if a second loop ever touches it). One semaphore per loop keeps the limit correct and loop-safe.
+import weakref
+_SEM_BY_LOOP: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+_SEM_LIMIT = 6
+
+
+def _sem() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    s = _SEM_BY_LOOP.get(loop)
+    if s is None:
+        s = asyncio.Semaphore(_SEM_LIMIT)
+        _SEM_BY_LOOP[loop] = s
+    return s
 
 
 async def _serp_urls(keyword: str, location: str, top_n: int = TOP_N) -> set:
@@ -31,7 +45,7 @@ async def _serp_urls(keyword: str, location: str, top_n: int = TOP_N) -> set:
         return hit[1]
     try:
         from services.serp_service import serp_service
-        async with _SEM:
+        async with _sem():
             data = await serp_service._fetch_keyword_data(keyword, location)
         urls = {(c.get("url") or "").split("?")[0].rstrip("/")
                 for c in (data.get("competitors") or [])[:top_n] if c.get("url")}

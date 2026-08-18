@@ -16,8 +16,21 @@ from services.serp_service import serp_service
 
 logger = logging.getLogger(__name__)
 
-# Cap concurrent SerpAPI calls during a collection run so a big keyword set doesn't burst.
-_SEM = asyncio.Semaphore(5)
+# Cap concurrent SerpAPI calls during a collection run so a big keyword set doesn't burst. Created
+# lazily PER EVENT LOOP — a module-level asyncio.Semaphore binds to the first loop that uses it and
+# breaks if a second loop ever touches it; one per loop stays correct and loop-safe.
+import weakref
+_SEM_BY_LOOP: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+_SEM_LIMIT = 5
+
+
+def _sem() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    s = _SEM_BY_LOOP.get(loop)
+    if s is None:
+        s = asyncio.Semaphore(_SEM_LIMIT)
+        _SEM_BY_LOOP[loop] = s
+    return s
 
 
 def add_keywords(db, email: str, client_id: Optional[str], domain: str,
@@ -99,7 +112,7 @@ def history(db, email: str, kw_id: int, days: int = 90) -> Optional[dict]:
 
 
 async def _check_one(db, tk: TrackedKeyword, on: date) -> None:
-    async with _SEM:
+    async with _sem():
         res = await serp_service.get_rank(tk.keyword, tk.domain, location=tk.gl)
     # Upsert today's snapshot (unique on tracked_keyword_id + checked_on).
     snap = (db.query(RankSnapshot)
