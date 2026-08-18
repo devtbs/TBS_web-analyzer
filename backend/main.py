@@ -28,6 +28,13 @@ async def startup_event():
     """Initialize database tables on startup"""
     init_db()
 
+    # Fail any clustering jobs orphaned by this restart (their background task didn't survive).
+    try:
+        from services.clustering_service import fail_orphaned_on_startup
+        fail_orphaned_on_startup()
+    except Exception as e:
+        print(f"⚠️  clustering startup sweep skipped: {e}")
+
     # Bound the executor that runs blocking Google API calls (asyncio.to_thread).
     # The Google client's underlying HTTP layer is not thread-safe; an unbounded burst
     # (e.g. dashboards fetching dozens of properties at once) can spawn enough

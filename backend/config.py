@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     SERPAPI_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
     MANGOOLS_API_KEY: str = ""   # KWFinder REST API (x-access-token) — real keyword volume + KD
+    SERPAPI_MONTHLY_CAP: int = 0  # optional spend ceiling: block SERP jobs past this month's usage (0 = off)
     # PageSpeed Insights (technical audit Core Web Vitals). Keyless works at very
     # low volume but is quickly rate-limited (429); set a free key for reliability.
     PAGESPEED_API_KEY: str = ""

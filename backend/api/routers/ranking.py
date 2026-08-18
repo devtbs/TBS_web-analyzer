@@ -71,5 +71,17 @@ async def refresh_now(client_id: str = None,
     if client_id:
         q = q.filter(TrackedKeyword.client_id == client_id)
     kws = q.all()
+    # Spend guard: 1 SerpAPI search per keyword — don't run if the balance/cap can't cover it.
+    from services.serp_service import serp_service
+    from config import settings
+    acct = await serp_service.get_account()
+    left = acct.get("left")
+    if left is not None and len(kws) > left:
+        raise HTTPException(status_code=402,
+                            detail=f"Not enough SerpAPI balance: refresh needs {len(kws)} searches, "
+                                   f"{left} remain this month.")
+    if settings.SERPAPI_MONTHLY_CAP and acct.get("used") is not None \
+            and acct["used"] + len(kws) > settings.SERPAPI_MONTHLY_CAP:
+        raise HTTPException(status_code=402, detail="Monthly SerpAPI cap reached — refresh blocked.")
     checked = await rt.collect(db, kws)
     return {"checked": checked}

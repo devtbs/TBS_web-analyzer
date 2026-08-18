@@ -35,12 +35,36 @@ def _resolve_gsc(db, email, client_id, domain):
     return None, None, client_id
 
 
+async def _serp_budget_guard(cost: int):
+    """Block a run that would exceed the live SerpAPI balance or the optional monthly cap. Raises
+    HTTPException(402) with a clear message; passes silently when balance is unknown (fail-open, since
+    the per-run estimate + cache already bound spend)."""
+    from services.serp_service import serp_service
+    from config import settings
+    acct = await serp_service.get_account()
+    left = acct.get("left")
+    if left is not None and cost > left:
+        raise HTTPException(status_code=402,
+                            detail=f"Not enough SerpAPI balance: this run needs up to {cost} searches "
+                                   f"but only {left} remain this month.")
+    cap = settings.SERPAPI_MONTHLY_CAP
+    used = acct.get("used")
+    if cap and used is not None and (used + cost) > cap:
+        raise HTTPException(status_code=402,
+                            detail=f"Monthly SerpAPI cap reached: {used} used + {cost} needed exceeds "
+                                   f"the {cap} cap. Raise SERPAPI_MONTHLY_CAP or wait for reset.")
+
+
 @router.post("/api/clustering/estimate")
 async def estimate(body: dict = Body(...), current_user: UserInfo = Depends(get_current_user)):
     kws = cs.parse_keywords(body.get("keywords") or [])
     n = min(len(kws), cs.RUN_CAP)
+    # Discover mode expands the set before clustering, so cost can rise to the cap.
+    cost = cs.RUN_CAP if body.get("discover") else n
+    from services.serp_service import serp_service
+    acct = await serp_service.get_account()
     return {"keyword_count": n, "over_cap": len(kws) > cs.RUN_CAP, "cap": cs.RUN_CAP,
-            "serp_cost": n}   # 1 SerpAPI credit per keyword (24h-cached duplicates are free)
+            "serp_cost": cost, "serp_left": acct.get("left")}
 
 
 @router.post("/api/clustering")
@@ -53,6 +77,8 @@ async def create_run(body: dict = Body(...),
     if len(keywords) < 2:
         raise HTTPException(status_code=400, detail="Provide at least 2 keywords")
     keywords = keywords[:cs.RUN_CAP]
+    # Spend guard: discover mode can expand to the cap, so bound the check by that.
+    await _serp_budget_guard(cs.RUN_CAP if body.get("discover") else len(keywords))
     domain = (body.get("domain") or "").strip()
     gsc_property, acct, client_id = _resolve_gsc(db, current_user.email, body.get("client_id"), domain)
 
@@ -82,6 +108,7 @@ async def create_run(body: dict = Body(...),
 async def list_runs(client_id: str = None,
                     current_user: UserInfo = Depends(get_current_user),
                     db: Session = Depends(get_db)):
+    cs.sweep_stale(db, current_user.email)   # recover any interrupted jobs before listing
     q = db.query(ClusteringRun).filter(ClusteringRun.user_email == current_user.email)
     if client_id:
         q = q.filter(ClusteringRun.client_id == client_id)
@@ -93,6 +120,7 @@ async def list_runs(client_id: str = None,
 async def get_run(run_id: str,
                   current_user: UserInfo = Depends(get_current_user),
                   db: Session = Depends(get_db)):
+    cs.sweep_stale(db, current_user.email)   # recover this job if its worker died mid-run
     run = (db.query(ClusteringRun)
            .filter(ClusteringRun.id == run_id, ClusteringRun.user_email == current_user.email).first())
     if not run:

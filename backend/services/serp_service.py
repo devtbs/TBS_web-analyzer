@@ -223,6 +223,27 @@ class SerpService:
             "knowledge_graph": knowledge,
         }
 
+    async def get_account(self) -> Dict:
+        """Live SerpAPI plan usage — the source of truth for the spend guard.
+        Returns {used, limit, left} this month, or {} if unavailable."""
+        if not self.api_key:
+            return {}
+
+        def _fetch():
+            import requests
+            r = requests.get("https://serpapi.com/account",
+                             params={"api_key": self.api_key}, timeout=10)
+            r.raise_for_status()
+            return r.json()
+
+        try:
+            d = await asyncio.to_thread(_fetch)
+            return {"used": d.get("this_month_usage"), "limit": d.get("searches_per_month"),
+                    "left": d.get("total_searches_left")}
+        except Exception as e:
+            print(f"⚠️  SerpAPI account fetch failed: {str(e)}")
+            return {}
+
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL"""
         from urllib.parse import urlparse

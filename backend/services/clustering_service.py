@@ -8,12 +8,14 @@ writes the result and marks it `done`. The frontend polls the row.
 """
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from database import SessionLocal, ClusteringRun
 
 logger = logging.getLogger(__name__)
+
+STALE_MINUTES = 20     # a queued/running job untouched this long is treated as interrupted
 
 RUN_CAP = 600          # hard ceiling on keywords per run (= SerpAPI credits) — cost guardrail
 ENRICH_CAP = 60        # only AI-enrich / GSC-check this many top clusters (by volume)
@@ -223,6 +225,43 @@ async def run_job(run_id: str) -> None:
                 db.commit()
         except Exception:
             pass
+    finally:
+        db.close()
+
+
+def sweep_stale(db, email: Optional[str] = None) -> int:
+    """Recover interrupted jobs: any queued/running run whose worker died (deploy/crash) or that hung
+    would otherwise show 'running' forever. Mark those older than STALE_MINUTES as error. Called
+    lazily on list/get so the UI never shows a permanently-stuck job."""
+    cutoff = datetime.utcnow() - timedelta(minutes=STALE_MINUTES)
+    q = db.query(ClusteringRun).filter(ClusteringRun.status.in_(["queued", "running"]),
+                                       ClusteringRun.updated_at < cutoff)
+    if email:
+        q = q.filter(ClusteringRun.user_email == email)
+    n = 0
+    for r in q.all():
+        r.status = "error"
+        r.error = "Interrupted — the job stopped before finishing (server restart or timeout). Re-run it."
+        n += 1
+    if n:
+        db.commit()
+    return n
+
+
+def fail_orphaned_on_startup() -> None:
+    """On boot, any job still 'queued'/'running' is orphaned — its background task didn't survive the
+    restart. Fail them immediately (not just after STALE_MINUTES) so users can re-run right away."""
+    db = SessionLocal()
+    try:
+        rows = db.query(ClusteringRun).filter(ClusteringRun.status.in_(["queued", "running"])).all()
+        for r in rows:
+            r.status = "error"
+            r.error = "Interrupted by a server restart. Re-run it."
+        if rows:
+            db.commit()
+            logger.info("clustering: failed %d orphaned job(s) on startup", len(rows))
+    except Exception as e:
+        logger.warning("clustering startup sweep failed: %s", str(e)[:120])
     finally:
         db.close()
 
