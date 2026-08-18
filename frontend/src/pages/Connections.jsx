@@ -18,6 +18,7 @@ function ConnectionsInner() {
     const { connectAccount, disconnectAccount } = useAuth();
     const [rows, setRows] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [addOpen, setAddOpen] = useState(false);   // provider picker for "Add account"
 
     const load = async () => {
         try { setRows((await api.get('/auth/connections')).data.connections || []); }
@@ -79,10 +80,29 @@ function ConnectionsInner() {
                     className="ml-auto flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg text-[14px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">
                     <ArrowPathIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> Recheck
                 </button>
-                <button onClick={() => reconnect()}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#26397A] text-white rounded-lg text-[14px] font-bold hover:bg-[#1d2c5e]">
-                    <PlusIcon className="w-4 h-4" /> Add account
-                </button>
+                <div className="relative">
+                    <button onClick={() => setAddOpen(o => !o)}
+                        className="flex items-center gap-2 px-3 py-2 bg-[#26397A] text-white rounded-lg text-[14px] font-bold hover:bg-[#1d2c5e]">
+                        <PlusIcon className="w-4 h-4" /> Add account
+                    </button>
+                    {addOpen && (
+                        <>
+                            <div className="fixed inset-0 z-10" onClick={() => setAddOpen(false)} />
+                            <div className="absolute right-0 mt-1 w-52 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                                <button onClick={() => { setAddOpen(false); reconnect(); }}
+                                    className="w-full text-left px-4 py-2.5 text-[14px] font-semibold text-slate-700 hover:bg-slate-50">
+                                    Google account
+                                    <span className="block text-[11px] font-normal text-slate-400">Search Console · GA4 · Ads</span>
+                                </button>
+                                <button onClick={() => { setAddOpen(false); reconnectBing(); }}
+                                    className="w-full text-left px-4 py-2.5 text-[14px] font-semibold text-slate-700 hover:bg-slate-50 border-t border-slate-100">
+                                    Bing account
+                                    <span className="block text-[11px] font-normal text-slate-400">Bing Webmaster Tools</span>
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
             <p className="text-[14px] text-slate-500 mb-6">
                 Every connected Google &amp; Bing account, checked live. A red row means the token was revoked —
