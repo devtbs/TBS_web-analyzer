@@ -8,6 +8,9 @@ class URLAnalysisRequest(BaseModel):
     # Optional curated selection from the New Analysis research wizard (seed, domains, keywords,
     # clusters). When present the topical map is built from these instead of auto-grounding.
     research: Optional[dict] = None
+    # Target market for keyword volumes/SERP, e.g. {"gl":"us","location_id":2840}. Overrides the
+    # domain-derived default (which is Thailand) — set per client since some target global, some local.
+    market: Optional[dict] = None
 
 
 class UserInfo(BaseModel):

@@ -148,7 +148,8 @@ async def _grounding_from_research(out: Dict, domain: str, own: str, research: D
 
 async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, email: Optional[str] = None,
                            gsc_property: Optional[str] = None, account_id: Optional[int] = None,
-                           ads_customer_id: Optional[str] = None, research: Optional[Dict] = None) -> Dict:
+                           ads_customer_id: Optional[str] = None, research: Optional[Dict] = None,
+                           market: Optional[Dict] = None) -> Dict:
     """Assemble the real_data block. Never raises — returns whatever it could gather.
 
     When `research` (from the New Analysis wizard) is provided, the map is built from the user's
@@ -200,7 +201,8 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
     competitor_urls: List[str] = []
     try:
         from services.serp_service import serp_service
-        serp = await serp_service.get_serp_insights(seeds, domain=domain, max_keywords=SEED_CAP)
+        serp = await serp_service.get_serp_insights(seeds, domain=domain, max_keywords=SEED_CAP,
+                                                    location=(market or {}).get("gl"))
         comps = [c for c in (serp.get("top_competitors") or [])
                  if _bare(c.get("domain", "")) != own and not _is_noise(c.get("domain", ""))]
         out["serp"]["top_competitors"] = comps
@@ -268,7 +270,7 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
     try:
         from services.mangools_service import mangools_configured, get_related_keywords, location_for_domain
         if mangools_configured():
-            loc = location_for_domain(domain)
+            loc = (market or {}).get("location_id") or location_for_domain(domain)
             idea_seeds = list(dict.fromkeys(
                 seeds + out["adjacent_topics"][:6] + out["serp"]["related_searches"][:3]
                 + out["competitor_topics"][:3]))[:12]
@@ -311,7 +313,7 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         if out["keyword_volumes"]:
             from services.keyword_clustering import cluster_by_serp
             from services.serp_service import serp_service
-            loc = serp_service._detect_location_from_domain(domain)
+            loc = (market or {}).get("gl") or serp_service._detect_location_from_domain(domain)
             rows = [{"keyword": k["keyword"], "volume": k.get("avg_monthly_searches"), "kd": k.get("kd")}
                     for k in out["keyword_volumes"]]
             out["keyword_clusters"] = await cluster_by_serp(rows, location=loc)

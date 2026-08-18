@@ -91,7 +91,8 @@ async def stream_progress(
     )
 
 
-async def process_analysis(analysis_id: str, urls: List[str], user_email: str = None, research: dict = None):
+async def process_analysis(analysis_id: str, urls: List[str], user_email: str = None, research: dict = None,
+                           market: dict = None):
     """Background task to process analysis with AI"""
     from database import SessionLocal
     db = SessionLocal()
@@ -139,7 +140,7 @@ async def process_analysis(analysis_id: str, urls: List[str], user_email: str = 
             print(f"[{analysis_id}] client resolve skipped: {str(e)[:100]}")
         topical_maps = await topical_generator.generate_multiple(
             scraped_data, db=db, email=user_email, gsc_property=gsc_property, account_id=account_id,
-            research=research)
+            research=research, market=market)
         await check_cancelled()
 
         # Generate comparison with AI (if multiple URLs)
@@ -215,7 +216,8 @@ async def analyze_urls(
     analysis_id = database_store.create_analysis(db, current_user.email, request.urls)
 
     # Process in background
-    background_tasks.add_task(process_analysis, analysis_id, request.urls, current_user.email, request.research)
+    background_tasks.add_task(process_analysis, analysis_id, request.urls, current_user.email,
+                              request.research, request.market)
 
     return AnalysisResponse(
         analysis_id=analysis_id,

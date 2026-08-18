@@ -14,6 +14,14 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { prettyUrl } from '../utils/url';
 
+// Target market for keyword volumes / SERP (Quick Analysis). Defaults to Thailand; pick per client.
+const QUICK_MARKETS = [
+    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
+    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
+    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
+    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
+];
+
 /* ── Favicon helper ─────────────────────────────────────────── */
 const Favicon = ({ url, size = 20 }) => {
     const [err, setErr] = useState(false);
@@ -44,6 +52,7 @@ const NewAnalysis = () => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [mode, setMode] = useState('research');   // 'research' wizard | 'quick' (site analysis)
     const [useGSC, setUseGSC] = useState(true);
+    const [marketGl, setMarketGl] = useState('th');   // target market for keyword volumes (Quick path)
     const [tabLoading, setTabLoading] = useState(false);
     const tabTimerRef = useRef(null);
 
@@ -133,8 +142,9 @@ const NewAnalysis = () => {
         setIsAnalyzing(true);
         try {
             const token = localStorage.getItem('access_token');
+            const _mk = QUICK_MARKETS.find(m => m.gl === marketGl) || QUICK_MARKETS[0];
             const response = await api.post('/api/analyze',
-                { urls: validUrls }
+                { urls: validUrls, market: { gl: _mk.gl, location_id: _mk.locId } }
             );
             setSelectedPages([]);
             sessionStorage.removeItem('selectedPages');
@@ -336,8 +346,19 @@ const NewAnalysis = () => {
                             )}
                         </div>
 
+                        {/* ── Target market (drives keyword volumes) ── */}
+                        <div className="flex items-center justify-center gap-2 mt-6 text-[13px] text-slate-500">
+                            <GlobeAltIcon className="w-4 h-4 text-slate-400" />
+                            <span>Target market</span>
+                            <select value={marketGl} onChange={e => setMarketGl(e.target.value)}
+                                className="border border-slate-300 rounded-lg px-2 py-1.5 text-[13px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/30">
+                                {QUICK_MARKETS.map(m => <option key={m.gl} value={m.gl}>{m.label}</option>)}
+                            </select>
+                            <span className="text-[11px] text-slate-400">— set to where the client's customers search</span>
+                        </div>
+
                         {/* ── Analyze Button ── */}
-                        <div className="flex justify-center mt-6">
+                        <div className="flex justify-center mt-4">
                             <motion.button
                                 whileHover={{ scale: canAnalyze && !isAnalyzing ? 1.02 : 1 }}
                                 whileTap={{ scale: canAnalyze && !isAnalyzing ? 0.98 : 1 }}

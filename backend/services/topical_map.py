@@ -70,6 +70,7 @@ class TopicalMapGenerator:
         account_id: int = None,
         ads_customer_id: str = None,
         research: dict = None,
+        market: dict = None,
     ) -> TopicalMapData:
         """
         Generate comprehensive topical map using AI with detailed 8-part semantic analysis.
@@ -189,7 +190,7 @@ class TopicalMapGenerator:
         real_data = await gather_grounding(
             domain, seed_keywords, db=db, email=email,
             gsc_property=gsc_property, account_id=account_id, ads_customer_id=ads_customer_id,
-            research=research)
+            research=research, market=market)
         content_data['real_data'] = real_data
         has_grounding = bool(real_data.get('serp', {}).get('top_competitors')
                              or real_data.get('competitor_structure')
@@ -607,7 +608,8 @@ Generate 20 distinct nodes. Return ONLY the JSON object."""
                                                            location_for_domain)
                     if mangools_configured() and content_articles:
                         terms = [(a.main_entity or a.title) for a in content_articles]
-                        metrics = await get_keyword_metrics(terms, location_id=location_for_domain(domain))
+                        _loc = (market or {}).get("location_id") or location_for_domain(domain)
+                        metrics = await get_keyword_metrics(terms, location_id=_loc)
                         for a in content_articles:
                             m = metrics.get((a.main_entity or a.title or '').lower())
                             if m:
@@ -682,7 +684,8 @@ Generate 20 distinct nodes. Return ONLY the JSON object."""
                         serp_queries = [result.get('central_entity', domain)]
                     
                     print(f"  📊 Fetching SERP enrichment (PAA/related searches) for: {serp_queries}")
-                    serp_insights = await serp_service.get_serp_insights(serp_queries, domain)
+                    serp_insights = await serp_service.get_serp_insights(serp_queries, domain,
+                                                                         location=(market or {}).get("gl"))
                     
                     # Only use SERP data to enrich PAA questions and related searches
                     if serp_insights.get('people_also_ask'):
@@ -910,7 +913,8 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
     
     async def generate_multiple(self, scraped_data_list: List[Dict], *, db=None, email: str = None,
                                 gsc_property: str = None, account_id: int = None,
-                                ads_customer_id: str = None, research: dict = None) -> List[TopicalMapData]:
+                                ads_customer_id: str = None, research: dict = None,
+                                market: dict = None) -> List[TopicalMapData]:
         """
         Generate topical maps for multiple URLs.
 
@@ -928,7 +932,7 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
         competitor_data_list = [d for d in scraped_data_list[1:] if d.get('status') == 'success']
 
         # Generate competitor maps in parallel (no competitor context needed for these)
-        competitor_tasks = [self.generate_topical_map_with_ai(d) for d in competitor_data_list]
+        competitor_tasks = [self.generate_topical_map_with_ai(d, market=market) for d in competitor_data_list]
         competitor_results_raw = await asyncio.gather(*competitor_tasks, return_exceptions=True)
 
         competitor_maps = []
@@ -954,7 +958,7 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
             tasks.append(self.generate_topical_map_with_ai(
                 primary_data, competitor_context=competitor_context or None,
                 db=db, email=email, gsc_property=gsc_property,
-                account_id=account_id, ads_customer_id=ads_customer_id, research=research))
+                account_id=account_id, ads_customer_id=ads_customer_id, research=research, market=market))
         
         if tasks:
             # Use return_exceptions=True to allow partial success

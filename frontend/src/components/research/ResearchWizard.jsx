@@ -290,6 +290,7 @@ export default function ResearchWizard({ clientId = null }) {
             const res = await api.post('/api/analyze', {
                 urls: [site.startsWith('http') ? site : `https://${site}`],
                 research: { seeds: [...selectedQueries], domains: allDomains(), keywords: chosen, clusters },
+                market: { gl: country.gl, location_id: country.locId },
             });
             // Persist the run + link it to the analysis it produced, so the client hub can jump straight
             // back to the built map. Best-effort — never block navigation on the save.
