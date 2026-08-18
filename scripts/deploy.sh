@@ -4,14 +4,17 @@
 set -euo pipefail
 
 APP_DIR="/home/clawdbot/web_analyzer"
+# Deploy from THIS repo explicitly. The server's `origin` remote points at a different
+# fork (kweephyo-pmt), so `git fetch origin` would deploy the wrong code — always fetch by URL.
+REPO_URL="https://github.com/devtbs/TBS_web-analyzer.git"
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
 cd "$APP_DIR"
 
-echo "→ Syncing code to origin/main"
-git fetch origin main
-git reset --hard origin/main          # deterministic: discard any drift, match main exactly
+echo "→ Syncing code to $REPO_URL main"
+git fetch "$REPO_URL" main
+git reset --hard FETCH_HEAD            # deterministic: discard any drift, match main exactly
 
 echo "→ Backend deps (fast no-op when unchanged)"
 cd "$APP_DIR/backend"
