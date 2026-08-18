@@ -18,6 +18,10 @@ const PageSelector = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPages, setSelectedPages] = useState(new Set());
+    // Pages staged from a previous visit (persisted in sessionStorage by New Analysis). Tracked in
+    // state so the "Clear" button can wipe it and re-render.
+    const [existingPages, setExistingPages] = useState(() => JSON.parse(sessionStorage.getItem('selectedPages') || '[]'));
+    const clearStaged = () => { sessionStorage.removeItem('selectedPages'); setExistingPages([]); setSelectedPages(new Set()); };
     const [sortBy, setSortBy] = useState('clicks'); // clicks, impressions, position
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -130,8 +134,6 @@ const PageSelector = () => {
     const rangeStart = sortedPages.length === 0 ? 0 : startIdx + 1;
     const rangeEnd = startIdx + pagedPages.length;
 
-    const existingPages = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
-
     return (
         <div className="flex flex-col flex-1 h-full w-full py-4 sm:py-8 px-4 sm:px-6 bg-slate-50">
             <div className="w-full max-w-[1200px] mx-auto flex flex-col flex-1 relative z-10 min-h-[600px] max-h-[calc(100vh-8rem)]">
@@ -154,6 +156,10 @@ const PageSelector = () => {
                                             <span className="text-xs font-bold text-emerald-700 bg-emerald-50/50 px-2.5 py-1 rounded-lg border border-emerald-100/50">
                                                 {existingPages.length} Pages Already Selected
                                             </span>
+                                            <button onClick={clearStaged}
+                                                className="text-xs font-bold text-red-600 hover:text-red-700 hover:underline px-1">
+                                                Clear
+                                            </button>
                                         </>
                                     )}
                                 </div>
