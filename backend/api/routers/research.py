@@ -307,6 +307,87 @@ async def research_cluster(body: dict = Body(...), current_user: UserInfo = Depe
     return {"clusters": clusters}
 
 
+_QUESTION_STARTS = ("how", "what", "why", "when", "where", "who", "which", "is", "are", "can",
+                    "does", "do", "will", "should", "could")
+
+
+def _is_question(kw: str) -> bool:
+    k = (kw or "").strip().lower()
+    return "?" in k or k.split(" ", 1)[0] in _QUESTION_STARTS
+
+
+@router.post("/api/research/discover")
+async def research_discover(body: dict = Body(...),
+                            current_user: UserInfo = Depends(get_current_user)):
+    """Seed-first keyword DISCOVERY (Keyword-Insights style): expand a few seeds into a large keyword
+    universe with real volume/KD. Mangools-powered by default (cheap — 1 KWFinder lookup per seed,
+    NOT SerpAPI); AI adds question/entity/modifier seeds; SERP People-Also-Ask + related is opt-in
+    (costs SerpAPI). Returns a flat, volume-ranked list tagged by intent + question flag."""
+    from services.mangools_service import get_related_keywords, mangools_configured
+
+    seeds = [s.strip() for s in (body.get("seeds") or []) if s and s.strip()][:8]
+    if not seeds and body.get("seed"):
+        seeds = [body["seed"].strip()]
+    if not seeds:
+        return {"keywords": [], "total": 0, "question_count": 0}
+    loc = _loc_id(body.get("domain"), body.get("location_id"))
+
+    # Broaden the seed set with AI-generated questions / entities / modifiers (each becomes a seed).
+    all_seeds = list(seeds)
+    if body.get("expand", True):
+        try:
+            all_seeds = list(dict.fromkeys(seeds + await _expand_topics(seeds, body.get("domain") or "")))[:24]
+        except Exception as e:
+            logger.warning("discover expand failed: %s", str(e)[:120])
+
+    candidates: dict = {}
+
+    def _merge(kw, source):
+        k = (kw.get("keyword") or "").strip()
+        if not k:
+            return
+        kl = k.lower()
+        cur = candidates.get(kl)
+        if cur is None:
+            candidates[kl] = {**kw, "keyword": k, "sources": [source]}
+        else:
+            if source not in cur["sources"]:
+                cur["sources"].append(source)
+            if (kw.get("volume") or 0) > (cur.get("volume") or 0):
+                cur["volume"] = kw.get("volume")
+            if cur.get("kd") is None and kw.get("kd") is not None:
+                cur["kd"] = kw.get("kd")
+
+    if mangools_configured():
+        for s in all_seeds:
+            for kw in await get_related_keywords(s, location_id=loc):
+                _merge(kw, "related")
+
+    # Opt-in: pull People-Also-Ask + related searches from live SERPs (SerpAPI cost).
+    if body.get("include_serp"):
+        from services.serp_service import serp_service
+        for s in seeds[:5]:
+            try:
+                serp = await serp_service.get_serp_preview(s, location=_gl(body))
+                for q in (serp.get("people_also_ask") or []) + (serp.get("related_searches") or []):
+                    if q:
+                        _merge({"keyword": q, "volume": None, "kd": None}, "serp")
+            except Exception as e:
+                logger.warning("discover serp '%s' failed: %s", s, str(e)[:100])
+
+    rows = list(candidates.values())
+    for r in rows:
+        r["is_question"] = _is_question(r["keyword"])
+    rows.sort(key=lambda x: (x.get("volume") or 0), reverse=True)
+    rows = rows[:600]
+    return {
+        "keywords": rows,
+        "total": len(rows),
+        "question_count": sum(1 for r in rows if r["is_question"]),
+        "seeds_used": len(all_seeds),
+    }
+
+
 @router.get("/api/research/quota")
 async def research_quota(current_user: UserInfo = Depends(get_current_user)):
     """Credit/quota visibility so a demo doesn't silently burn through paid API balance.

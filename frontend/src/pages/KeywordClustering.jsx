@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { RectangleGroupIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon, GlobeAltIcon, TrashIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import api from '../api/axios';
@@ -28,9 +28,20 @@ const GSC_BADGE = {
 export default function KeywordClustering() {
     const [params] = useSearchParams();
     const clientId = params.get('client');
+    const location = useLocation();
 
     const [kwText, setKwText] = useState('');
     const [countryGl, setCountryGl] = useState('th');
+
+    // Keywords handed over from the Discovery page → prefill and preselect the market.
+    useEffect(() => {
+        const st = location.state;
+        if (st?.keywords?.length) {
+            setKwText(st.keywords.join('\n'));
+            if (st.gl) setCountryGl(st.gl);
+            window.history.replaceState({}, '');   // clear so a refresh doesn't re-prefill
+        }
+    }, []);   // eslint-disable-line react-hooks/exhaustive-deps
     const [domain, setDomain] = useState('');
     const [minOverlap, setMinOverlap] = useState(3);
     const [mode, setMode] = useState('hard');
