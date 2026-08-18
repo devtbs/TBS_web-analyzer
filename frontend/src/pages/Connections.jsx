@@ -39,6 +39,27 @@ function ConnectionsInner() {
         onError: () => toast.error('Reconnect cancelled'),
     });
 
+    // Bing runs its OWN OAuth (not Google) via a popup → /bing-callback posts back. A Bing row must
+    // use this flow, not the Google one — otherwise "Reconnect" opens a Google consent screen.
+    const reconnectBing = async () => {
+        try {
+            const redirectUri = `${window.location.origin}/bing-callback`;
+            const res = await api.get('/auth/bing/authorize-url', { params: { redirect_uri: redirectUri } });
+            window.open(res.data.url, 'bing-oauth', 'width=560,height=680');
+        } catch { toast.error('Could not start Bing sign-in'); }
+    };
+
+    // Bing popup completion → refresh the list.
+    useEffect(() => {
+        const onMessage = (e) => {
+            if (e.origin !== window.location.origin) return;
+            if (e.data?.type === 'bing-connected') { toast.success('Bing reconnected'); refresh(); }
+            else if (e.data?.type === 'bing-connect-error') { toast.error(e.data.error || 'Bing connection failed'); }
+        };
+        window.addEventListener('message', onMessage);
+        return () => window.removeEventListener('message', onMessage);
+    }, []);
+
     const disconnect = async (r) => {
         if (r.provider !== 'google' || r.account_id == null) {
             toast('Manage this account from its own page.'); return;
@@ -96,7 +117,7 @@ function ConnectionsInner() {
                                     </p>
                                 </div>
                                 {r.status === 'dead' && (
-                                    <button onClick={() => reconnect()}
+                                    <button onClick={() => (r.provider === 'bing' ? reconnectBing() : reconnect())}
                                         className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-[13px] font-bold hover:bg-red-700 shrink-0">
                                         Reconnect
                                     </button>
