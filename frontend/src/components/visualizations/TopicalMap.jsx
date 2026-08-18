@@ -113,6 +113,38 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             setGeneratingArticle(null);
         }
     };
+    // Re-run just the node list (fast/cheap — reuses persisted grounding, no re-scrape).
+    const regenerateNodes = async () => {
+        setRegenerating(true);
+        try {
+            const res = await api.post(`/api/topical-map/${analysisId}/regenerate-nodes`, {});
+            setOverrideArticles(res.data.content_articles || []);
+            setOverrideBridges(res.data.bridge_topics || []);
+            setBriefOverrides({});   // briefs were keyed to the old node list — clear stale ones
+            toast.success('Topical nodes regenerated');
+        } catch (error) {
+            console.error('Failed to regenerate nodes:', error);
+            toast.error('Failed to regenerate nodes. Please try again.');
+        } finally {
+            setRegenerating(false);
+        }
+    };
+
+    // Generate (or fetch the cached) writer brief for one primary node.
+    const getBrief = async (primaryIndex, force = false) => {
+        setBriefLoading(primaryIndex);
+        try {
+            const res = await api.post(`/api/topical-map/${analysisId}/nodes/${primaryIndex}/brief`,
+                { force });
+            setBriefOverrides(prev => ({ ...prev, [primaryIndex]: res.data.brief }));
+        } catch (error) {
+            console.error('Failed to generate brief:', error);
+            toast.error('Failed to generate brief. Please try again.');
+        } finally {
+            setBriefLoading(null);
+        }
+    };
+
     const [expandedSections, setExpandedSections] = useState({
         semantic: true,
         audience: false,
@@ -132,6 +164,15 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     const [articleL3, setArticleL3] = useState('');
     const [expandedArticleInfo, setExpandedArticleInfo] = useState(new Set());
 
+    // "Regenerate nodes" — re-run just the Bridge-Topic-Suggester node list (fast/cheap, no
+    // re-scrape) and swap it in locally without a full page reload. Per-node content briefs are
+    // generated on demand and cached on the node itself once the backend returns them.
+    const [overrideArticles, setOverrideArticles] = useState(null);
+    const [overrideBridges, setOverrideBridges] = useState(null);
+    const [regenerating, setRegenerating] = useState(false);
+    const [briefLoading, setBriefLoading] = useState(null);   // primary-node index currently loading
+    const [briefOverrides, setBriefOverrides] = useState({}); // primaryIndex -> brief markdown
+
     if (!topicalMaps || topicalMaps.length === 0) {
         return (
             <div className="bg-white rounded-lg shadow p-8 text-center text-slate-500">
@@ -140,7 +181,14 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         );
     }
     // ── Primary = first URL, competitors = rest ─────────────────────────────
-    const primaryMap = topicalMaps[0];
+    // Apply any locally-regenerated nodes/bridges (and cached briefs) over the server payload so a
+    // "Regenerate nodes" or "Generate brief" action updates the view immediately, no reload needed.
+    const primaryMap = {
+        ...topicalMaps[0],
+        content_articles: (overrideArticles ?? topicalMaps[0].content_articles ?? []).map((a, i) =>
+            briefOverrides[i] ? { ...a, brief: briefOverrides[i] } : a),
+        bridge_topics: overrideBridges ?? topicalMaps[0].bridge_topics,
+    };
     const competitorMaps = topicalMaps.slice(1);
     const activeMap = primaryMap; // keep old refs working
 
@@ -160,7 +208,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     });
 
     // Merged content articles: primary tagged, then competitor-unique articles
-    const primaryArticles = (primaryMap.content_articles || []).map(a => ({ ...a, _isPrimary: true, _domain: getDomain(primaryMap.url) }));
+    const primaryArticles = (primaryMap.content_articles || []).map((a, i) => ({ ...a, _isPrimary: true, _domain: getDomain(primaryMap.url), _primaryIndex: i }));
     const primaryTitleSet = new Set(primaryArticles.map(a => a.title.toLowerCase().slice(0, 30)));
     const competitorArticles = [];
     competitorMaps.forEach((cm, ci) => {
@@ -1375,6 +1423,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             </span>
                         </div>
                         <div className="flex items-center gap-2" data-html2canvas-ignore="true">
+                            {/* Regenerate just the node list — fast/cheap, reuses persisted grounding */}
+                            <button
+                                onClick={(e) => { e.stopPropagation(); regenerateNodes(); }}
+                                disabled={regenerating}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 text-white rounded-lg font-bold text-xs transition-all disabled:opacity-50"
+                                title="Re-run just the topical node list (fast — no re-scrape)"
+                            >
+                                <SparklesIcon className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
+                                <span className="hidden sm:inline">{regenerating ? 'Regenerating…' : 'Regenerate nodes'}</span>
+                            </button>
                             {/* Writing settings button */}
                             <button
                                 onClick={(e) => { e.stopPropagation(); setShowPromptSettings(true); }}
@@ -1554,6 +1612,20 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                         <SparklesIcon className={`-ml-0.5 h-3.5 w-3.5 ${generatingArticle === article.title ? 'animate-spin' : ''}`} />
                                                                         {generatingArticle === article.title ? 'Writing…' : 'Write'}
                                                                     </button>
+                                                                    {!isComp && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (!infoOpen) setExpandedArticleInfo(prev => new Set(prev).add(infoKey));
+                                                                                getBrief(article._primaryIndex, !!article.brief);
+                                                                            }}
+                                                                            disabled={briefLoading === article._primaryIndex}
+                                                                            className="inline-flex items-center gap-x-1 rounded-lg px-2.5 py-1.5 text-xs font-bold border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all disabled:opacity-50"
+                                                                            title={article.brief ? 'Regenerate brief' : 'Generate a writer-ready brief'}
+                                                                        >
+                                                                            <DocumentTextIcon className={`h-3.5 w-3.5 ${briefLoading === article._primaryIndex ? 'animate-pulse' : ''}`} />
+                                                                            {briefLoading === article._primaryIndex ? 'Loading…' : (article.brief ? 'Brief ✓' : 'Brief')}
+                                                                        </button>
+                                                                    )}
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -1567,6 +1639,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                             {article.internal_links.map((l, li) => (
                                                                                 <span key={li} className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-600">{l}</span>
                                                                             ))}
+                                                                        </div>
+                                                                    )}
+                                                                    {article.brief && (
+                                                                        <div className="mt-3 not-italic bg-white border border-indigo-100 rounded-lg p-3 whitespace-pre-wrap text-slate-700 text-[12px] leading-relaxed">
+                                                                            {article.brief}
                                                                         </div>
                                                                     )}
                                                                 </td>

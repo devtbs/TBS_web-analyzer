@@ -127,6 +127,7 @@ class ContentArticle(BaseModel):
     internal_links: Optional[List[str]] = None  # 2-4 related node titles/entities to link
     search_volume: Optional[int] = None      # attached from Mangools (secondary signal)
     kd: Optional[int] = None                 # keyword difficulty, if known
+    brief: Optional[str] = None              # writer-ready content brief (markdown), generated on demand
 
 
 class SEOOptimization(BaseModel):
@@ -218,6 +219,9 @@ class TopicalMapData(BaseModel):
     content_articles: Optional[List[ContentArticle]] = None
     # Bridge topics: semantic journeys that connect clusters, e.g. "Roof Damage → Inspection → Repair"
     bridge_topics: Optional[List[str]] = None
+    # Trimmed grounding data (real queries/competitor subtopics/own URL patterns) kept so the node
+    # list can be regenerated later without re-scraping the site or re-running the full analysis.
+    grounding_snapshot: Optional[Dict] = None
     
     # Part 7: SEO Optimization
     seo_optimization: Optional[SEOOptimization] = None

@@ -5,7 +5,7 @@ import json
 from typing import List
 
 import pytz
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -346,6 +346,97 @@ async def get_topical_map(
         }
 
     return {"topical_maps": analysis['topical_maps']}
+
+
+def _load_primary_map(db: Session, analysis_id: str, email: str):
+    """Shared guard + fetch for the two node-level endpoints below. Returns (analysis dict, maps
+    list, primary map dict) or raises the appropriate HTTPException."""
+    analysis = database_store.get_analysis(db, analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
+    if analysis['user_email'] != email:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    maps = analysis.get('topical_maps') or []
+    if not maps:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No topical map found")
+    return analysis, maps, maps[0]
+
+
+@router.post("/api/topical-map/{analysis_id}/regenerate-nodes")
+async def regenerate_topical_nodes(
+    analysis_id: str,
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Re-run ONLY the Bridge-Topic-Suggester node generation for the primary map, reusing the
+    persisted key topics, content strategy, and grounding snapshot instead of re-scraping the site
+    or re-running the heavier comprehensive-analysis AI call. Much faster/cheaper than a full
+    re-analysis — use when the node list needs a fresh take without redoing everything."""
+    from urllib.parse import urlparse
+
+    _analysis, maps, primary = _load_primary_map(db, analysis_id, current_user.email)
+    domain = urlparse(primary.get('url', '')).netloc.replace('www.', '')
+    content_strategy = primary.get('content_strategy') or {}
+    snapshot = primary.get('grounding_snapshot') or {}
+    competitor_context = [
+        {'url': m.get('url'), 'key_topics': m.get('key_topics') or [],
+         'core_topics': (m.get('content_strategy') or {}).get('core_topics') or [],
+         'content_gaps': (m.get('content_strategy') or {}).get('content_gaps') or []}
+        for m in maps[1:]
+    ]
+
+    content_articles, bridge_topics = await topical_generator.generate_content_nodes(
+        domain=domain, business_model=primary.get('business_model', 'business'),
+        key_topics=primary.get('key_topics') or [],
+        core_topics=content_strategy.get('core_topics') or [],
+        outer_topics=content_strategy.get('outer_topics') or [],
+        own_paths=snapshot.get('own_paths') or [],
+        competitor_context=competitor_context or None,
+        real_q=snapshot.get('real_q') or [], comp_subtopics=snapshot.get('comp_subtopics') or [],
+        market=body.get('market'),
+    )
+
+    primary['content_articles'] = [a.model_dump() for a in content_articles]
+    primary['bridge_topics'] = bridge_topics
+    maps[0] = primary
+    database_store.update_analysis(db, analysis_id, {'topical_maps': maps})
+    return {"content_articles": primary['content_articles'], "bridge_topics": bridge_topics}
+
+
+@router.post("/api/topical-map/{analysis_id}/nodes/{node_index}/brief")
+async def generate_node_brief(
+    analysis_id: str,
+    node_index: int,
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generate (or return the cached) writer-ready content brief for one topical node. Pass
+    `force: true` in the body to regenerate even if a brief is already cached."""
+    from urllib.parse import urlparse
+
+    _analysis, maps, primary = _load_primary_map(db, analysis_id, current_user.email)
+    articles = primary.get('content_articles') or []
+    if node_index < 0 or node_index >= len(articles):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
+    node = articles[node_index]
+
+    if node.get('brief') and not body.get('force'):
+        return {"brief": node['brief'], "cached": True}
+
+    domain = urlparse(primary.get('url', '')).netloc.replace('www.', '')
+    brief = await topical_generator.generate_node_brief(
+        domain=domain, business_model=primary.get('business_model', 'business'),
+        node=node, market=body.get('market'),
+    )
+
+    node['brief'] = brief
+    articles[node_index] = node
+    primary['content_articles'] = articles
+    maps[0] = primary
+    database_store.update_analysis(db, analysis_id, {'topical_maps': maps})
+    return {"brief": brief, "cached": False}
 
 
 @router.get("/api/compare/{analysis_id}", response_model=dict)
