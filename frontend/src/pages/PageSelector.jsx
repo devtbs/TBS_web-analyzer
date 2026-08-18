@@ -8,10 +8,19 @@ import { motion } from 'framer-motion';
 import Favicon from '../components/ui/Favicon';
 import { prettyUrl } from '../utils/url';
 
+// Target market for keyword volumes / SERP. Defaults to Thailand; pick where the client's customers search.
+const MARKETS = [
+    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
+    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
+    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
+    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
+];
+
 const PageSelector = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const propertyUrl = searchParams.get('property');
+    const returnTo = searchParams.get('return');   // 'wizard' = hand pages back to Guided Research
 
     const [pages, setPages] = useState([]);
     const [filteredPages, setFilteredPages] = useState([]);
@@ -22,6 +31,8 @@ const PageSelector = () => {
     // state so the "Clear" button can wipe it and re-render.
     const [existingPages, setExistingPages] = useState(() => JSON.parse(sessionStorage.getItem('selectedPages') || '[]'));
     const clearStaged = () => { sessionStorage.removeItem('selectedPages'); setExistingPages([]); setSelectedPages(new Set()); };
+    const [marketGl, setMarketGl] = useState('th');   // market for the analysis run
+    const [analyzing, setAnalyzing] = useState(false);
     const [sortBy, setSortBy] = useState('clicks'); // clicks, impressions, position
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -88,14 +99,27 @@ const PageSelector = () => {
         }
     };
 
-    const analyzeSelected = () => {
-        if (selectedPages.size === 0) {
-            toast.error('Please select at least one page');
+    // Analyze the selected pages DIRECTLY from here — build the topical map and go straight to
+    // results, instead of bouncing back to New Analysis (which dropped the selection).
+    const analyzeSelected = async () => {
+        if (selectedPages.size === 0) { toast.error('Please select at least one page'); return; }
+        let urls = Array.from(selectedPages);
+        // From the Guided Research wizard → hand the picked pages back to seed the query suggestions.
+        if (returnTo === 'wizard') {
+            navigate('/new-analysis', { state: { wizardPages: urls } });
             return;
         }
-        // Navigate to analysis with selected URLs
-        const urls = Array.from(selectedPages);
-        navigate('/new-analysis', { state: { urls, mode: 'cluster' } });
+        if (urls.length > 5) { toast(`Analyzing the first 5 of ${urls.length} selected.`); urls = urls.slice(0, 5); }
+        const mk = MARKETS.find(m => m.gl === marketGl) || MARKETS[0];
+        setAnalyzing(true);
+        try {
+            const res = await api.post('/api/analyze', { urls, market: { gl: mk.gl, location_id: mk.locId } });
+            sessionStorage.removeItem('selectedPages');
+            navigate(`/results/${res.data.analysis_id}`);
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Analysis failed');
+            setAnalyzing(false);
+        }
     };
 
     const sortPages = (pages) => {
@@ -164,17 +188,29 @@ const PageSelector = () => {
                                     )}
                                 </div>
                             </div>
-                            <button
-                                onClick={analyzeSelected}
-                                disabled={selectedPages.size === 0}
-                                className={`px-6 py-3 rounded-2xl font-bold text-[14px] transition-all duration-300 flex items-center justify-center gap-2 border whitespace-nowrap min-w-[160px]
-                                    ${selectedPages.size > 0
-                                        ? 'text-white bg-emerald-600 border border-emerald-500 shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:bg-emerald-700 hover:-translate-y-0.5'
-                                        : 'text-white/50 bg-emerald-600/50 cursor-not-allowed'
-                                    }`}
-                            >
-                                Import {selectedPages.size} Page{selectedPages.size !== 1 ? 's' : ''}
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-1.5 text-[12px] text-slate-500">
+                                    <GlobeAltIcon className="w-4 h-4 text-slate-400" />
+                                    <select value={marketGl} onChange={e => setMarketGl(e.target.value)}
+                                        className="border border-slate-300 rounded-lg px-2 py-2 text-[13px] font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/30">
+                                        {MARKETS.map(m => <option key={m.gl} value={m.gl}>{m.label}</option>)}
+                                    </select>
+                                </label>
+                                <button
+                                    onClick={analyzeSelected}
+                                    disabled={selectedPages.size === 0 || analyzing}
+                                    className={`px-6 py-3 rounded-2xl font-bold text-[14px] transition-all duration-300 flex items-center justify-center gap-2 border whitespace-nowrap min-w-[160px]
+                                        ${selectedPages.size > 0 && !analyzing
+                                            ? 'text-white bg-emerald-600 border border-emerald-500 shadow-md shadow-emerald-600/20 hover:shadow-lg hover:shadow-emerald-600/30 hover:bg-emerald-700 hover:-translate-y-0.5'
+                                            : 'text-white/50 bg-emerald-600/50 cursor-not-allowed'
+                                        }`}
+                                >
+                                    {analyzing ? 'Analyzing…'
+                                        : returnTo === 'wizard'
+                                            ? `Use ${selectedPages.size} Page${selectedPages.size !== 1 ? 's' : ''}`
+                                            : `Analyze ${selectedPages.size} Page${selectedPages.size !== 1 ? 's' : ''}`}
+                                </button>
+                            </div>
                         </div>
 
                         {/* Bottom Row: Search & Sort Controls */}

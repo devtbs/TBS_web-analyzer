@@ -61,7 +61,8 @@ const FullSkeleton = () => (
 
 
 /* ─── Main ────────────────────────────────────────────────────────── */
-const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [], showSelectPages = true }) => {
+const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [], showSelectPages = true,
+                               selectPagesReturn = null }) => {
     const navigate = useNavigate();
     const { switchAccount } = useAuth();
     const [isConnected, setIsConnected] = useState(false);
@@ -262,7 +263,8 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [], showSe
         // Point the API at the account that owns this property so PageSelector's fetch
         // (which sends X-Account-Id) resolves the right Google token.
         switchAccount(property.account_id);
-        navigate(`/select-pages?property=${encodeURIComponent(property.url)}`);
+        const ret = selectPagesReturn ? `&return=${selectPagesReturn}` : '';
+        navigate(`/select-pages?property=${encodeURIComponent(property.url)}${ret}`);
     };
 
     const filtered = properties.filter(p => (p.display || p.url).toLowerCase().includes(searchQuery.toLowerCase()));

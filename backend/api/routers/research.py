@@ -88,11 +88,16 @@ async def research_suggest_queries(body: dict = Body(...),
         url = "https://" + url
     domain = urlparse(url).netloc.replace("www.", "") or url
 
-    # Light scrape: homepage + a few priority pages (fast — this isn't the full analysis).
+    # Light scrape to seed the AI queries. If the wizard passed specific `urls` (user-picked pages),
+    # base the queries on THOSE pages; otherwise fall back to homepage + a few sitemap priority pages.
     pages = []
     try:
-        extra = await sitemap_service.get_priority_pages(url, max_pages=5)
-        targets = [url] + [u for u in (extra or []) if u != url][:5]
+        picked = [u for u in (body.get("urls") or []) if u and u.strip()][:8]
+        if picked:
+            targets = picked
+        else:
+            extra = await sitemap_service.get_priority_pages(url, max_pages=5)
+            targets = [url] + [u for u in (extra or []) if u != url][:5]
         scraped = await scraper.scrape_multiple(targets)
         for p in scraped or []:
             if p.get("status") != "success":

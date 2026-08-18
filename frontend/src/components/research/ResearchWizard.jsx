@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { ArrowRightIcon, ArrowLeftIcon, SparklesIcon, PlusIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 import api from '../../api/axios';
@@ -80,9 +80,17 @@ export default function ResearchWizard({ clientId = null }) {
     const [kwMeta, setKwMeta] = useState(null);
 
     // Step 1 — site
+    const location = useLocation();
     const [siteProps, setSiteProps] = useState([]);
     const [manualUrl, setManualUrl] = useState('');
-    const site = (manualUrl.trim() || siteProps[0]?.url || '');
+    // Specific pages picked via "Select Pages" — the AI queries get seeded from THESE instead of the
+    // whole site. Handed back from the page picker (return=wizard).
+    const [seedPages, setSeedPages] = useState([]);
+    useEffect(() => {
+        const wp = location.state?.wizardPages;
+        if (wp?.length) { setSeedPages(wp); window.history.replaceState({}, ''); }
+    }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+    const site = (manualUrl.trim() || siteProps[0]?.url || (seedPages[0] ? `https://${bareDomain(seedPages[0])}/` : ''));
     const siteDomain = bareDomain(site);
     const gscProperty = siteProps[0]?.url || '';
 
@@ -220,7 +228,8 @@ export default function ResearchWizard({ clientId = null }) {
         if (!site) { toast.error('Select a site or enter a URL'); return; }
         setBusy(true);
         try {
-            const res = await api.post('/api/research/suggest-queries', { url: site });
+            const res = await api.post('/api/research/suggest-queries',
+                { url: site, urls: seedPages.length ? seedPages : undefined });
             const qs = res.data.queries || [];
             if (!qs.length) { toast.error('Could not read that site — try another URL'); return; }
             setAiQueries(qs);
@@ -370,8 +379,26 @@ export default function ResearchWizard({ clientId = null }) {
             {/* Step 1 — Select site */}
             {step === 1 && (
                 <div>
-                    <p className="text-[13px] font-bold text-slate-600 mb-2">Select the site to research <span className="font-normal text-slate-400">— click a property to pick it, then “Analyze site”.</span></p>
-                    <GSCPropertySelector onPropertySelect={setSiteProps} selectedProperties={siteProps} showSelectPages={false} />
+                    <p className="text-[13px] font-bold text-slate-600 mb-2">Select the site to research <span className="font-normal text-slate-400">— click a property for the whole site, or “Select Pages” to seed the research from specific URLs.</span></p>
+
+                    {/* Pages picked to seed the research (from "Select Pages") */}
+                    {seedPages.length > 0 && (
+                        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
+                            <div className="flex items-center justify-between mb-2">
+                                <p className="text-[13px] font-bold text-emerald-800">{seedPages.length} pages will seed the AI queries</p>
+                                <button onClick={() => setSeedPages([])} className="text-[12px] font-semibold text-red-600 hover:underline">Clear all</button>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                                {seedPages.map((u) => (
+                                    <div key={u} className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-emerald-100">
+                                        <span className="text-[13px] text-slate-700 truncate flex-1">{(u || '').replace(/^https?:\/\//, '').replace(/^www\./, '')}</span>
+                                        <button onClick={() => setSeedPages(seedPages.filter(x => x !== u))} className="text-slate-400 hover:text-red-500 text-[15px] leading-none">×</button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <GSCPropertySelector onPropertySelect={setSiteProps} selectedProperties={siteProps} selectPagesReturn="wizard" />
                     <div className="flex items-center gap-2 my-4">
                         <span className="h-px bg-slate-200 flex-1" /><span className="text-[12px] text-slate-400">or enter a URL</span><span className="h-px bg-slate-200 flex-1" />
                     </div>
