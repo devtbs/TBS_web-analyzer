@@ -370,8 +370,8 @@ export default function ResearchWizard({ clientId = null }) {
             {/* Step 1 — Select site */}
             {step === 1 && (
                 <div>
-                    <p className="text-[13px] font-bold text-slate-600 mb-2">Select the site to research</p>
-                    <GSCPropertySelector onPropertySelect={setSiteProps} selectedProperties={siteProps} />
+                    <p className="text-[13px] font-bold text-slate-600 mb-2">Select the site to research <span className="font-normal text-slate-400">— click a property to pick it, then “Analyze site”.</span></p>
+                    <GSCPropertySelector onPropertySelect={setSiteProps} selectedProperties={siteProps} showSelectPages={false} />
                     <div className="flex items-center gap-2 my-4">
                         <span className="h-px bg-slate-200 flex-1" /><span className="text-[12px] text-slate-400">or enter a URL</span><span className="h-px bg-slate-200 flex-1" />
                     </div>

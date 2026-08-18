@@ -61,7 +61,7 @@ const FullSkeleton = () => (
 
 
 /* ─── Main ────────────────────────────────────────────────────────── */
-const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
+const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [], showSelectPages = true }) => {
     const navigate = useNavigate();
     const { switchAccount } = useAuth();
     const [isConnected, setIsConnected] = useState(false);
@@ -339,12 +339,14 @@ const GSCPropertySelector = ({ onPropertySelect, selectedProperties = [] }) => {
                             ? <ArrowPathIcon className="w-5 h-5 text-emerald-500 animate-spin" />
                             : isSelected && <CheckCircleIcon className="w-6 h-6 text-emerald-600" />}
                     </div>
-                    <button
-                        onClick={e => handleSelectPages(property, e)}
-                        className="px-5 py-2 text-sm font-bold border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors shadow-sm"
-                    >
-                        Select Pages
-                    </button>
+                    {showSelectPages && (
+                        <button
+                            onClick={e => handleSelectPages(property, e)}
+                            className="px-5 py-2 text-sm font-bold border border-slate-200 text-slate-600 rounded-xl bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-colors shadow-sm"
+                        >
+                            Select Pages
+                        </button>
+                    )}
                 </div>
             </motion.div>
         );
