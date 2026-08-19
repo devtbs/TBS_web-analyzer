@@ -88,9 +88,12 @@ async def google_login(request: dict, db: Session = Depends(get_db)):
         }
     )
 
+    # No stored refresh token means we genuinely need a consent round (first login, or an account
+    # whose grant was revoked). Everyone else signs in without seeing the permissions screen again.
     return TokenResponse(
         access_token=access_token,
-        user=user_info
+        user=user_info,
+        needs_consent=db_user.gsc_token is None,
     )
 
 

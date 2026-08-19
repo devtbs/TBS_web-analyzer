@@ -87,12 +87,14 @@ export const AuthProvider = ({ children }) => {
         try {
             const body = typeof payload === 'string' ? { token: payload } : payload;
             const response = await api.post('/auth/google/login', body);
-            const { access_token, user: userData } = response.data;
+            const { access_token, user: userData, needs_consent } = response.data;
             storage.set('access_token', access_token);
             storage.setJSON('user_data', userData);
             setUser(userData);
             await fetchAccounts();
-            return userData;
+            // needs_consent rides along so the sign-in button can run a consent round only when
+            // the account actually lacks a Google refresh token.
+            return { ...userData, needs_consent: !!needs_consent };
         } catch (error) {
             console.error('Login error:', error);
             throw error;

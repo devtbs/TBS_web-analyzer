@@ -23,6 +23,9 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserInfo
+    # True when this account has no stored Google refresh token yet, so the frontend should run
+    # one consent round. Lets normal logins skip the consent screen entirely.
+    needs_consent: bool = False
 
 
 class AnalysisResponse(BaseModel):

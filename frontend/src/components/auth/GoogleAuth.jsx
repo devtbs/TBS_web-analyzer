@@ -13,17 +13,39 @@ const SignInButton = () => {
     const { login } = useAuth();
     const navigate = useNavigate();
 
-    const handleLogin = useGoogleLogin({
+    // Consent round — only used when the account has no stored refresh token (first sign-in, or a
+    // revoked grant). Google returns a refresh token only when consent is actually shown, so this
+    // path still exists; it just no longer runs on every single login.
+    const consentLogin = useGoogleLogin({
         flow: 'auth-code',
         scope: GOOGLE_DATA_SCOPES,
-        // Force the consent screen every time so Google re-issues a refresh token
-        // carrying the *current* scopes. Without this, accounts that connected before
-        // the analytics.readonly scope existed never get an upgraded refresh token on
-        // reconnect (Google only returns one on first consent), so GA4 stays 403.
         prompt: 'consent',
         onSuccess: async (codeResponse) => {
             try {
                 await login({ code: codeResponse.code });
+                navigate('/dashboard');
+            } catch (error) {
+                console.error('Login failed:', error);
+            }
+        },
+        onError: () => console.error('Google login failed'),
+    });
+
+    const handleLogin = useGoogleLogin({
+        flow: 'auth-code',
+        scope: GOOGLE_DATA_SCOPES,
+        // 'select_account' (not 'consent'): a returning user picks their account and is straight in.
+        // Forcing consent on every login made everyone re-approve three scopes each time, which is
+        // the "too many steps" complaint. If the backend reports no stored refresh token, we run
+        // the consent round below — so the grant still gets established exactly when it's needed.
+        prompt: 'select_account',
+        onSuccess: async (codeResponse) => {
+            try {
+                const result = await login({ code: codeResponse.code });
+                if (result?.needs_consent) {
+                    consentLogin();
+                    return;
+                }
                 navigate('/dashboard');
             } catch (error) {
                 console.error('Login failed:', error);
