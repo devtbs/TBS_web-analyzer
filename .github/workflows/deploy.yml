@@ -45,8 +45,53 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_deploy "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' < scripts/deploy.sh
+
+          # Don't swallow keyscan output — an empty known_hosts surfaces later as a confusing
+          # auth failure instead of "the host was unreachable", which is what it actually is.
+          for i in 1 2 3; do
+            if ssh-keyscan -T 10 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts; then break; fi
+            echo "::warning::ssh-keyscan attempt $i failed; retrying in $((i * 10))s"
+            sleep $((i * 10))
+          done
+          if ! grep -q . ~/.ssh/known_hosts; then
+            echo "::error::Could not reach $DEPLOY_HOST for host-key scan after 3 attempts."
+            exit 1
+          fi
+
+          # Retry the deploy itself. deploy.sh is idempotent (fetch + reset --hard + rebuild),
+          # so a retry after a dropped connection is safe and just redoes the work.
+          for i in 1 2 3; do
+            if ssh -i ~/.ssh/id_deploy \
+                 -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
+                 -o BatchMode=yes \
+                 "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' < scripts/deploy.sh; then
+              echo "Deploy succeeded on attempt $i"
+              exit 0
+            fi
+            echo "::warning::Deploy attempt $i failed; retrying in $((i * 15))s"
+            sleep $((i * 15))
+          done
+          echo "::error::Deploy failed after 3 attempts."
+          exit 1
+
+      # Independent proof the running server actually moved to this commit — a green SSH step
+      # is not the same as a deployed site (see the 2026-08-18 wrong-fork incident).
+      - name: Verify prod is serving this commit
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          REMOTE_SHA=$(ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" 'git -C /home/clawdbot/web_analyzer rev-parse HEAD')
+          echo "prod HEAD:   $REMOTE_SHA"
+          echo "expected:    $GITHUB_SHA"
+          if [ "$REMOTE_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Prod is on $REMOTE_SHA but this run deployed $GITHUB_SHA."
+            exit 1
+          fi

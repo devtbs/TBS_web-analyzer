@@ -72,6 +72,23 @@ const COMP_COLORS = [
     { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200', dot: 'bg-orange-400' },
 ];
 
+// The query-research accordions. Declared once at module scope because three places need the
+// same list: the UI that renders them, the PDF export (which must force them all open), and the
+// CSV export (which must not silently drop a category).
+const QUERY_CATS = [
+    { key: 'informational', label: 'Informational Queries', color: 'bg-blue-500' },
+    { key: 'commercial', label: 'Commercial Queries', color: 'bg-orange-500' },
+    { key: 'transactional', label: 'Transactional Queries', color: 'bg-emerald-600' },
+    { key: 'navigational', label: 'Navigational Queries', color: 'bg-violet-500' },
+    { key: 'contextual', label: 'Contextual Queries', color: 'bg-teal-500' },
+    { key: 'audience_specific', label: 'Audience Specific Queries', color: 'bg-pink-500' },
+    { key: 'advanced_query_patterns', label: 'Advanced Query Patterns', color: 'bg-amber-600' },
+    { key: 'predictive', label: 'Predictive Queries', color: 'bg-slate-600' },
+    { key: 'voice_search', label: 'Voice Search Queries', color: 'bg-indigo-500' },
+    { key: 'raw_queries', label: 'Raw Queries', color: 'bg-slate-500' },
+];
+const ALL_QUERY_CATS_EXPANDED = Object.fromEntries(QUERY_CATS.map(c => [c.key, true]));
+
 const TopicalMap = ({ topicalMaps, analysisId }) => {
     const navigate = useNavigate();
     const [generatingArticle, setGeneratingArticle] = useState(null);
@@ -415,6 +432,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             ontology: true,
             tools: true
         });
+        // Expanding the Query Research section alone isn't enough — each query category is its own
+        // collapsed accordion inside it, so the PDF captured only the coloured header bars. Force
+        // the inner accordions open too.
+        setExpandedQueryCats(ALL_QUERY_CATS_EXPANDED);
 
         // Give React a tiny moment (500ms) to finish the expand DOM animations
         setTimeout(() => {
@@ -540,8 +561,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             title: 'Query Research', suffix: 'query-research',
             header: ['Category', 'Query'],
             rows: flatCategoryRows(activeMap.query_templates,
-                { raw_queries: 'Raw', informational: 'Informational', transactional: 'Transactional',
-                  commercial: 'Commercial', navigational: 'Navigational' }),
+                Object.fromEntries(QUERY_CATS.map(c => [c.key, c.label.replace(/ Queries$/, '')]))),
         },
         {
             title: 'Competitive Analysis', suffix: 'competitive-analysis',
@@ -1430,18 +1450,6 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                     {expandedSections.queries && (
                         <div className="p-4 space-y-2">
                             {(() => {
-                                const QUERY_CATS = [
-                                    { key: 'informational', label: 'Informational Queries', color: 'bg-blue-500' },
-                                    { key: 'commercial', label: 'Commercial Queries', color: 'bg-orange-500' },
-                                    { key: 'transactional', label: 'Transactional Queries', color: 'bg-emerald-600' },
-                                    { key: 'navigational', label: 'Navigational Queries', color: 'bg-violet-500' },
-                                    { key: 'contextual', label: 'Contextual Queries', color: 'bg-teal-500' },
-                                    { key: 'audience_specific', label: 'Audience Specific Queries', color: 'bg-pink-500' },
-                                    { key: 'advanced_query_patterns', label: 'Advanced Query Patterns', color: 'bg-amber-600' },
-                                    { key: 'predictive', label: 'Predictive Queries', color: 'bg-slate-600' },
-                                    { key: 'voice_search', label: 'Voice Search Queries', color: 'bg-indigo-500' },
-                                    { key: 'raw_queries', label: 'Raw Queries', color: 'bg-slate-500' },
-                                ];
                                 const allExpanded = QUERY_CATS.every(c => {
                                     const qs = activeMap.query_templates[c.key];
                                     return !qs?.length || expandedQueryCats[c.key];
