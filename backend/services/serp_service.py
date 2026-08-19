@@ -5,6 +5,7 @@ Enhances topical maps with actual SERP insights
 from typing import Dict, List, Optional
 from serpapi import GoogleSearch
 from config import settings
+import os
 import asyncio
 
 
@@ -182,7 +183,30 @@ class SerpService:
     def _rank_sync(self, keyword: str, target_domain: str, location: str) -> Dict:
         params = {"q": keyword, "api_key": self.api_key, "num": 100, "gl": location, "hl": "en"}
         results = GoogleSearch(params).get_dict()
-        return self._parse_rank_page(results, target_domain)
+        parsed = self._parse_rank_page(results, target_domain)
+
+        # Google often returns the AI Overview as a page_token rather than inline references. The
+        # citations are only readable via a SECOND SerpAPI request, so this is opt-in: it doubles
+        # the per-keyword cost on affected keywords. Off unless AI_OVERVIEW_DETAIL=1.
+        ai = parsed.get("ai_overview") or {}
+        token = (results.get("ai_overview") or {}).get("page_token")
+        if ai.get("deferred") and token and os.getenv("AI_OVERVIEW_DETAIL") == "1":
+            try:
+                detail = GoogleSearch({"engine": "google_ai_overview", "page_token": token,
+                                       "api_key": self.api_key}).get_dict()
+                srcs = []
+                for ref in ((detail.get("ai_overview") or {}).get("references") or []):
+                    link = ref.get("link", "")
+                    srcs.append({"domain": self._extract_domain(link).lower(), "url": link,
+                                 "title": (ref.get("title") or "")[:200]})
+                if srcs:
+                    ai["sources"] = srcs[:20]
+                    ai["deferred"] = False
+                    ai["cited"] = any(self._is_target(x["domain"], target_domain) for x in srcs)
+                    parsed["ai_overview"] = ai
+            except Exception as e:
+                print(f"⚠️  AI overview detail failed for '{keyword}': {str(e)[:100]}")
+        return parsed
 
     def _is_target(self, domain: str, target: str) -> bool:
         d = (domain or "").lower()
