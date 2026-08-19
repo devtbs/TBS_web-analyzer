@@ -257,6 +257,25 @@ class RankSnapshot(Base):
     created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
+class SerpSnapshot(Base):
+    """The FULL SERP behind a rank check, kept instead of discarded.
+
+    The rank probe already pays SerpAPI for the whole top-100 page and previously read only our own
+    position out of it. Storing the rest costs no extra API spend and is what powers SERP
+    competitors, share of voice, visibility, SERP features and the AI Overview tracker.
+    """
+    __tablename__ = "serp_snapshots"
+    __table_args__ = (UniqueConstraint("tracked_keyword_id", "checked_on", name="uq_serp_snapshot_day"),)
+
+    id                 = Column(Integer, primary_key=True, autoincrement=True)
+    tracked_keyword_id = Column(Integer, index=True, nullable=False)
+    checked_on         = Column(Date, index=True, nullable=False)
+    organic            = Column(JSON, nullable=True)   # [{position, domain, url, title}] top 100
+    features           = Column(JSON, nullable=True)   # {featured_snippet, paa, local_pack, ...}
+    ai_overview        = Column(JSON, nullable=True)   # {present, cited, sources:[{domain,url,title}]}
+    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class RankRunMarker(Base):
     """One row per day the collector has claimed. gunicorn runs -w 4 and each worker starts its own
     scheduler; the collector INSERTs today's marker first and bails if the insert conflicts, so only

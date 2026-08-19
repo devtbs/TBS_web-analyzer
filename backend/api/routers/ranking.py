@@ -14,6 +14,7 @@ from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db, TrackedKeyword
 from services import rank_tracker_service as rt
+from services import ai_visibility_service as aiv
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -85,3 +86,38 @@ async def refresh_now(client_id: str = None,
         raise HTTPException(status_code=402, detail="Monthly SerpAPI cap reached — refresh blocked.")
     checked = await rt.collect(db, kws)
     return {"checked": checked}
+
+
+# ── AI Results Tracker ──────────────────────────────────────────────────────
+# All four read SerpSnapshot rows captured by the daily rank check — no extra SerpAPI spend.
+
+@router.get("/api/ranktracker/ai/rankings")
+async def ai_rankings(client_id: str = None,
+                      current_user: UserInfo = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """Per keyword: is there an AI Overview, and are we cited in it?"""
+    return aiv.rankings(db, current_user.email, client_id)
+
+
+@router.get("/api/ranktracker/ai/competitors")
+async def ai_competitors(client_id: str = None,
+                         current_user: UserInfo = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    """Which domains Google's AI Overview cites most across the tracked keywords."""
+    return aiv.competitors(db, current_user.email, client_id)
+
+
+@router.get("/api/ranktracker/ai/sources")
+async def ai_sources(client_id: str = None,
+                     current_user: UserInfo = Depends(get_current_user),
+                     db: Session = Depends(get_db)):
+    """The specific URLs the AI Overviews pull from."""
+    return aiv.sources(db, current_user.email, client_id)
+
+
+@router.get("/api/ranktracker/ai/trend")
+async def ai_trend(client_id: str = None, days: int = 30,
+                   current_user: UserInfo = Depends(get_current_user),
+                   db: Session = Depends(get_db)):
+    """Citation rate over time."""
+    return aiv.trend(db, current_user.email, client_id, days)

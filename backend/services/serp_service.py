@@ -182,11 +182,59 @@ class SerpService:
     def _rank_sync(self, keyword: str, target_domain: str, location: str) -> Dict:
         params = {"q": keyword, "api_key": self.api_key, "num": 100, "gl": location, "hl": "en"}
         results = GoogleSearch(params).get_dict()
+        return self._parse_rank_page(results, target_domain)
+
+    def _is_target(self, domain: str, target: str) -> bool:
+        d = (domain or "").lower()
+        return bool(d) and (d == target or d.endswith("." + target) or target.endswith("." + d))
+
+    def _parse_rank_page(self, results: Dict, target_domain: str) -> Dict:
+        """Pull everything useful out of one SERP response.
+
+        We already pay for this whole page to find our own position, so the organic list, the SERP
+        features and the AI Overview come along for free — that is what makes share of voice,
+        SERP competitors and AI-citation tracking cost nothing extra.
+        """
+        position, url = None, None
+        organic = []
         for r in (results.get("organic_results") or []):
-            d = self._extract_domain(r.get("link", "")).lower()
-            if d == target_domain or d.endswith("." + target_domain) or target_domain.endswith("." + d):
-                return {"position": r.get("position"), "url": r.get("link", "")}
-        return {"position": None, "url": None}
+            link = r.get("link", "")
+            d = self._extract_domain(link).lower()
+            organic.append({"position": r.get("position"), "domain": d,
+                            "url": link, "title": (r.get("title") or "")[:200]})
+            if position is None and self._is_target(d, target_domain):
+                position, url = r.get("position"), link
+
+        # SERP features present on the page — SE Ranking calls these "snippets".
+        fs = results.get("answer_box") or {}
+        features = {
+            "featured_snippet": bool(fs),
+            "featured_snippet_domain": self._extract_domain(fs.get("link", "")).lower() if fs else None,
+            "people_also_ask": len(results.get("related_questions") or []),
+            "local_pack": bool(results.get("local_results")),
+            "knowledge_graph": bool(results.get("knowledge_graph")),
+            "shopping": bool(results.get("shopping_results")),
+            "videos": bool(results.get("inline_videos") or results.get("video_results")),
+            "top_ads": len(results.get("ads") or []),
+        }
+
+        # AI Overview. SerpAPI sometimes inlines the references and sometimes only returns a
+        # page_token needing a second request — we record which, rather than pretending it's absent.
+        ai = results.get("ai_overview") or {}
+        ai_sources = []
+        for ref in (ai.get("references") or []):
+            link = ref.get("link", "")
+            ai_sources.append({"domain": self._extract_domain(link).lower(), "url": link,
+                               "title": (ref.get("title") or "")[:200]})
+        ai_overview = {
+            "present": bool(ai),
+            "deferred": bool(ai.get("page_token") and not ai.get("references")),
+            "cited": any(self._is_target(s["domain"], target_domain) for s in ai_sources),
+            "sources": ai_sources[:20],
+        }
+
+        return {"position": position, "url": url,
+                "organic": organic[:100], "features": features, "ai_overview": ai_overview}
 
     async def get_serp_preview(self, query: str, location: str = None) -> Dict:
         """Full SERP for a single query — for the research wizard's live 'Test Search' step.

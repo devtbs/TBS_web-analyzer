@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from sqlalchemy.exc import IntegrityError
 
-from database import SessionLocal, TrackedKeyword, RankSnapshot, RankRunMarker
+from database import SessionLocal, TrackedKeyword, RankSnapshot, RankRunMarker, SerpSnapshot
 from services.serp_service import serp_service
 
 logger = logging.getLogger(__name__)
@@ -122,6 +122,19 @@ async def _check_one(db, tk: TrackedKeyword, on: date) -> None:
     else:
         db.add(RankSnapshot(tracked_keyword_id=tk.id, checked_on=on,
                             position=res.get("position"), url=res.get("url")))
+
+    # Keep the rest of the page too — same API call, no extra spend. Powers SERP competitors,
+    # share of voice, SERP features and the AI Overview tracker.
+    if res.get("organic") or res.get("ai_overview"):
+        ss = (db.query(SerpSnapshot)
+              .filter(SerpSnapshot.tracked_keyword_id == tk.id, SerpSnapshot.checked_on == on).first())
+        if ss:
+            ss.organic, ss.features, ss.ai_overview = (
+                res.get("organic"), res.get("features"), res.get("ai_overview"))
+        else:
+            db.add(SerpSnapshot(tracked_keyword_id=tk.id, checked_on=on,
+                                organic=res.get("organic"), features=res.get("features"),
+                                ai_overview=res.get("ai_overview")))
     db.commit()
 
 

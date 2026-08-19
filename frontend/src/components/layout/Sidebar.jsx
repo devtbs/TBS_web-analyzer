@@ -129,6 +129,7 @@ const NAV_GROUPS = [
             { label: 'Keyword Discovery', path: '/keyword-discovery', icon: MagnifyingGlassIcon },
             { label: 'Keyword Clustering', path: '/keyword-clustering', icon: RectangleGroupIcon },
             { label: 'Rank Tracker',    path: '/rank-tracker',    icon: ArrowTrendingUpIcon },
+            { label: 'AI Results',      path: '/ai-results',      icon: SparklesIcon },
             { label: 'Technical Audit', path: '/technical-audit', icon: WrenchScrewdriverIcon },
             { label: 'Connections',     path: '/connections',     icon: CircleStackIcon },
             { label: 'History',         path: '/history',         icon: ClockIcon },

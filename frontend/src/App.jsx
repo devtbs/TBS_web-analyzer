@@ -46,6 +46,7 @@ const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const Assistant = lazy(() => import('./pages/Assistant'));
 const TechnicalAuditPage = lazy(() => import('./pages/TechnicalAuditPage'));
 const RankTracker = lazy(() => import('./pages/RankTracker'));
+const AIResultsTracker = lazy(() => import('./pages/AIResultsTracker'));
 const KeywordClustering = lazy(() => import('./pages/KeywordClustering'));
 const KeywordDiscovery = lazy(() => import('./pages/KeywordDiscovery'));
 
@@ -209,6 +210,7 @@ function AppContent() {
                     <Route path="/seo-analytics/topic-clusters" element={<TopicClustersPage />} />
                     <Route path="/new-analysis" element={<NewAnalysis />} />
                     <Route path="/rank-tracker" element={<RankTracker />} />
+                    <Route path="/ai-results" element={<AIResultsTracker />} />
                     <Route path="/keyword-discovery" element={<KeywordDiscovery />} />
                     <Route path="/keyword-clustering" element={<KeywordClustering />} />
                     <Route path="/history" element={<History />} />
