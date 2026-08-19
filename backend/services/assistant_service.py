@@ -53,6 +53,7 @@ class ToolContext:
     selected_customer: Optional[str] = None      # Google Ads customer id
     selected_ga4_property: Optional[str] = None   # GA4 property id
     selected_client_id: Optional[str] = None      # the picked Client (expands to all of the above)
+    selected_analysis_id: Optional[str] = None    # the topical-map analysis currently open (Results page)
 
 
 # ── Tool schemas (OpenAI function-calling format) ───────────────────────────
@@ -60,7 +61,7 @@ READ_TOOLS = {"get_context", "list_clients", "get_client",
               "list_gsc_properties", "list_ga4_properties",
               "gsc_overview", "gsc_movers", "gsc_ctr_opportunities", "paid_vs_organic",
               "list_ads_customers", "ga4_overview", "ads_overview",
-              "gsc_striking_distance", "gsc_cannibalization"}
+              "gsc_striking_distance", "gsc_cannibalization", "get_topical_map"}
 ACTION_TOOLS = {"generate_deck"}
 # Tools that pause the loop to ask the user to pick a client (rendered as clickable options).
 SELECT_TOOLS = {"ask_client_choice"}
@@ -196,6 +197,17 @@ TOOL_SCHEMAS = [
         }, "required": ["kind"]},
     }},
     {"type": "function", "function": {
+        "name": "get_topical_map",
+        "description": "Get the topical map / content plan / keyword clusters for the analysis the "
+                       "user currently has open on the Results page (site overview, key topics, "
+                       "content-plan nodes with titles/URLs/search volume, keyword clusters, and "
+                       "bridge topics connecting them). Use this for ANY question about 'this "
+                       "topical map', 'the content plan we just made', 'what pages should we build', "
+                       "or keyword clusters from the current analysis. Takes no arguments — it always "
+                       "refers to whatever analysis is currently open.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
         "name": "generate_deck",
         "description": "Generate an AI-designed presentation deck for a client. ACTION: this "
                        "produces a deliverable and must be confirmed by the user before running.",
@@ -233,6 +245,10 @@ _SYSTEM_PROMPT = (
     "fewer, larger orders (conversions down, revenue up) is a GOOD period.\n"
     "- If a tool returns an error or empty data, say so plainly and suggest the fix (e.g. reconnect "
     "the account) — do not paper over it with invented numbers.\n"
+    "- For questions about a topical map, content plan, or keyword clusters from an analysis the "
+    "user is viewing (e.g. 'this topical map', 'the pages we should build'), call get_topical_map — "
+    "it needs no arguments and always refers to whatever analysis is currently open. If it returns "
+    "an error saying none is open, tell the user to open the analysis's Results page first.\n"
     "\n"
     "ACTIONS & CLIENTS\n"
     "- generate_deck creates a deliverable; the app confirms with the user before it runs, so just "
@@ -414,6 +430,37 @@ async def _handle(name: str, args: dict, ctx: ToolContext) -> dict:
         service = _gsc_service_for(ctx.db, ctx.user_email, ctx.account_id)
         data = await service.get_cannibalization(args["property_url"], int(args.get("days", 28)))
         return {"cannibalized": data[:50], "total": len(data)}
+
+    if name == "get_topical_map":
+        if not ctx.selected_analysis_id:
+            return {"error": "No topical map is currently open. Open one from the Results page first."}
+        from utils.storage import database_store
+        analysis = database_store.get_analysis(ctx.db, ctx.selected_analysis_id)
+        if not analysis or analysis.get("user_email") != ctx.user_email:
+            return {"error": "That analysis is no longer available."}
+        maps = analysis.get("topical_maps") or []
+        if not maps:
+            return {"error": "This analysis has no topical map yet (still processing or it failed)."}
+        m = maps[0]   # primary site's map — competitor maps (if any) follow at index 1+
+        strategy = m.get("content_strategy") or {}
+        return {
+            "url": m.get("url"), "central_entity": m.get("central_entity"),
+            "business_model": m.get("business_model"), "key_topics": m.get("key_topics"),
+            "core_topics": strategy.get("core_topics"), "outer_topics": strategy.get("outer_topics"),
+            "content_gaps": strategy.get("content_gaps"), "bridge_topics": m.get("bridge_topics"),
+            "content_plan_nodes": [
+                {"title": a.get("title"), "main_entity": a.get("main_entity"),
+                 "context": a.get("context"), "suggested_url": a.get("suggested_url"),
+                 "section": a.get("section"), "search_volume": a.get("search_volume"),
+                 "kd": a.get("kd")}
+                for a in (m.get("content_articles") or [])
+            ],
+            "keyword_clusters": [
+                {"label": c.get("label"), "total_volume": c.get("total_volume"),
+                 "keywords": [k.get("keyword") for k in (c.get("keywords") or [])][:8]}
+                for c in (m.get("keyword_clusters") or [])
+            ],
+        }
 
     raise ValueError(f"Unknown tool: {name}")
 

@@ -6,6 +6,9 @@ export const readContext = () => ({
     selected_property: localStorage.getItem('gsc_selected_property') || null,
     selected_customer: localStorage.getItem('google_ads_selected_customer') || null,
     selected_ga4_property: localStorage.getItem('ga4_selected_property') || null,
+    // Set by Results.jsx while a topical-map analysis is open, cleared on leaving that page — lets
+    // the assistant answer "about the topical map we just did" without a manual picker.
+    selected_analysis_id: localStorage.getItem('selected_analysis_id') || null,
 });
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';

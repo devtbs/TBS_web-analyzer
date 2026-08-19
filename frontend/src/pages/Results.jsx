@@ -115,6 +115,14 @@ const Results = () => {
 
     useEffect(() => { fetchResults(); }, [analysisId]);
 
+    // Let the AI Assistant answer questions about THIS analysis's topical map while it's open —
+    // cleared on leaving so the assistant doesn't keep referencing a map you've navigated away from.
+    useEffect(() => {
+        if (!analysisId) return;
+        localStorage.setItem('selected_analysis_id', analysisId);
+        return () => localStorage.removeItem('selected_analysis_id');
+    }, [analysisId]);
+
     const fetchResults = async () => {
         try {
             const statusRes = await api.get(`/api/results/${analysisId}`);

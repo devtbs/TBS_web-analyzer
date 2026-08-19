@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { marked } from 'marked';
 import {
     SparklesIcon, XMarkIcon, PaperAirplaneIcon, CheckIcon, ArrowsPointingOutIcon,
 } from '@heroicons/react/24/outline';
@@ -67,13 +68,21 @@ const AssistantWidget = () => {
                             )}
                             {messages.filter(m => m.content).map((m, i) => (
                                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] px-3.5 py-2 rounded-2xl text-[13px] whitespace-pre-wrap leading-relaxed ${
-                                        m.role === 'user'
-                                            ? 'bg-violet-600 text-white rounded-br-sm'
-                                            : 'bg-white border border-slate-200 text-slate-700 rounded-bl-sm'
-                                    }`}>
-                                        {m.content}
-                                    </div>
+                                    {m.role === 'user' ? (
+                                        <div className="max-w-[85%] px-3.5 py-2 rounded-2xl text-[13px] whitespace-pre-wrap leading-relaxed bg-violet-600 text-white rounded-br-sm">
+                                            {m.content}
+                                        </div>
+                                    ) : (
+                                        <div
+                                            className="max-w-[85%] px-3.5 py-2 rounded-2xl text-[13px] leading-relaxed bg-white border border-slate-200 text-slate-700 rounded-bl-sm
+                                                [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-4 [&_ul]:mb-2
+                                                [&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:mb-2 [&_li]:mb-0.5 [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:rounded
+                                                [&_table]:w-full [&_table]:text-[12px] [&_table]:my-2 [&_table]:border-collapse
+                                                [&_th]:border [&_th]:border-slate-200 [&_th]:bg-slate-50 [&_th]:px-1.5 [&_th]:py-1 [&_th]:text-left
+                                                [&_td]:border [&_td]:border-slate-200 [&_td]:px-1.5 [&_td]:py-1"
+                                            dangerouslySetInnerHTML={{ __html: marked(m.content) }}
+                                        />
+                                    )}
                                 </div>
                             ))}
 

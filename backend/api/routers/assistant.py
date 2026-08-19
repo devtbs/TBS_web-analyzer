@@ -53,6 +53,7 @@ async def assistant_chat(
         selected_customer=context.get("selected_customer"),
         selected_ga4_property=context.get("selected_ga4_property"),
         selected_client_id=context.get("selected_client_id"),
+        selected_analysis_id=context.get("selected_analysis_id"),
     )
 
     async def stream():
