@@ -23,15 +23,22 @@ pip install -q -r requirements.txt
 
 echo "→ Building frontend"
 cd "$APP_DIR/frontend"
-rm -rf dist
 npm ci
-npm run build
+# Build into a staging dir and swap it in, rather than deleting dist first. The old build kept
+# serving the whole time, so a deploy no longer 500s the site for the ~90s the build takes.
+rm -rf dist.new dist.old
+npm run build -- --outDir dist.new --emptyOutDir
 
 # Publish the deployed commit as a static file nginx already serves. This is what lets CI
 # verify a deploy landed WITHOUT needing inbound SSH to the box (port 22 is firewalled).
 printf '{"sha":"%s","deployed_at":"%s"}\n' \
     "$(git -C "$APP_DIR" rev-parse HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    > "$APP_DIR/frontend/dist/version.json"
+    > "$APP_DIR/frontend/dist.new/version.json"
+
+# Swap: two renames, so the window where dist is absent is microseconds instead of a whole build.
+if [ -d dist ]; then mv dist dist.old; fi
+mv dist.new dist
+rm -rf dist.old
 
 echo "→ Restarting backend"
 pm2 restart tbs-backend
