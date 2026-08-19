@@ -498,50 +498,98 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         return rows;
     };
 
-    const exportKeywordVolumesCsv = () => downloadCsv(
-        ['Keyword', 'Volume', 'KD', 'CPC'],
-        (activeMap.keyword_volumes || []).map(kv => [kv.keyword, kv.avg_monthly_searches || 0, kv.kd ?? '', kv.cpc ?? '']),
-        'keyword-opportunities');
+    // Every exportable section declared once: {title, suffix, header, rows}. The per-section CSV
+    // buttons and the single "Export everything" file are both built from this list, so a section
+    // added here automatically shows up in both.
+    const csvSections = [
+        {
+            title: 'Content Plan', suffix: 'content-plan',
+            header: ['Main Entity', 'Context', 'Title', 'Suggested URL', 'Volume', 'Internal Links', 'Section', 'Type', 'Source'],
+            rows: mergedArticles.map(a => [a.main_entity, a.context, a.title, a.suggested_url,
+                a.search_volume ?? '', (a.internal_links || []).join('; '), a.section, a.article_type,
+                a._isPrimary ? 'Primary' : (a._domain || 'Competitor')]),
+        },
+        {
+            title: 'New Keyword Opportunities', suffix: 'keyword-opportunities',
+            header: ['Keyword', 'Volume', 'KD', 'CPC'],
+            rows: (activeMap.keyword_volumes || []).map(kv => [kv.keyword, kv.avg_monthly_searches || 0, kv.kd ?? '', kv.cpc ?? '']),
+        },
+        {
+            title: 'Content Clusters', suffix: 'keyword-clusters',
+            header: ['Cluster', 'Total Volume', 'Keyword', 'Keyword Volume'],
+            rows: (activeMap.keyword_clusters || []).flatMap(c =>
+                (c.keywords?.length ? c.keywords : [{}]).map(k => [c.label, c.total_volume || 0, k.keyword || '', k.volume ?? ''])),
+        },
+        {
+            title: 'Taxonomy', suffix: 'taxonomy',
+            header: ['Name', 'Level', 'Parent', 'Children'],
+            rows: (activeMap.taxonomy || []).map(t => [t.name, t.level, t.parent || '', (t.children || []).join('; ')]),
+        },
+        {
+            title: 'Ontology Relationships', suffix: 'ontology-relationships',
+            header: ['Subject', 'Predicate', 'Object', 'Context'],
+            rows: (activeMap.ontology || []).map(o => [o.subject, o.predicate, o.object, o.context]),
+        },
+        {
+            title: 'Audience Segments', suffix: 'audience-segments',
+            header: ['Segment', 'Expertise Level', 'Primary Goal', 'Funnel Stage', 'Preferred Format', 'Pain Points', 'Content Types'],
+            rows: (activeMap.audience_segments || []).map(a => [a.name, a.expertise_level, a.primary_goal,
+                a.funnel_stage || '', a.preferred_format || '', (a.pain_points || []).join('; '), (a.content_types || []).join('; ')]),
+        },
+        {
+            title: 'Query Research', suffix: 'query-research',
+            header: ['Category', 'Query'],
+            rows: flatCategoryRows(activeMap.query_templates,
+                { raw_queries: 'Raw', informational: 'Informational', transactional: 'Transactional',
+                  commercial: 'Commercial', navigational: 'Navigational' }),
+        },
+        {
+            title: 'Competitive Analysis', suffix: 'competitive-analysis',
+            header: ['Category', 'Item'],
+            rows: flatCategoryRows(activeMap.competitive_analysis,
+                { top_competitors: 'Top Competitor', content_approaches: 'Content Approach',
+                  gap_opportunities: 'Gap Opportunity', serp_insights: 'SERP Insight' }),
+        },
+        {
+            title: 'SEO Optimization', suffix: 'seo-optimization',
+            header: ['Category', 'Item'],
+            rows: flatCategoryRows(activeMap.seo_optimization,
+                { topic_clusters: 'Topic Cluster', schema_recommendations: 'Schema Recommendation',
+                  entity_optimization: 'Entity Optimization' }),
+        },
+    ];
+    const sectionBySuffix = Object.fromEntries(csvSections.map(s => [s.suffix, s]));
+    const exportSectionCsv = (suffix) => {
+        const s = sectionBySuffix[suffix];
+        if (s) downloadCsv(s.header, s.rows, s.suffix);
+    };
 
-    const exportKeywordClustersCsv = () => downloadCsv(
-        ['Cluster', 'Total Volume', 'Keyword', 'Keyword Volume'],
-        (activeMap.keyword_clusters || []).flatMap(c =>
-            (c.keywords?.length ? c.keywords : [{}]).map(k => [c.label, c.total_volume || 0, k.keyword || '', k.volume ?? ''])),
-        'keyword-clusters');
+    const exportKeywordVolumesCsv = () => exportSectionCsv('keyword-opportunities');
+    const exportKeywordClustersCsv = () => exportSectionCsv('keyword-clusters');
+    const exportTaxonomyCsv = () => exportSectionCsv('taxonomy');
+    const exportOntologyCsv = () => exportSectionCsv('ontology-relationships');
+    const exportAudienceCsv = () => exportSectionCsv('audience-segments');
+    const exportQueryTemplatesCsv = () => exportSectionCsv('query-research');
+    const exportCompetitiveCsv = () => exportSectionCsv('competitive-analysis');
+    const exportSeoCsv = () => exportSectionCsv('seo-optimization');
 
-    const exportTaxonomyCsv = () => downloadCsv(
-        ['Name', 'Level', 'Parent', 'Children'],
-        (activeMap.taxonomy || []).map(t => [t.name, t.level, t.parent || '', (t.children || []).join('; ')]),
-        'taxonomy');
-
-    const exportOntologyCsv = () => downloadCsv(
-        ['Subject', 'Predicate', 'Object', 'Context'],
-        (activeMap.ontology || []).map(o => [o.subject, o.predicate, o.object, o.context]),
-        'ontology-relationships');
-
-    const exportAudienceCsv = () => downloadCsv(
-        ['Segment', 'Expertise Level', 'Primary Goal', 'Funnel Stage', 'Preferred Format', 'Pain Points', 'Content Types'],
-        (activeMap.audience_segments || []).map(a => [a.name, a.expertise_level, a.primary_goal,
-            a.funnel_stage || '', a.preferred_format || '', (a.pain_points || []).join('; '), (a.content_types || []).join('; ')]),
-        'audience-segments');
-
-    const exportQueryTemplatesCsv = () => downloadCsv(['Category', 'Query'], flatCategoryRows(
-        activeMap.query_templates,
-        { raw_queries: 'Raw', informational: 'Informational', transactional: 'Transactional',
-          commercial: 'Commercial', navigational: 'Navigational' }),
-        'query-research');
-
-    const exportCompetitiveCsv = () => downloadCsv(['Category', 'Item'], flatCategoryRows(
-        activeMap.competitive_analysis,
-        { top_competitors: 'Top Competitor', content_approaches: 'Content Approach',
-          gap_opportunities: 'Gap Opportunity', serp_insights: 'SERP Insight' }),
-        'competitive-analysis');
-
-    const exportSeoCsv = () => downloadCsv(['Category', 'Item'], flatCategoryRows(
-        activeMap.seo_optimization,
-        { topic_clusters: 'Topic Cluster', schema_recommendations: 'Schema Recommendation',
-          entity_optimization: 'Entity Optimization' }),
-        'seo-optimization');
+    // One file with the whole analysis: each section as its own titled block (own header row),
+    // separated by a blank line. Opens fine in Excel/Sheets and keeps each table's real columns
+    // instead of squashing everything into a lowest-common-denominator shape.
+    const exportEverythingCsv = () => {
+        const lines = [];
+        lines.push([csvEsc(`Topical Map — ${activeMap.central_entity || getDomain(activeMap.url)}`)].join(','));
+        lines.push([csvEsc('Site'), csvEsc(activeMap.url || '')].join(','));
+        lines.push([csvEsc('Exported'), csvEsc(new Date().toISOString().slice(0, 10))].join(','));
+        csvSections.forEach(s => {
+            if (!s.rows.length) return;
+            lines.push('');
+            lines.push(csvEsc(s.title));
+            lines.push(s.header.map(csvEsc).join(','));
+            s.rows.forEach(r => lines.push(r.map(csvEsc).join(',')));
+        });
+        _dl(lines.join('\n'), `${_slug}-full-analysis.csv`, 'text/csv');
+    };
 
     return (
         <>
@@ -764,7 +812,15 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         className="flex items-center gap-2 px-3 py-2 sm:py-2.5 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
                     >
                         <ArrowDownTrayIcon className="w-4 h-4" />
-                        CSV
+                        Plan CSV
+                    </button>
+                    <button
+                        onClick={exportEverythingCsv}
+                        title="Every section of this analysis in one CSV file"
+                        className="flex items-center gap-2 px-3 py-2 sm:py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-600 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Full CSV
                     </button>
                     <button
                         onClick={exportAllToPDF}
