@@ -148,7 +148,18 @@ export default function KeywordClustering() {
         } catch (e) { toast.error(e.response?.data?.detail || 'Could not start'); }
     };
 
-    const openRun = async (id) => { setRunId(id); setOpenIdx(null); };
+    // Opening a saved run must also restore its domain/market — "Track pillars" needs `domain` set
+    // to render at all, so without this a saved run's Track button silently never appears.
+    const openRun = async (id) => {
+        setOpenIdx(null);
+        try {
+            const r = (await api.get(`/api/clustering/${id}`)).data;
+            setRun(r);
+            setRunId(id);
+            if (r.domain) setDomain(r.domain);
+            if (r.gl) setCountryGl(r.gl);
+        } catch { toast.error('Could not open that run'); }
+    };
     const deleteRun = async (id, e) => {
         e?.stopPropagation();
         try { await api.delete(`/api/clustering/${id}`); if (id === runId) { setRunId(null); setRun(null); } loadRuns(); }
