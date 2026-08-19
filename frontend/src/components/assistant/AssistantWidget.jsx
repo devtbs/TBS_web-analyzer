@@ -4,14 +4,26 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { marked } from 'marked';
 import {
     SparklesIcon, XMarkIcon, PaperAirplaneIcon, CheckIcon, ArrowsPointingOutIcon,
+    PencilSquareIcon, ClockIcon,
 } from '@heroicons/react/24/outline';
-import useAssistantChat from '../../hooks/useAssistantChat';
+import useAssistantChat, { fetchSessions } from '../../hooks/useAssistantChat';
 
 const AssistantWidget = () => {
     const [open, setOpen] = useState(false);
     const [input, setInput] = useState('');
     const scrollRef = useRef(null);
-    const { messages, busy, activity, pending, choices, send, confirmAction, cancelAction, pickChoice } = useAssistantChat();
+    const [showHistory, setShowHistory] = useState(false);
+    const [sessions, setSessions] = useState([]);
+    const {
+        messages, busy, activity, pending, choices,
+        send, confirmAction, cancelAction, pickChoice, newChat, loadSession,
+    } = useAssistantChat({ restore: true });
+
+    // Conversations are stored server-side, so the list is fetched when the panel opens rather
+    // than kept in sync continuously.
+    useEffect(() => {
+        if (open) fetchSessions().then(setSessions).catch(() => {});
+    }, [open, messages.length]);
 
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -52,11 +64,36 @@ const AssistantWidget = () => {
                                 <p className="text-sm font-bold leading-none">Assistant</p>
                                 <p className="text-[10px] opacity-80 leading-none mt-0.5">Ask about your clients' data</p>
                             </div>
+                            <button onClick={() => { newChat(); setShowHistory(false); }} title="New chat"
+                                className="text-white/80 hover:text-white transition-colors">
+                                <PencilSquareIcon className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => setShowHistory(v => !v)} title="Past conversations"
+                                className={`transition-colors ${showHistory ? 'text-white' : 'text-white/80 hover:text-white'}`}>
+                                <ClockIcon className="w-4 h-4" />
+                            </button>
                             <Link to="/assistant" onClick={() => setOpen(false)} title="Open full page"
                                 className="text-white/80 hover:text-white transition-colors">
                                 <ArrowsPointingOutIcon className="w-4 h-4" />
                             </Link>
                         </div>
+
+                        {/* History drawer */}
+                        {showHistory && (
+                            <div className="border-b border-slate-100 bg-white max-h-52 overflow-y-auto">
+                                {sessions.length === 0 && (
+                                    <p className="text-[12px] text-slate-400 px-3 py-3">No past conversations yet.</p>
+                                )}
+                                {sessions.map(s => (
+                                    <button key={s.id}
+                                        onClick={() => { loadSession(s.id); setShowHistory(false); }}
+                                        className="w-full text-left px-3 py-2 hover:bg-violet-50 border-b border-slate-50 last:border-0">
+                                        <p className="text-[12px] text-slate-700 font-medium truncate">{s.title || 'Untitled'}</p>
+                                        <p className="text-[10px] text-slate-400">{new Date(s.updated_at).toLocaleString()}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Messages */}
                         <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3 bg-slate-50">

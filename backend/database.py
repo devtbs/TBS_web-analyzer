@@ -293,6 +293,30 @@ class ClusteringRun(Base):
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+
+class ChatSession(Base):
+    """One assistant conversation. Kept server-side so a refresh (or another device)
+    doesn't lose the thread — the widget only held messages in React state before."""
+    __tablename__ = "chat_sessions"
+
+    id         = Column(String, primary_key=True, index=True)
+    user_email = Column(String, index=True, nullable=False)
+    title      = Column(String, nullable=True)   # first user message, trimmed
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+
+
+class ChatMessage(Base):
+    """A single turn in a ChatSession. Tool calls are not stored — only what the user sees."""
+    __tablename__ = "chat_messages"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, index=True, nullable=False)
+    role       = Column(String, nullable=False)   # user | assistant
+    content    = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 # Create tables
 def init_db():
     """Initialize database tables"""

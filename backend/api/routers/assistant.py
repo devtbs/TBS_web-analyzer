@@ -15,6 +15,7 @@ from auth.auth import get_current_user
 from database import get_db
 from api.routers._shared import get_account_id, _SSE_HEADERS, _sse
 from services.assistant_service import ToolContext, run_assistant, assistant_configured
+from services import chat_store
 
 router = APIRouter()
 
@@ -41,6 +42,7 @@ async def assistant_chat(
       approved_action: {name, args}   # present only when the user confirms a pending action
     """
     messages = body.get("messages") or []
+    session_id = body.get("session_id")
     context = body.get("context") or {}
     approved_action = body.get("approved_action")
     provider = body.get("provider")
@@ -56,12 +58,54 @@ async def assistant_chat(
         selected_analysis_id=context.get("selected_analysis_id"),
     )
 
+    # Persist the conversation so a refresh doesn't lose it. The user turn is saved up front;
+    # the assistant turn is accumulated from the token stream and saved when the stream ends.
+    last_user = ""
+    for m in reversed(messages):
+        if m.get("role") == "user" and m.get("content"):
+            last_user = str(m["content"])
+            break
+    sid = chat_store.ensure_session(db, current_user.email, session_id, last_user)
+    if last_user and not approved_action:
+        chat_store.append(db, current_user.email, sid, "user", last_user)
+
     async def stream():
+        reply = []
+        yield _sse("session", {"session_id": sid})
         try:
             async for event in run_assistant(ctx, messages, approved_action=approved_action, provider=provider):
                 etype = event.pop("type", "message")
+                if etype == "token" and event.get("text"):
+                    reply.append(event["text"])
                 yield _sse(etype, event)
         except Exception as e:  # noqa: BLE001
             yield _sse("error", {"detail": str(e)})
+        finally:
+            try:
+                chat_store.append(db, current_user.email, sid, "assistant", "".join(reply).strip())
+            except Exception:  # noqa: BLE001
+                pass
 
     return StreamingResponse(stream(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.get("/api/assistant/sessions")
+async def assistant_sessions(current_user: UserInfo = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    """Recent conversations, newest first."""
+    return {"sessions": chat_store.list_sessions(db, current_user.email)}
+
+
+@router.get("/api/assistant/sessions/{session_id}")
+async def assistant_session(session_id: str,
+                            current_user: UserInfo = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    """Every turn in one conversation (for restoring the widget after a refresh)."""
+    return {"messages": chat_store.get_messages(db, current_user.email, session_id)}
+
+
+@router.delete("/api/assistant/sessions/{session_id}")
+async def assistant_session_delete(session_id: str,
+                                   current_user: UserInfo = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
+    return {"deleted": chat_store.delete_session(db, current_user.email, session_id)}

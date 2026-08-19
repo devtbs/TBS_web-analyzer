@@ -13,6 +13,21 @@ export const readContext = () => ({
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
+/* The conversation is stored server-side; this is just the pointer to the current thread so a
+   refresh reopens the same one instead of starting blank. */
+const LS_SESSION = 'assistant_session_id';
+
+const authHeaders = () => ({
+    Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+    ...(localStorage.getItem('selected_account_id')
+        ? { 'X-Account-Id': localStorage.getItem('selected_account_id') } : {}),
+});
+
+export async function fetchSessions() {
+    const r = await fetch(`${API_BASE}/api/assistant/sessions`, { headers: authHeaders() });
+    return r.ok ? (await r.json()).sessions || [] : [];
+}
+
 /* Stream the assistant SSE response, invoking onEvent(type, data) per frame. */
 async function streamChat(payload, onEvent, signal) {
     const res = await fetch(`${API_BASE}/api/assistant/chat`, {
@@ -56,7 +71,7 @@ async function streamChat(payload, onEvent, signal) {
  * @param {() => string} [opts.getProvider] returns the provider id to send (e.g. 'minimax').
  * @param {(messages) => void} [opts.onMessages] called whenever messages change (for persistence).
  */
-export default function useAssistantChat({ getProvider, onMessages } = {}) {
+export default function useAssistantChat({ getProvider, onMessages, restore = false } = {}) {
     const [messages, setMessagesState] = useState([]); // {role, content}
     const [busy, setBusy] = useState(false);
     const [activity, setActivity] = useState('');   // current tool chip
@@ -92,12 +107,15 @@ export default function useAssistantChat({ getProvider, onMessages } = {}) {
             await streamChat(
                 {
                     messages: history,
+                    session_id: localStorage.getItem(LS_SESSION) || undefined,
                     context: readContext(),
                     approved_action: approvedAction,
                     provider: getProvider?.() || undefined,
                 },
                 (type, data) => {
-                    if (type === 'tool') {
+                    if (type === 'session') {
+                        if (data.session_id) localStorage.setItem(LS_SESSION, data.session_id);
+                    } else if (type === 'tool') {
                         setActivity(data.message || 'Working…');
                     } else if (type === 'token') {
                         setActivity('');
@@ -178,5 +196,40 @@ export default function useAssistantChat({ getProvider, onMessages } = {}) {
         setMessagesState(initial);
     }, []);
 
-    return { messages, busy, activity, pending, choices, send, confirmAction, cancelAction, pickChoice, reset, setMessages: setMessagesState };
+    /* Start a fresh thread — drops the pointer so the next turn creates a new server-side session
+       (the old one stays in history rather than being deleted). */
+    const newChat = useCallback(() => {
+        localStorage.removeItem(LS_SESSION);
+        reset([]);
+    }, [reset]);
+
+    /* Reopen a past conversation by id. */
+    const loadSession = useCallback(async (sessionId) => {
+        if (!sessionId) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/assistant/sessions/${sessionId}`, { headers: authHeaders() });
+            if (!r.ok) return;
+            const { messages: past } = await r.json();
+            localStorage.setItem(LS_SESSION, sessionId);
+            reset(past || []);
+        } catch { /* history is a nicety — never block the chat on it */ }
+    }, [reset]);
+
+    /* Restore the last thread on mount so a refresh doesn't lose the conversation. Opt-in: the
+       full Assistant page keeps its own local conversation list and restores that instead. */
+    useEffect(() => {
+        const sid = localStorage.getItem(LS_SESSION);
+        if (!restore || !sid || messagesRef.current.length) return;
+        (async () => {
+            try {
+                const r = await fetch(`${API_BASE}/api/assistant/sessions/${sid}`, { headers: authHeaders() });
+                if (!r.ok) return;
+                const { messages: past } = await r.json();
+                if (past?.length) setMessagesState(past);
+            } catch { /* ignore */ }
+        })();
+    }, [restore]);
+
+    return { messages, busy, activity, pending, choices, send, confirmAction, cancelAction, pickChoice,
+             reset, newChat, loadSession, setMessages: setMessagesState };
 }

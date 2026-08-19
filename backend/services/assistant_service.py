@@ -62,8 +62,9 @@ READ_TOOLS = {"get_context", "list_clients", "get_client",
               "gsc_overview", "gsc_movers", "gsc_ctr_opportunities", "paid_vs_organic",
               "list_ads_customers", "ga4_overview", "ads_overview",
               "gsc_striking_distance", "gsc_cannibalization", "get_topical_map",
-              "get_tracked_rankings", "list_clustering_runs", "get_clustering_run"}
-ACTION_TOOLS = {"generate_deck"}
+              "get_tracked_rankings", "list_clustering_runs", "get_clustering_run",
+              "list_site_audits", "get_site_audit"}
+ACTION_TOOLS = {"generate_deck", "track_keywords", "start_clustering_run"}
 # Tools that pause the loop to ask the user to pick a client (rendered as clickable options).
 SELECT_TOOLS = {"ask_client_choice"}
 
@@ -253,6 +254,52 @@ TOOL_SCHEMAS = [
             "label": {"type": "string", "description": "Optional display name for the client."},
         }, "required": ["source", "id"]},
     }},
+    {"type": "function", "function": {
+        "name": "list_site_audits",
+        "description": "List recent technical-SEO audits (crawls) with their score and date. Use "
+                       "for 'what's broken on the site' / 'how healthy is this site' questions.",
+        "parameters": {"type": "object", "properties": {
+            "domain": {"type": "string", "description": "Optional domain/property to filter by."},
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "get_site_audit",
+        "description": "Full results of one technical-SEO audit: score, pages crawled, and the "
+                       "issues grouped by severity with example URLs. Use after list_site_audits, "
+                       "or on its own to get the latest audit for a domain.",
+        "parameters": {"type": "object", "properties": {
+            "audit_id": {"type": "string", "description": "Audit id from list_site_audits."},
+            "domain": {"type": "string", "description": "Or the domain — uses its most recent audit."},
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "track_keywords",
+        "description": "Add keywords to the rank tracker so their Google position is checked daily. "
+                       "ACTION: costs one SerpAPI search per keyword per day and must be confirmed.",
+        "parameters": {"type": "object", "properties": {
+            "keywords": {"type": "array", "items": {"type": "string"},
+                         "description": "The keywords to start tracking."},
+            "domain": {"type": "string", "description": "Domain to track them for, e.g. example.com."},
+            "gl": {"type": "string", "description": "Country code, e.g. 'th' or 'us'. Default 'th'."},
+            "location_id": {"type": "integer", "description": "Optional specific location id."},
+        }, "required": ["keywords", "domain"]},
+    }},
+    {"type": "function", "function": {
+        "name": "start_clustering_run",
+        "description": "Start a SERP-overlap keyword clustering job for a list of keywords. "
+                       "ACTION: spends SerpAPI credits and must be confirmed. Returns a run id; "
+                       "the job runs in the background and the user watches it on the Keyword "
+                       "Clustering page.",
+        "parameters": {"type": "object", "properties": {
+            "keywords": {"type": "array", "items": {"type": "string"},
+                         "description": "At least 2 keywords to cluster."},
+            "domain": {"type": "string", "description": "Client domain the run belongs to."},
+            "name": {"type": "string", "description": "Optional label for the run."},
+            "gl": {"type": "string", "description": "Country code, default 'th'."},
+            "discover": {"type": "boolean",
+                         "description": "Expand the seed list with related keywords before clustering."},
+        }, "required": ["keywords"]},
+    }},
 ]
 
 _SYSTEM_PROMPT = (
@@ -287,9 +334,21 @@ _SYSTEM_PROMPT = (
     "get_tracked_rankings. For questions about a saved keyword-clustering run ('what clusters did "
     "we find for X'), call list_clustering_runs to find it, then get_clustering_run for the details.\n"
     "\n"
+    "- For technical/site-health questions ('what's broken', 'any SEO issues', 'how healthy is "
+    "this site'), call get_site_audit (or list_site_audits first if you need to pick one). Lead "
+    "with the score and the highest-severity issues, and say how many pages each affects.\n"
+    "\n"
     "ACTIONS & CLIENTS\n"
     "- generate_deck creates a deliverable; the app confirms with the user before it runs, so just "
     "call it when asked.\n"
+    "- You can also ACT on what you find, which is often the natural next step after an answer: "
+    "track_keywords adds keywords to the daily rank tracker, and start_clustering_run queues a "
+    "SERP-overlap clustering job. Both cost SerpAPI credits and are confirmed by the user before "
+    "they run, so call them directly when asked — but never call them speculatively, and always "
+    "pass the exact keywords you discussed. If you don't know which domain to use, ask.\n"
+    "- After a research-style answer (striking distance, keyword clusters, a topical map), it is "
+    "good practice to offer the follow-up action in one short line, e.g. 'Want me to track these "
+    "five?' — offer it, don't do it unprompted.\n"
     "- If a request needs a specific client and none is selected (get_context shows nothing), call "
     "ask_client_choice so they can pick — never guess a client."
 )
@@ -468,6 +527,35 @@ async def _handle(name: str, args: dict, ctx: ToolContext) -> dict:
         data = await service.get_cannibalization(args["property_url"], int(args.get("days", 28)))
         return {"cannibalized": data[:50], "total": len(data)}
 
+    if name in ("list_site_audits", "get_site_audit"):
+        from database import Audit
+        q = ctx.db.query(Audit).filter(Audit.user_email == ctx.user_email)
+        dom = (args.get("domain") or "").lower().replace("www.", "").strip("/")
+        if dom:
+            q = q.filter(Audit.property_url.ilike(f"%{dom}%"))
+        if name == "list_site_audits":
+            rows = q.order_by(Audit.created_at.desc()).limit(10).all()
+            if not rows:
+                return {"error": "No site audits have been run yet"
+                                 + (f" for {dom}." if dom else ".")}
+            return {"audits": [{"audit_id": a.audit_id, "property_url": a.property_url,
+                                "status": a.status, "created_at": str(a.created_at),
+                                "score": (a.summary or {}).get("score"),
+                                "pages_crawled": (a.summary or {}).get("pages_crawled")}
+                               for a in rows]}
+        if args.get("audit_id"):
+            q = q.filter(Audit.audit_id == args["audit_id"])
+        a = q.order_by(Audit.created_at.desc()).first()
+        if not a:
+            return {"error": "That audit wasn't found."}
+        # Issues can be long — keep the shape but cap example URLs so the payload stays small.
+        issues = [{"type": i.get("type"), "severity": i.get("severity"),
+                   "message": i.get("message"), "count": len(i.get("urls") or []),
+                   "example_urls": (i.get("urls") or [])[:3]}
+                  for i in (a.issues or [])][:40]
+        return {"audit_id": a.audit_id, "property_url": a.property_url, "status": a.status,
+                "created_at": str(a.created_at), "summary": a.summary, "issues": issues}
+
     if name == "get_topical_map":
         if not ctx.selected_analysis_id:
             return {"error": "No topical map is currently open. Open one from the Results page first."}
@@ -614,11 +702,66 @@ async def _run_generate_deck(args: dict, ctx: ToolContext) -> dict:
     return {"error": f"Unknown deck source: {source}"}
 
 
+async def _run_track_keywords(args: dict, ctx: ToolContext) -> dict:
+    """Add keywords to the rank tracker (runs only after the user confirms)."""
+    from services import rank_tracker_service as rts
+    kws = [k for k in (args.get("keywords") or []) if str(k).strip()]
+    domain = (args.get("domain") or "").strip()
+    if not kws:
+        return {"error": "no keywords given"}
+    if not domain:
+        return {"error": "no domain given — say which site these should be tracked for"}
+    added = rts.add_keywords(ctx.db, ctx.user_email, ctx.selected_client_id, domain,
+                             kws, args.get("gl") or "th", args.get("location_id"))
+    return {"added": added, "requested": len(kws), "domain": domain,
+            "message": (f"Now tracking {added} new keyword(s) for {domain}"
+                        + (f" ({len(kws) - added} were already tracked)" if added < len(kws) else "")
+                        + ". Positions are checked daily.")}
+
+
+async def _run_start_clustering(args: dict, ctx: ToolContext) -> dict:
+    """Queue a SERP-overlap clustering job (runs only after the user confirms)."""
+    import asyncio as _asyncio
+    import uuid as _uuid
+    from database import ClusteringRun
+    from services import clustering_service as cs
+
+    keywords = cs.parse_keywords(args.get("keywords") or [])
+    if len(keywords) < 2:
+        return {"error": "need at least 2 keywords to cluster"}
+    keywords = keywords[:cs.RUN_CAP]
+    domain = (args.get("domain") or "").strip()
+    run = ClusteringRun(
+        id=str(_uuid.uuid4()), user_email=ctx.user_email, client_id=ctx.selected_client_id,
+        name=(args.get("name") or domain or f"{len(keywords)} keywords")[:200],
+        domain=domain or None, gl=(args.get("gl") or "th"),
+        status="queued", progress={"done": 0, "total": len(keywords)},
+        params={"keywords": keywords, "keyword_count": len(keywords),
+                "min_overlap": 3, "top_n": 10, "mode": "hard",
+                "discover": bool(args.get("discover")), "exclude_ranked": True,
+                "gsc_property": ctx.selected_property, "account_id": ctx.account_id},
+    )
+    ctx.db.add(run)
+    ctx.db.commit()
+    _asyncio.create_task(cs.run_job(run.id))
+    return {"run_id": run.id, "keyword_count": len(keywords),
+            "message": (f"Started a clustering run over {len(keywords)} keywords. "
+                        "It runs in the background — open the Keyword Clustering page to watch it.")}
+
+
 def _confirm_summary(name: str, args: dict) -> str:
     if name == "generate_deck":
         kind = "Google Ads" if args.get("source") == "ads" else "Search Console"
         who = args.get("label") or args.get("id")
         return f"Generate a {kind} deck for {who} (last {args.get('days', 28)} days)?"
+    if name == "track_keywords":
+        kws = args.get("keywords") or []
+        return (f"Track {len(kws)} keyword(s) for {args.get('domain', 'this site')}? "
+                f"This checks their position daily (1 SerpAPI search per keyword per day).")
+    if name == "start_clustering_run":
+        kws = args.get("keywords") or []
+        extra = " with discovery expansion" if args.get("discover") else ""
+        return f"Start a clustering run over {len(kws)} keyword(s){extra}? This spends SerpAPI credits."
     return f"Run {name} with {json.dumps(args)}?"
 
 
@@ -698,6 +841,12 @@ async def run_assistant(ctx: ToolContext, messages: list,
             if name == "generate_deck":
                 yield {"type": "tool", "name": name, "message": "Generating the deck… this can take a minute."}
                 result = await _run_generate_deck(args, ctx)
+            elif name == "track_keywords":
+                yield {"type": "tool", "name": name, "message": "Adding keywords to the rank tracker…"}
+                result = await _run_track_keywords(args, ctx)
+            elif name == "start_clustering_run":
+                yield {"type": "tool", "name": name, "message": "Queueing the clustering run…"}
+                result = await _run_start_clustering(args, ctx)
             else:
                 result = {"error": f"Unknown action: {name}"}
         except Exception as e:  # noqa: BLE001
@@ -706,6 +855,9 @@ async def run_assistant(ctx: ToolContext, messages: list,
             return
         if result.get("error"):
             async for ev in _emit_text(f"I couldn't complete that: {result['error']}"):
+                yield ev
+        elif result.get("message"):
+            async for ev in _emit_text(result["message"]):
                 yield ev
         elif result.get("link"):
             async for ev in _emit_text(
@@ -813,4 +965,10 @@ def _activity_label(name: str) -> str:
         "paid_vs_organic": "Comparing paid and organic…",
         "gsc_striking_distance": "Finding striking-distance keywords…",
         "gsc_cannibalization": "Checking keyword cannibalization…",
+        "get_topical_map": "Reading the topical map…",
+        "get_tracked_rankings": "Checking tracked rankings…",
+        "list_clustering_runs": "Looking up clustering runs…",
+        "get_clustering_run": "Reading the clustering run…",
+        "list_site_audits": "Listing site audits…",
+        "get_site_audit": "Reading the site audit…",
     }.get(name, f"Running {name}…")
