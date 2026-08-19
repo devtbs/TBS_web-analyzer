@@ -27,6 +27,12 @@ rm -rf dist
 npm ci
 npm run build
 
+# Publish the deployed commit as a static file nginx already serves. This is what lets CI
+# verify a deploy landed WITHOUT needing inbound SSH to the box (port 22 is firewalled).
+printf '{"sha":"%s","deployed_at":"%s"}\n' \
+    "$(git -C "$APP_DIR" rev-parse HEAD)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    > "$APP_DIR/frontend/dist/version.json"
+
 echo "→ Restarting backend"
 pm2 restart tbs-backend
 

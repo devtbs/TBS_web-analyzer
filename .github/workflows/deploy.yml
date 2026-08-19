@@ -32,66 +32,31 @@ jobs:
           npm run build
 
   deploy:
-    name: Deploy to production
+    name: Wait for production to pick up this commit
     needs: build-check
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     concurrency: deploy-prod          # never run two deploys at once
     steps:
-      - uses: actions/checkout@v4
-      - name: Deploy over SSH
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      # The server firewall drops inbound SSH from GitHub runners, so CI cannot push a deploy in
+      # (that is what silently broke deploys on 2026-08-19). Instead the server polls GitHub itself
+      # -- scripts/auto_deploy.sh from clawdbot's crontab -- and publishes the deployed SHA to
+      # /version.json. CI waits for that to match this commit, which is stronger proof than the old
+      # "the SSH command exited 0": it confirms the running site is actually serving this code.
+      - name: Wait for prod to report this commit
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh
-          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-
-          # Don't swallow keyscan output — an empty known_hosts surfaces later as a confusing
-          # auth failure instead of "the host was unreachable", which is what it actually is.
-          for i in 1 2 3; do
-            if ssh-keyscan -T 10 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts; then break; fi
-            echo "::warning::ssh-keyscan attempt $i failed; retrying in $((i * 10))s"
-            sleep $((i * 10))
-          done
-          if ! grep -q . ~/.ssh/known_hosts; then
-            echo "::error::Could not reach $DEPLOY_HOST for host-key scan after 3 attempts."
-            exit 1
-          fi
-
-          # Retry the deploy itself. deploy.sh is idempotent (fetch + reset --hard + rebuild),
-          # so a retry after a dropped connection is safe and just redoes the work.
-          for i in 1 2 3; do
-            if ssh -i ~/.ssh/id_deploy \
-                 -o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 \
-                 -o BatchMode=yes \
-                 "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' < scripts/deploy.sh; then
-              echo "Deploy succeeded on attempt $i"
+          echo "waiting for prod to report $GITHUB_SHA"
+          for i in $(seq 1 40); do            # 40 x 15s = 10 minutes
+            SHA=$(curl -fsS --max-time 10 "https://tool.tbs-dev.com/version.json?cb=$RANDOM" \
+                  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("sha",""))' 2>/dev/null || echo "")
+            if [ "$SHA" = "$GITHUB_SHA" ]; then
+              echo "prod is serving $SHA (after $((i * 15))s)"
               exit 0
             fi
-            echo "::warning::Deploy attempt $i failed; retrying in $((i * 15))s"
-            sleep $((i * 15))
+            echo "  attempt $i/40: prod on ${SHA:-unknown}"
+            sleep 15
           done
-          echo "::error::Deploy failed after 3 attempts."
+          echo "::error::Prod did not pick up $GITHUB_SHA within 10 minutes."
+          echo "::error::Check the poller on the server: tail /home/clawdbot/auto_deploy.log"
           exit 1
-
-      # Independent proof the running server actually moved to this commit — a green SSH step
-      # is not the same as a deployed site (see the 2026-08-18 wrong-fork incident).
-      - name: Verify prod is serving this commit
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          set -euo pipefail
-          REMOTE_SHA=$(ssh -i ~/.ssh/id_deploy -o ConnectTimeout=20 -o BatchMode=yes \
-            "$DEPLOY_USER@$DEPLOY_HOST" 'git -C /home/clawdbot/web_analyzer rev-parse HEAD')
-          echo "prod HEAD:   $REMOTE_SHA"
-          echo "expected:    $GITHUB_SHA"
-          if [ "$REMOTE_SHA" != "$GITHUB_SHA" ]; then
-            echo "::error::Prod is on $REMOTE_SHA but this run deployed $GITHUB_SHA."
-            exit 1
-          fi
