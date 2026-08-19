@@ -17,7 +17,7 @@ The app is already live at [tool.tbs-dev.com](https://tool.tbs-dev.com). This gu
 ## 1. Clone the Repo
 
 ```bash
-git clone https://github.com/kweephyo-pmt/TBS_web-analyzer.git
+git clone https://github.com/devtbs/TBS_web-analyzer.git
 cd TBS_web-analyzer
 ```
 
@@ -114,7 +114,7 @@ git commit -m "your changes"
 git push origin main
 ```
 
-Watch the deploy at: `https://github.com/kweephyo-pmt/TBS_web-analyzer/actions`
+Watch the deploy at: `https://github.com/devtbs/TBS_web-analyzer/actions`
 
 ---
 
