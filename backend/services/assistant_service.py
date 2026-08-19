@@ -61,7 +61,8 @@ READ_TOOLS = {"get_context", "list_clients", "get_client",
               "list_gsc_properties", "list_ga4_properties",
               "gsc_overview", "gsc_movers", "gsc_ctr_opportunities", "paid_vs_organic",
               "list_ads_customers", "ga4_overview", "ads_overview",
-              "gsc_striking_distance", "gsc_cannibalization", "get_topical_map"}
+              "gsc_striking_distance", "gsc_cannibalization", "get_topical_map",
+              "get_tracked_rankings", "list_clustering_runs", "get_clustering_run"}
 ACTION_TOOLS = {"generate_deck"}
 # Tools that pause the loop to ask the user to pick a client (rendered as clickable options).
 SELECT_TOOLS = {"ask_client_choice"}
@@ -208,6 +209,39 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {}},
     }},
     {"type": "function", "function": {
+        "name": "get_tracked_rankings",
+        "description": "Get the self-hosted rank tracker's tracked keywords: each keyword's latest "
+                       "Google position, change since last check, best position ever, and ranking "
+                       "URL. Use this for 'how are we ranking', 'did we move up/down for X', or "
+                       "'what's our best keyword' questions.",
+        "parameters": {"type": "object", "properties": {
+            "client_id": {"type": "string", "description": "Optional — restrict to one client's "
+                          "tracked keywords. Defaults to the currently selected client if any, "
+                          "otherwise returns all of the user's tracked keywords."},
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "list_clustering_runs",
+        "description": "List the user's saved keyword-clustering runs (each groups a keyword set "
+                       "into content clusters by SERP overlap). Returns name, domain, status, and "
+                       "cluster/keyword counts. Call this before get_clustering_run to find the "
+                       "right run_id, or to answer 'what clustering runs do I have'.",
+        "parameters": {"type": "object", "properties": {
+            "client_id": {"type": "string", "description": "Optional — restrict to one client's runs."},
+        }},
+    }},
+    {"type": "function", "function": {
+        "name": "get_clustering_run",
+        "description": "Get the full clusters (pillar keyword, total volume, member keywords, "
+                       "search intent, GSC ranking status) for ONE saved clustering run. Use "
+                       "list_clustering_runs first to find the run_id, unless the user already "
+                       "named the site/run.",
+        "parameters": {"type": "object", "properties": {
+            "run_id": {"type": "string", "description": "Run id from list_clustering_runs."},
+            "domain": {"type": "string", "description": "Or match by domain/name instead of an id."},
+        }},
+    }},
+    {"type": "function", "function": {
         "name": "generate_deck",
         "description": "Generate an AI-designed presentation deck for a client. ACTION: this "
                        "produces a deliverable and must be confirmed by the user before running.",
@@ -249,6 +283,9 @@ _SYSTEM_PROMPT = (
     "user is viewing (e.g. 'this topical map', 'the pages we should build'), call get_topical_map — "
     "it needs no arguments and always refers to whatever analysis is currently open. If it returns "
     "an error saying none is open, tell the user to open the analysis's Results page first.\n"
+    "- For rank-tracking questions ('how are we ranking', 'did X move up'), call "
+    "get_tracked_rankings. For questions about a saved keyword-clustering run ('what clusters did "
+    "we find for X'), call list_clustering_runs to find it, then get_clustering_run for the details.\n"
     "\n"
     "ACTIONS & CLIENTS\n"
     "- generate_deck creates a deliverable; the app confirms with the user before it runs, so just "
@@ -461,6 +498,53 @@ async def _handle(name: str, args: dict, ctx: ToolContext) -> dict:
                 for c in (m.get("keyword_clusters") or [])
             ],
         }
+
+    if name == "get_tracked_rankings":
+        from services import rank_tracker_service as rt
+        client_id = args.get("client_id") or ctx.selected_client_id
+        rows = rt.list_tracked(ctx.db, ctx.user_email, client_id)
+        return {"keywords": [
+            {"keyword": r["keyword"], "domain": r["domain"], "position": r["position"],
+             "delta": r["delta"], "best": r["best"], "url": r.get("url"),
+             "checked_on": r.get("checked_on")}
+            for r in rows
+        ][:150], "total": len(rows)}
+
+    if name == "list_clustering_runs":
+        from database import ClusteringRun
+        from services import clustering_service as cs
+        cs.sweep_stale(ctx.db, ctx.user_email)
+        q = ctx.db.query(ClusteringRun).filter(ClusteringRun.user_email == ctx.user_email)
+        if args.get("client_id"):
+            q = q.filter(ClusteringRun.client_id == args["client_id"])
+        runs = q.order_by(ClusteringRun.created_at.desc()).limit(30).all()
+        return {"runs": [cs.summarize(r) for r in runs]}
+
+    if name == "get_clustering_run":
+        from database import ClusteringRun
+        from services import clustering_service as cs
+        run = None
+        if args.get("run_id"):
+            run = (ctx.db.query(ClusteringRun)
+                   .filter(ClusteringRun.id == args["run_id"], ClusteringRun.user_email == ctx.user_email)
+                   .first())
+        elif args.get("domain"):
+            q = args["domain"].strip().lower()
+            run = (ctx.db.query(ClusteringRun)
+                   .filter(ClusteringRun.user_email == ctx.user_email,
+                           (ClusteringRun.domain.ilike(f"%{q}%")) | (ClusteringRun.name.ilike(f"%{q}%")))
+                   .order_by(ClusteringRun.created_at.desc()).first())
+        if not run:
+            return {"error": "No matching clustering run — call list_clustering_runs to see the available ones."}
+        summary = cs.summarize(run, include_result=True)
+        clusters = summary.pop("clusters", [])
+        summary["clusters"] = [
+            {"pillar": c.get("pillar"), "total_volume": c.get("total_volume"),
+             "intent": c.get("intent"), "gsc_status": c.get("gsc_status"),
+             "keywords": [k.get("keyword") for k in (c.get("keywords") or [])][:8]}
+            for c in clusters
+        ][:40]
+        return summary
 
     raise ValueError(f"Unknown tool: {name}")
 
