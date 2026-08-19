@@ -338,7 +338,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         }
     };
 
-    const SectionHeader = ({ title, color, icon: Icon, section, count, elementId }) => (
+    const SectionHeader = ({ title, color, icon: Icon, section, count, elementId, onExportCsv }) => (
         <div
             className={`flex items-center justify-between p-4 bg-gradient-to-r ${color} transition-opacity`}
         >
@@ -352,11 +352,21 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                 )}
             </div>
             <div className="flex items-center gap-2" data-html2canvas-ignore="true">
+                {onExportCsv && (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onExportCsv(); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 rounded-md transition-colors text-white text-xs font-black uppercase tracking-wider shadow-sm"
+                        title="Export this section as CSV"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        CSV
+                    </button>
+                )}
                 {elementId && (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            
+
                             if (section && !expandedSections[section]) {
                                 setExpandedSections(prev => ({ ...prev, [section]: true }));
                                 setTimeout(() => {
@@ -470,6 +480,68 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         ].join(',')));
         _dl(rows.join('\n'), `${_slug}-content-plan.csv`, 'text/csv');
     };
+
+    // Generic per-section CSV export — every data table in the map gets its own "CSV" button
+    // (not just the content plan), so any section can be dropped into a spreadsheet on its own.
+    const csvEsc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const downloadCsv = (header, rows, suffix) => {
+        const lines = [header.map(csvEsc).join(',')].concat(rows.map(r => r.map(csvEsc).join(',')));
+        _dl(lines.join('\n'), `${_slug}-${suffix}.csv`, 'text/csv');
+    };
+    // Flattens a {category: [items]} shape (query templates, competitive analysis, SEO optimization)
+    // into two-column rows — category, item — one row per item.
+    const flatCategoryRows = (obj, labels) => {
+        const rows = [];
+        Object.entries(labels).forEach(([key, label]) => {
+            (obj?.[key] || []).forEach(item => rows.push([label, item]));
+        });
+        return rows;
+    };
+
+    const exportKeywordVolumesCsv = () => downloadCsv(
+        ['Keyword', 'Volume', 'KD', 'CPC'],
+        (activeMap.keyword_volumes || []).map(kv => [kv.keyword, kv.avg_monthly_searches || 0, kv.kd ?? '', kv.cpc ?? '']),
+        'keyword-opportunities');
+
+    const exportKeywordClustersCsv = () => downloadCsv(
+        ['Cluster', 'Total Volume', 'Keyword', 'Keyword Volume'],
+        (activeMap.keyword_clusters || []).flatMap(c =>
+            (c.keywords?.length ? c.keywords : [{}]).map(k => [c.label, c.total_volume || 0, k.keyword || '', k.volume ?? ''])),
+        'keyword-clusters');
+
+    const exportTaxonomyCsv = () => downloadCsv(
+        ['Name', 'Level', 'Parent', 'Children'],
+        (activeMap.taxonomy || []).map(t => [t.name, t.level, t.parent || '', (t.children || []).join('; ')]),
+        'taxonomy');
+
+    const exportOntologyCsv = () => downloadCsv(
+        ['Subject', 'Predicate', 'Object', 'Context'],
+        (activeMap.ontology || []).map(o => [o.subject, o.predicate, o.object, o.context]),
+        'ontology-relationships');
+
+    const exportAudienceCsv = () => downloadCsv(
+        ['Segment', 'Expertise Level', 'Primary Goal', 'Funnel Stage', 'Preferred Format', 'Pain Points', 'Content Types'],
+        (activeMap.audience_segments || []).map(a => [a.name, a.expertise_level, a.primary_goal,
+            a.funnel_stage || '', a.preferred_format || '', (a.pain_points || []).join('; '), (a.content_types || []).join('; ')]),
+        'audience-segments');
+
+    const exportQueryTemplatesCsv = () => downloadCsv(['Category', 'Query'], flatCategoryRows(
+        activeMap.query_templates,
+        { raw_queries: 'Raw', informational: 'Informational', transactional: 'Transactional',
+          commercial: 'Commercial', navigational: 'Navigational' }),
+        'query-research');
+
+    const exportCompetitiveCsv = () => downloadCsv(['Category', 'Item'], flatCategoryRows(
+        activeMap.competitive_analysis,
+        { top_competitors: 'Top Competitor', content_approaches: 'Content Approach',
+          gap_opportunities: 'Gap Opportunity', serp_insights: 'SERP Insight' }),
+        'competitive-analysis');
+
+    const exportSeoCsv = () => downloadCsv(['Category', 'Item'], flatCategoryRows(
+        activeMap.seo_optimization,
+        { topic_clusters: 'Topic Cluster', schema_recommendations: 'Schema Recommendation',
+          entity_optimization: 'Entity Optimization' }),
+        'seo-optimization');
 
     return (
         <>
@@ -754,7 +826,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             {/* NEW keyword opportunities — real volume + KD, excludes queries already ranked for */}
             {activeMap.keyword_volumes?.length > 0 && (
                 <div id="export-keyword-volumes" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-                    <SectionHeader title="New Keyword Opportunities — Real Volume &amp; Difficulty" color="from-indigo-600 to-indigo-800" icon={GlobeAltIcon} elementId="export-keyword-volumes" />
+                    <SectionHeader title="New Keyword Opportunities — Real Volume &amp; Difficulty" color="from-indigo-600 to-indigo-800" icon={GlobeAltIcon} elementId="export-keyword-volumes" onExportCsv={exportKeywordVolumesCsv} />
                     <p className="px-4 pt-3 text-[12px] text-slate-500">Ranked by search volume. Excludes queries the site already ranks for. <span className="font-semibold">KD</span> = keyword difficulty (lower = easier to rank).</p>
                     <div className="p-4 overflow-x-auto">
                         <table className="w-full text-left text-sm">
@@ -789,7 +861,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             {/* Content clusters — opportunity keywords grouped by real SERP overlap (one page each) */}
             {activeMap.keyword_clusters?.length > 0 && (
                 <div id="export-keyword-clusters" className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
-                    <SectionHeader title="Content Clusters — Grouped by Real SERP Overlap" color="from-teal-600 to-teal-800" icon={GlobeAltIcon} elementId="export-keyword-clusters" />
+                    <SectionHeader title="Content Clusters — Grouped by Real SERP Overlap" color="from-teal-600 to-teal-800" icon={GlobeAltIcon} elementId="export-keyword-clusters" onExportCsv={exportKeywordClustersCsv} />
                     <p className="px-4 pt-3 text-[12px] text-slate-500">Each cluster = one page to create. Keywords are grouped because Google ranks the same URLs for them.</p>
                     <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
                         {activeMap.keyword_clusters.slice(0, 16).map((c, idx) => (
@@ -1066,6 +1138,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         section="taxonomy"
                         count={activeMap.taxonomy.length}
                         elementId="export-taxonomy-structure"
+                        onExportCsv={exportTaxonomyCsv}
                     />
                     {expandedSections.taxonomy && (
                         <div className="p-4">
@@ -1128,6 +1201,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         section="ontology"
                         count={activeMap.ontology.length}
                         elementId="export-ontology-relationships"
+                        onExportCsv={exportOntologyCsv}
                     />
                     {expandedSections.ontology && (
                         <div className="p-4">
@@ -1184,6 +1258,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         section="audience"
                         count={activeMap.audience_segments.length}
                         elementId="export-audience-segments"
+                        onExportCsv={exportAudienceCsv}
                     />
                     {expandedSections.audience && (
                         <div className="p-4">
@@ -1294,6 +1369,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         icon={MagnifyingGlassIcon}
                         section="queries"
                         elementId="export-query-research"
+                        onExportCsv={exportQueryTemplatesCsv}
                     />
                     {expandedSections.queries && (
                         <div className="p-4 space-y-2">
@@ -1377,6 +1453,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         section="competitive"
                         count={activeMap.competitive_analysis.top_competitors?.length}
                         elementId="export-competitive-analysis"
+                        onExportCsv={exportCompetitiveCsv}
                     />
                     {expandedSections.competitive && (
                         <div className="p-4">
@@ -1672,6 +1749,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                         icon={ChartBarIcon}
                         section="seo"
                         elementId="export-seo-optimization"
+                        onExportCsv={exportSeoCsv}
                     />
                     {expandedSections.seo && (
                         <div className="p-4">
