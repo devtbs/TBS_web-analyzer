@@ -33,16 +33,20 @@ export default function KeywordClustering() {
     const [kwText, setKwText] = useState('');
     const [countryGl, setCountryGl] = useState('th');
 
-    // Keywords handed over from the Discovery page → prefill and preselect the market.
+    const [domain, setDomain] = useState('');
+
+    // Keywords handed over from the Discovery page, or from the page picker's "Cluster keywords
+    // from N pages" flow (the ranking queries those pages already have) → prefill.
     useEffect(() => {
         const st = location.state;
-        if (st?.keywords?.length) {
-            setKwText(st.keywords.join('\n'));
+        const incoming = st?.keywords || st?.clusterKeywords;
+        if (incoming?.length) {
+            setKwText(incoming.join('\n'));
             if (st.gl) setCountryGl(st.gl);
+            if (st.domain) setDomain(st.domain);
             window.history.replaceState({}, '');   // clear so a refresh doesn't re-prefill
         }
     }, []);   // eslint-disable-line react-hooks/exhaustive-deps
-    const [domain, setDomain] = useState('');
     const [minOverlap, setMinOverlap] = useState(3);
     const [mode, setMode] = useState('hard');
     const [topN, setTopN] = useState(10);
@@ -219,7 +223,7 @@ export default function KeywordClustering() {
                         <div className="mt-2">
                             <p className="text-[12px] text-slate-400 mb-1">…or import every query a site ranks for (free, from Search Console):</p>
                             <div className="flex items-end gap-2 flex-wrap">
-                                <div className="flex-1 min-w-[220px]"><GSCPropertySelector onPropertySelect={setGscProps} selectedProperties={gscProps} /></div>
+                                <div className="flex-1 min-w-[220px]"><GSCPropertySelector onPropertySelect={setGscProps} selectedProperties={gscProps} selectPagesReturn="clustering" /></div>
                                 <button onClick={importGsc} disabled={importing} className="px-3 py-2 border border-slate-300 rounded-lg text-[13px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50">
                                     {importing ? 'Importing…' : 'Import GSC queries'}
                                 </button>

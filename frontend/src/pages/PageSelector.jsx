@@ -109,6 +109,16 @@ const PageSelector = () => {
             navigate('/new-analysis', { state: { wizardPages: urls } });
             return;
         }
+        // From Keyword Clustering → hand back the QUERIES those pages already rank for (already
+        // loaded on this screen, free), not the page URLs — clustering groups keywords, not pages.
+        if (returnTo === 'clustering') {
+            const chosen = pages.filter(p => selectedPages.has(p.url));
+            const keywords = [...new Set(chosen.flatMap(p => (p.queries || []).map(q => q.query)).filter(Boolean))];
+            if (!keywords.length) { toast.error('None of the selected pages have ranking queries yet'); return; }
+            const domain = (propertyUrl || '').replace(/^sc-domain:/, '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+            navigate('/keyword-clustering', { state: { clusterKeywords: keywords, domain } });
+            return;
+        }
         if (urls.length > 5) { toast(`Analyzing the first 5 of ${urls.length} selected.`); urls = urls.slice(0, 5); }
         const mk = MARKETS.find(m => m.gl === marketGl) || MARKETS[0];
         setAnalyzing(true);
@@ -208,7 +218,9 @@ const PageSelector = () => {
                                     {analyzing ? 'Analyzing…'
                                         : returnTo === 'wizard'
                                             ? `Use ${selectedPages.size} Page${selectedPages.size !== 1 ? 's' : ''}`
-                                            : `Analyze ${selectedPages.size} Page${selectedPages.size !== 1 ? 's' : ''}`}
+                                            : returnTo === 'clustering'
+                                                ? `Cluster Keywords from ${selectedPages.size} Page${selectedPages.size !== 1 ? 's' : ''}`
+                                                : `Analyze ${selectedPages.size} Page${selectedPages.size !== 1 ? 's' : ''}`}
                                 </button>
                             </div>
                         </div>
