@@ -5,7 +5,6 @@ Enhances topical maps with actual SERP insights
 from typing import Dict, List, Optional
 from serpapi import GoogleSearch
 from config import settings
-import os
 import asyncio
 
 
@@ -190,7 +189,7 @@ class SerpService:
         # the per-keyword cost on affected keywords. Off unless AI_OVERVIEW_DETAIL=1.
         ai = parsed.get("ai_overview") or {}
         token = (results.get("ai_overview") or {}).get("page_token")
-        if ai.get("deferred") and token and os.getenv("AI_OVERVIEW_DETAIL") == "1":
+        if ai.get("deferred") and token and str(settings.AI_OVERVIEW_DETAIL) == "1":
             try:
                 detail = GoogleSearch({"engine": "google_ai_overview", "page_token": token,
                                        "api_key": self.api_key}).get_dict()
