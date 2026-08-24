@@ -6,6 +6,15 @@ import json
 import asyncio
 
 
+# Cluster-vs-cluster dominance thresholds (see _dedupe_nodes_by_serp). A cluster is folded into
+# another only when BOTH hold: the other is this many times bigger, and their SERPs share at least
+# this many top-10 URLs. The overlap bar is below keyword_clustering.MIN_OVERLAP on purpose — these
+# pairs were already judged distinct there, and it is the volume gap that makes weaker overlap
+# decisive. Raise the ratio to merge less.
+CLUSTER_DOMINANCE_RATIO = 5
+CLUSTER_DOMINANCE_OVERLAP = 2
+
+
 class TopicalMapGenerator:
     """
     AI-powered topical map generator with comprehensive semantic analysis.
@@ -310,10 +319,21 @@ Return ONLY JSON (no markdown):
         Best-effort: on any failure the original node list is returned untouched.
         """
         gap_nodes = [n for n in nodes if not n.cluster_label]
-        if str(getattr(settings, 'NODE_SERP_VALIDATION', '1')) != '1' or len(gap_nodes) < 2:
+        # Always say what happened. This used to print only when something was dropped, so a run that
+        # found nothing and a run that never executed looked identical in the logs — which is exactly
+        # the ambiguity that made the first live map impossible to assess.
+        if str(getattr(settings, 'NODE_SERP_VALIDATION', '1')) != '1':
+            print("🔎 SERP distinctness: skipped (NODE_SERP_VALIDATION off)")
+            return nodes
+        # Two comparisons live here now: gap-vs-gap needs 2+ gap nodes, cluster dominance needs 2+
+        # clusters. Either one alone is reason enough to run.
+        cluster_nodes = [n for n in nodes if n.cluster_label]
+        if len(gap_nodes) < 2 and len(cluster_nodes) < 2:
+            print(f"🔎 SERP distinctness: skipped ({len(gap_nodes)} gap / "
+                  f"{len(cluster_nodes)} cluster node(s) — nothing to compare)")
             return nodes
         try:
-            from services.keyword_clustering import cluster_by_serp
+            from services.keyword_clustering import cluster_by_serp, _serp_urls
 
             def _q(n):
                 base = (n.main_entity or n.title or '').strip()
@@ -375,8 +395,48 @@ Return ONLY JSON (no markdown):
                             if l not in links:
                                 links.append(l)
                         keeper.internal_links = links[:6]
-            if drop:
-                print(f"🔎 SERP distinctness: merged/dropped {len(drop)} duplicate node(s)")
+
+            # ── Cluster-vs-cluster dominance ────────────────────────────────────────────────
+            # Cluster nodes used to be exempt from all of the above, so a 50/mo cluster could earn
+            # its own page beside a 4,330/mo cluster covering the same ground (wsa-bangkok shipped
+            # three pairing pages this way). Clusters are strong evidence, not unchallengeable: when
+            # a far bigger cluster shares ground with a tiny one, the tiny one is a section of the
+            # big page, not a page. Deliberately looser than the main check — clustering already
+            # ruled these distinct at MIN_OVERLAP, and it is the volume asymmetry that makes a
+            # weaker signal meaningful. SERP sets are cache hits from the probe above, so free.
+            vol_by_label = {c['label'].strip().lower(): (c.get('total_volume') or 0)
+                            for c in clusters_in}
+            survivors = sorted((l for l in node_by_label if l in vol_by_label),
+                               key=lambda l: vol_by_label[l], reverse=True)
+            for i, big in enumerate(survivors):
+                if id(node_by_label[big]) in drop:
+                    continue
+                for small in survivors[i + 1:]:
+                    node_s = node_by_label[small]
+                    if id(node_s) in drop:
+                        continue
+                    v_big, v_small = vol_by_label[big], vol_by_label[small]
+                    if v_small <= 0 or v_big < CLUSTER_DOMINANCE_RATIO * v_small:
+                        continue
+                    urls_b = await _serp_urls(big, gl)
+                    urls_s = await _serp_urls(small, gl)
+                    if len(urls_b & urls_s) < CLUSTER_DOMINANCE_OVERLAP:
+                        continue
+                    keeper = node_by_label[big]
+                    drop.add(id(node_s))
+                    keeper.merged_from = list(keeper.merged_from or []) + [
+                        node_s.main_entity or node_s.title]
+                    links = list(keeper.internal_links or [])
+                    for l in (node_s.internal_links or []):
+                        if l not in links:
+                            links.append(l)
+                    keeper.internal_links = links[:6]
+                    print(f"🔎 SERP distinctness: cluster '{small}' ({v_small}/mo) folded into "
+                          f"'{big}' ({v_big}/mo)")
+
+            print(f"🔎 SERP distinctness: probed {len(probe)} "
+                  f"({len(anchors)} cluster + {len(by_query)} gap), "
+                  f"merged/dropped {len(drop)}, kept {len(nodes) - len(drop)}")
             return [n for n in nodes if id(n) not in drop]
         except Exception as e:
             print(f"⚠️ node SERP distinctness check failed: {str(e)[:120]}")
