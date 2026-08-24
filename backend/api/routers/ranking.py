@@ -37,9 +37,9 @@ async def add_keywords(body: dict = Body(...),
     domain = (body.get("domain") or "").strip()
     if not keywords or not domain:
         raise HTTPException(status_code=400, detail="domain and keywords are required")
-    added = rt.add_keywords(db, current_user.email, body.get("client_id"), domain,
-                            keywords, body.get("gl"), body.get("location_id"))
-    return {"added": added, "requested": len(keywords)}
+    res = rt.add_keywords(db, current_user.email, body.get("client_id"), domain,
+                          keywords, body.get("gl"), body.get("location_id"))
+    return {**res, "requested": len(keywords)}
 
 
 @router.delete("/api/ranktracker/keywords/{kw_id}")
@@ -49,6 +49,26 @@ async def delete_keyword(kw_id: int,
     if not rt.remove_keyword(db, current_user.email, kw_id):
         raise HTTPException(status_code=404, detail="Keyword not found")
     return {"deleted": True}
+
+
+@router.get("/api/ranktracker/audit")
+async def audit_keywords(client_id: str = None, stale_days: int = 30,
+                         current_user: UserInfo = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    """Review the tracked set for dead weight — operators/fragments that should never have been
+    added, and keywords that have never once ranked. Read-only; nothing is deleted."""
+    return rt.audit_tracked(db, current_user.email, client_id, stale_days)
+
+
+@router.post("/api/ranktracker/keywords/bulk-delete")
+async def bulk_delete_keywords(body: dict = Body(...),
+                               current_user: UserInfo = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    """Delete several tracked keywords at once (with their snapshots) — the prune action."""
+    ids = [int(i) for i in (body.get("ids") or []) if str(i).strip().isdigit()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="ids are required")
+    return {"deleted": rt.remove_keywords(db, current_user.email, ids)}
 
 
 @router.get("/api/ranktracker/keywords/{kw_id}/history")

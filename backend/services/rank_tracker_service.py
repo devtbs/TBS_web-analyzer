@@ -33,15 +33,86 @@ def _sem() -> asyncio.Semaphore:
     return s
 
 
+# ── Keyword validation ──────────────────────────────────────────────────────────────────────
+# Nothing used to be rejected except the empty string, so operators, sentence fragments and stray
+# text all became tracked keywords — each costing one SerpAPI credit EVERY DAY and skewing the
+# "how many rank" headline. These rules reject only what cannot be a real target; anything
+# arguable is a warning so the caller can still add it deliberately.
+
+# Google search operators: they always "rank" (or never do) and measure nothing.
+_OPERATORS = ("site:", "inurl:", "intitle:", "allintitle:", "allinurl:", "cache:", "filetype:",
+              "related:", "link:", "define:", "ext:", "imagesize:", "before:", "after:")
+
+# Function words. A keyword made ENTIRELY of these ("how much", "of the") carries no topic.
+_STOPWORDS = {
+    "a", "an", "the", "and", "or", "but", "if", "of", "at", "by", "for", "with", "about", "to",
+    "from", "in", "on", "is", "are", "was", "were", "be", "been", "it", "this", "that", "these",
+    "those", "how", "what", "when", "where", "who", "which", "why", "much", "many", "do", "does",
+    "did", "can", "will", "would", "should", "my", "your", "our", "their", "not", "as", "so",
+}
+
+MIN_KEYWORD_LEN = 3
+MAX_KEYWORD_LEN = 80
+
+
+def validate_keyword(kw: str, gl: Optional[str] = None) -> tuple:
+    """Classify one keyword. Returns (verdict, reason) where verdict is 'ok' | 'warn' | 'reject'.
+
+    'reject' = cannot possibly be a useful tracked keyword. 'warn' = suspicious but plausibly
+    intentional, so it is still added and the caller surfaces the note.
+    """
+    k = (kw or "").strip()
+    low = k.lower()
+
+    if not k:
+        return "reject", "empty"
+    if any(low.startswith(op) or f" {op}" in low for op in _OPERATORS):
+        return "reject", "search operator — always ranks #1 and measures nothing"
+    if len(k) < MIN_KEYWORD_LEN:
+        return "reject", f"too short (under {MIN_KEYWORD_LEN} characters)"
+    if len(k) > MAX_KEYWORD_LEN:
+        return "reject", f"too long (over {MAX_KEYWORD_LEN} characters)"
+    if low.startswith(("http://", "https://", "www.")) or "@" in low:
+        return "reject", "looks like a URL or email, not a search term"
+
+    words = [w for w in low.replace("-", " ").split() if w]
+    if words and all(w in _STOPWORDS for w in words):
+        return "reject", "only common function words — no topic to rank for"
+
+    # Script mismatch: CJK text tracked in a Latin-script market is usually a paste accident, but
+    # a Japanese-language page targeting Thailand is legitimate — warn, never reject.
+    if (gl or "").lower() in ("th", "us", "gb", "au", "ca", "sg", "in", "de", "fr"):
+        if any("\u3040" <= c <= "\u30ff" or "\u4e00" <= c <= "\u9fff" or "\uac00" <= c <= "\ud7af"
+               for c in k):
+            return "warn", f"non-Latin script tracked in the '{gl}' market — check this is intended"
+
+    if len(words) == 1 and len(k) <= 5:
+        return "warn", "very broad single word — a small site is unlikely to rank for it"
+
+    return "ok", ""
+
+
 def add_keywords(db, email: str, client_id: Optional[str], domain: str,
                  keywords: List[str], gl: Optional[str], location_id: Optional[int]) -> int:
-    """Idempotent bulk insert. Returns how many new keywords were added."""
+    """Idempotent bulk insert with validation.
+
+    Returns {added, skipped: [{keyword, reason}], warnings: [{keyword, reason}], duplicates}.
+    Rejected keywords are never stored, so they cost no SerpAPI credits on the daily run; warned
+    ones ARE stored but reported so the user can reconsider.
+    """
     domain = (domain or "").lower().replace("www.", "").strip("/")
-    added = 0
+    if not domain:
+        return {"added": 0, "skipped": [{"keyword": k, "reason": "no domain"} for k in keywords],
+                "warnings": [], "duplicates": 0}
+    added, skipped, warnings, duplicates = 0, [], [], 0
     for kw in keywords:
         kw = (kw or "").strip()
-        if not kw or not domain:
+        verdict, reason = validate_keyword(kw, gl)
+        if verdict == "reject":
+            skipped.append({"keyword": kw, "reason": reason})
             continue
+        if verdict == "warn":
+            warnings.append({"keyword": kw, "reason": reason})
         row = TrackedKeyword(user_email=email, client_id=client_id, domain=domain,
                              keyword=kw, gl=gl, location_id=location_id, active=True)
         db.add(row)
@@ -50,7 +121,55 @@ def add_keywords(db, email: str, client_id: Optional[str], domain: str,
             added += 1
         except IntegrityError:
             db.rollback()   # already tracked (unique constraint) — skip
-    return added
+            duplicates += 1
+    return {"added": added, "skipped": skipped, "warnings": warnings, "duplicates": duplicates}
+
+
+def audit_tracked(db, email: str, client_id: Optional[str] = None, stale_days: int = 30) -> dict:
+    """Review the EXISTING tracked set — the validator only guards new additions, and these lists
+    were built before it existed. Flags two kinds of dead weight, each of which burns one SerpAPI
+    credit per day for nothing:
+      invalid — would be rejected if added today (operators, fragments, URLs)
+      stale   — checked for at least `stale_days` and never once inside the top 100
+    Read-only; deletion is an explicit separate call.
+    """
+    q = db.query(TrackedKeyword).filter(TrackedKeyword.user_email == email)
+    if client_id:
+        q = q.filter(TrackedKeyword.client_id == client_id)
+    rows = q.all()
+    cutoff = date.today() - timedelta(days=stale_days)
+    invalid, stale = [], []
+    for tk in rows:
+        verdict, reason = validate_keyword(tk.keyword, tk.gl)
+        if verdict == "reject":
+            invalid.append({"id": tk.id, "keyword": tk.keyword, "reason": reason})
+            continue
+        snaps = (db.query(RankSnapshot)
+                 .filter(RankSnapshot.tracked_keyword_id == tk.id,
+                         RankSnapshot.checked_on >= cutoff).all())
+        # Only call it stale once we have actually looked several times — a keyword added
+        # yesterday has not had a fair chance to show up yet.
+        if len(snaps) >= 3 and all(s.position is None for s in snaps):
+            stale.append({"id": tk.id, "keyword": tk.keyword,
+                          "reason": f"no top-100 position in {len(snaps)} checks over {stale_days} days"})
+    wasted = len(invalid) + len(stale)
+    return {"total": len(rows), "invalid": invalid, "stale": stale,
+            "wasted_searches_per_day": wasted,
+            "wasted_searches_per_month": wasted * 30}
+
+
+def remove_keywords(db, email: str, ids: List[int]) -> int:
+    """Bulk delete by id, scoped to the owner. Returns how many rows went."""
+    if not ids:
+        return 0
+    rows = (db.query(TrackedKeyword)
+            .filter(TrackedKeyword.user_email == email, TrackedKeyword.id.in_(ids)).all())
+    for tk in rows:
+        db.query(RankSnapshot).filter(RankSnapshot.tracked_keyword_id == tk.id).delete()
+        db.query(SerpSnapshot).filter(SerpSnapshot.tracked_keyword_id == tk.id).delete()
+        db.delete(tk)
+    db.commit()
+    return len(rows)
 
 
 def remove_keyword(db, email: str, kw_id: int) -> bool:

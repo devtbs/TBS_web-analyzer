@@ -68,10 +68,44 @@ export default function RankTracker() {
             const res = await api.post('/api/ranktracker/keywords', {
                 keywords, domain: d, client_id: clientId, gl: country.gl, location_id: country.locId,
             });
-            toast.success(`Added ${res.data.added} keyword${res.data.added !== 1 ? 's' : ''}`);
+            const { added = 0, skipped = [], warnings = [], duplicates = 0 } = res.data;
+            if (added) toast.success(`Added ${added} keyword${added !== 1 ? 's' : ''}`);
+            if (duplicates) toast(`${duplicates} already tracked`);
+            // Say WHY anything was rejected — a silent count taught users nothing, which is how
+            // operators and fragments ended up costing a SerpAPI credit a day.
+            skipped.forEach(k => toast.error(`Skipped "${k.keyword}" — ${k.reason}`, { duration: 6000 }));
+            warnings.forEach(k => toast(`Added "${k.keyword}" — ${k.reason}`, { icon: '⚠️', duration: 6000 }));
+            if (!added && !skipped.length && !duplicates) toast('Nothing added');
             setKwText('');
             await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Could not add keywords'); }
+        finally { setBusy(false); }
+    };
+
+    // Review the EXISTING list: validation only guards new additions, so anything added before it
+    // existed (or that has simply never ranked) still burns a SerpAPI credit every day.
+    const [auditData, setAuditData] = useState(null);
+    const [auditing, setAuditing] = useState(false);
+    const runAudit = async () => {
+        setAuditing(true);
+        try {
+            const { data } = await api.get('/api/ranktracker/audit', {
+                params: clientId ? { client_id: clientId } : {},
+            });
+            setAuditData(data);
+            if (!data.invalid.length && !data.stale.length) toast.success('Nothing to prune — the list is clean');
+        } catch { toast.error('Could not review keywords'); }
+        finally { setAuditing(false); }
+    };
+    const pruneIds = async (ids) => {
+        if (!ids.length) return;
+        setBusy(true);
+        try {
+            const { data } = await api.post('/api/ranktracker/keywords/bulk-delete', { ids });
+            toast.success(`Removed ${data.deleted} keyword${data.deleted !== 1 ? 's' : ''}`);
+            setAuditData(null);
+            await load();
+        } catch { toast.error('Could not remove keywords'); }
         finally { setBusy(false); }
     };
 
@@ -109,11 +143,53 @@ export default function RankTracker() {
                     <ArrowTrendingUpIcon className="w-6 h-6 text-teal-600" />
                     <h1 className="text-[22px] font-black text-slate-800">Rank Tracker</h1>
                 </div>
-                <button onClick={refresh} disabled={busy || !rows.length}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-50">
-                    <ArrowPathIcon className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} /> Check now
-                </button>
+                <div className="flex items-center gap-2">
+                    <button onClick={runAudit} disabled={auditing || !rows.length}
+                        className="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg font-bold text-[14px] disabled:opacity-50 hover:bg-slate-50">
+                        {auditing ? 'Reviewing…' : 'Review list'}
+                    </button>
+                    <button onClick={refresh} disabled={busy || !rows.length}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-50">
+                        <ArrowPathIcon className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} /> Check now
+                    </button>
+                </div>
             </div>
+
+            {/* Prune panel — only appears once a review has found something */}
+            {auditData && (auditData.invalid.length > 0 || auditData.stale.length > 0) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div>
+                            <p className="text-[14px] font-bold text-amber-900">
+                                {auditData.invalid.length + auditData.stale.length} of {auditData.total} keywords are dead weight
+                            </p>
+                            <p className="text-[12px] text-amber-700 mt-0.5">
+                                Costing {auditData.wasted_searches_per_day} SerpAPI search{auditData.wasted_searches_per_day !== 1 ? 'es' : ''} a day
+                                {' '}(~{auditData.wasted_searches_per_month}/month) and skewing your ranking stats.
+                            </p>
+                        </div>
+                        <div className="flex gap-2">
+                            <button onClick={() => setAuditData(null)}
+                                className="px-3 py-2 text-[13px] font-semibold text-amber-800 hover:underline">Dismiss</button>
+                            <button onClick={() => pruneIds([...auditData.invalid, ...auditData.stale].map(k => k.id))}
+                                disabled={busy}
+                                className="px-4 py-2 bg-amber-600 text-white rounded-lg font-bold text-[13px] disabled:opacity-50">
+                                Remove all
+                            </button>
+                        </div>
+                    </div>
+                    <div className="mt-3 space-y-1.5 max-h-56 overflow-y-auto">
+                        {[...auditData.invalid, ...auditData.stale].map(k => (
+                            <div key={k.id} className="flex items-center justify-between gap-3 bg-white/70 rounded-lg px-3 py-1.5">
+                                <span className="text-[13px] font-semibold text-slate-800 truncate">{k.keyword}</span>
+                                <span className="text-[11px] text-slate-500 truncate flex-1 text-right">{k.reason}</span>
+                                <button onClick={() => pruneIds([k.id])} disabled={busy}
+                                    className="text-[11px] font-bold text-red-600 hover:underline shrink-0">Remove</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Add keywords */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6">
