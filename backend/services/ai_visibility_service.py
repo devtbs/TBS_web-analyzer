@@ -13,7 +13,6 @@ from typing import List, Optional
 
 from database import TrackedKeyword, SerpSnapshot
 
-
 def _scope(db, email: str, client_id: Optional[str]):
     """Tracked keywords for this user (optionally one client), plus their latest SERP snapshot."""
     q = db.query(TrackedKeyword).filter(TrackedKeyword.user_email == email,

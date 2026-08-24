@@ -1691,6 +1691,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                         <tr key={idx} className={`border-b border-slate-100 hover:bg-slate-50 transition-colors ${isComp ? 'bg-violet-50/30' : ''}`}>
                                                             <td className="px-4 py-3 text-sm text-slate-700">
                                                                 {article.title}
+                                                                {/* Provenance: this node came from a SERP-verified keyword cluster, or absorbed
+                                                                    other proposed nodes that Google answers with the same results. */}
+                                                                {article.cluster_label && (
+                                                                    <span className="ml-1.5 align-middle px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold"
+                                                                          title={`SERP-verified cluster: ${article.cluster_label}`}>SERP</span>
+                                                                )}
+                                                                {article.merged_from?.length > 0 && (
+                                                                    <span className="ml-1 align-middle px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold"
+                                                                          title={`Merged (same SERP): ${article.merged_from.join(', ')}`}>+{article.merged_from.length}</span>
+                                                                )}
                                                                 {(article.main_entity || article.suggested_url) && (
                                                                     <div className="text-[11px] text-slate-400 mt-0.5">
                                                                         {article.main_entity && <span className="font-semibold text-slate-500">{article.main_entity}</span>}

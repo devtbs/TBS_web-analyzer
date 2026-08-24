@@ -1,5 +1,6 @@
 from typing import Dict, List
 from models.schemas import TopicalMapData, KeywordVolume, KeywordCluster
+from config import settings
 from .ai_service import ai_service
 import json
 import asyncio
@@ -64,13 +65,40 @@ class TopicalMapGenerator:
                                      outer_topics: List[str], own_paths: List[str],
                                      competitor_context: List[Dict] = None,
                                      real_q: List[str] = None, comp_subtopics: List[str] = None,
-                                     market: Dict = None):
+                                     market: Dict = None, keyword_clusters: List[Dict] = None):
         """Bridge Topic Suggester — propose 20 distinct topical nodes (entity+context pages, not
         keyword variants) + bridge topics connecting clusters. Standalone (no scraping, no
         comprehensive-analysis call) so it can be re-run on its own — see the `regenerate-nodes`
         endpoint — much faster/cheaper than a full re-analysis. Returns
         (content_articles: List[ContentArticle], bridge_topics: List[str])."""
         from models.schemas import ContentArticle
+
+        # SERP-VERIFIED CLUSTERS — the strongest grounding we have. Each cluster is a set of keywords
+        # Google ranks the SAME URLs for, so it is one page by evidence rather than by opinion. These
+        # come from the guided-research wizard (or the grounding pass) and previously reached only the
+        # comprehensive-analysis call — the node generator invented its plan alongside them instead of
+        # from them. Feeding them here makes cluster→node assignment the backbone of the content plan.
+        cluster_block = ''
+        clusters_in = [c for c in (keyword_clusters or []) if isinstance(c, dict) and c.get('label')][:20]
+        if clusters_in:
+            c_lines = []
+            for c in clusters_in:
+                kws = [k.get('keyword') for k in (c.get('keywords') or [])[:8] if k.get('keyword')]
+                c_lines.append(f"  - \"{c['label']}\" ({c.get('total_volume') or 0}/mo): {', '.join(kws)}")
+            cluster_block = (
+                "\n\nSERP-VERIFIED CLUSTERS (Google returns the SAME ranking URLs for the keywords "
+                "inside each cluster — so each cluster IS one page, proven by data, not opinion):\n"
+                + "\n".join(c_lines)
+                + "\n\nCLUSTER RULE (highest priority — overrides your own topic ideas):\n"
+                  "  1. Create ONE node for EACH cluster above, before proposing anything else. Set that "
+                  "node's cluster_label to the cluster label EXACTLY as written.\n"
+                  "  2. Never split one cluster across two nodes, and never merge two clusters into one "
+                  "node — the SERP evidence already settled those boundaries.\n"
+                  "  3. The cluster label is raw keyword text: turn it into a proper entity + context "
+                  "with a natural title, do not reuse it verbatim as the title.\n"
+                  "  4. AFTER every cluster has a node, add further nodes only for genuine gaps the "
+                  "clusters do not already cover. Leave cluster_label null on those."
+            )
 
         comp_block = ''
         if competitor_context:
@@ -103,12 +131,20 @@ class TopicalMapGenerator:
                      if own_paths else
                      "\n\nNo existing URLs are known — present suggested URLs as PROPOSED architecture.")
 
+        # With clusters present the floor is "one node per cluster, plus gap nodes on top", so the
+        # target grows with the evidence instead of being pinned at a flat 20.
+        node_target = (
+            f"Generate {max(20, len(clusters_in) + 8)} distinct nodes: one for EACH of the "
+            f"{len(clusters_in)} clusters above, then the rest as gap nodes."
+            if clusters_in else "Generate 20 distinct nodes."
+        )
+
         articles_prompt = f"""You are a Bridge Topic Suggester for {domain} ({business_model or 'business'}).
-Propose 20 NEW topical nodes that strengthen this site's topical graph. Each node is a DISTINCT
+Propose NEW topical nodes that strengthen this site's topical graph. Each node is a DISTINCT
 page defined by a MAIN ENTITY + a CONTEXT (angle/dimension) — NOT a keyword variant.
 
 Already covered: {', '.join((key_topics or [])[:8])}
-Core areas: {', '.join((core_topics or [])[:4])} | Outer areas: {', '.join((outer_topics or [])[:4])}{url_block}{comp_block}{real_block}
+Core areas: {', '.join((core_topics or [])[:4])} | Outer areas: {', '.join((outer_topics or [])[:4])}{cluster_block}{url_block}{comp_block}{real_block}
 
 FIND GAPS OF THESE TYPES (use only those that fit the subject): missing sub-entity, missing
 attribute, missing process, missing classification/type, missing problem, missing solution, missing
@@ -147,13 +183,14 @@ Return ONLY JSON (no markdown):
       "article_type": "informative",
       "category_l1": "Main cluster",
       "priority": 1,
+      "cluster_label": null,
       "source_context": "One sentence on why this node matters (start with 'Gap vs [competitor]: ' for gap nodes)."
     }}
   ],
   "bridges": ["A → B → C"]
 }}
 
-Generate 20 distinct nodes. Return ONLY the JSON object."""
+{node_target} Return ONLY the JSON object."""
 
         print(f"📝 Generating topical nodes (Bridge Topic Suggester)...")
         articles_result = await ai_service.extract_json(
@@ -175,16 +212,39 @@ Generate 20 distinct nodes. Return ONLY the JSON object."""
         content_articles = [ContentArticle(**a) for a in articles_data if isinstance(a, dict)]
         bridge_topics = [b for b in bridges if isinstance(b, str) and b.strip()][:8]
 
+        # Only labels the model was actually given count as cluster-derived — otherwise a hallucinated
+        # label would exempt a node from the distinctness check below.
+        _valid_labels = {c['label'].strip().lower() for c in clusters_in}
+        for a in content_articles:
+            if a.cluster_label and a.cluster_label.strip().lower() not in _valid_labels:
+                a.cluster_label = None
+
+        content_articles = await self._dedupe_nodes_by_serp(content_articles, clusters_in, market)
+
+        # A cluster's total volume is the sum of REAL volumes across keywords Google treats as one
+        # page — a truer figure for that node than a single-term lookup, so it wins over Mangools.
+        if clusters_in:
+            by_label = {c['label'].strip().lower(): c for c in clusters_in}
+            for a in content_articles:
+                c = by_label.get((a.cluster_label or '').strip().lower())
+                if c:
+                    a.search_volume = c.get('total_volume') or a.search_volume
+                    if a.kd is None:
+                        a.kd = c.get('avg_kd')
+
         # Attach REAL volume + KD to each node — one batched, cached Mangools lookup keyed on the
         # node's main entity. Best-effort.
         try:
             from services.mangools_service import (mangools_configured, get_keyword_metrics,
                                                    location_for_domain)
             if mangools_configured() and content_articles:
-                terms = [(a.main_entity or a.title) for a in content_articles]
+                # Cluster-derived nodes already carry a real aggregated volume — don't pay for, or
+                # overwrite it with, a single-term lookup.
+                pending = [a for a in content_articles if a.search_volume is None]
+                terms = [(a.main_entity or a.title) for a in pending]
                 _loc = (market or {}).get("location_id") or location_for_domain(domain)
-                metrics = await get_keyword_metrics(terms, location_id=_loc)
-                for a in content_articles:
+                metrics = await get_keyword_metrics(terms, location_id=_loc) if terms else {}
+                for a in pending:
                     m = metrics.get((a.main_entity or a.title or '').lower())
                     if m:
                         a.search_volume = m.get("volume")
@@ -194,6 +254,94 @@ Generate 20 distinct nodes. Return ONLY the JSON object."""
             print(f"⚠️ node volume attach failed: {str(e)[:100]}")
         print(f"✅ Generated {len(content_articles)} nodes + {len(bridge_topics)} bridges")
         return content_articles, bridge_topics
+
+    async def _dedupe_nodes_by_serp(self, nodes: List, clusters_in: List[Dict], market: Dict = None):
+        """SERP distinctness check for the nodes the model invented on its own.
+
+        The prompt tells the model "no two nodes with the same search intent", but that is an
+        honour-system rule — nothing verified it, so near-duplicate pages reached the content plan and
+        cannibalised each other. Here we settle it with evidence: query each gap node's entity+context
+        and group by shared ranking URLs (the same union-find used for keyword clustering). Any group
+        with more than one member is ONE page as far as Google is concerned, so we keep the
+        highest-priority node and fold the losers' internal links into it, recording `merged_from`.
+
+        Cluster-derived nodes are included as fixed anchors — a gap node landing in a cluster's group
+        is a duplicate of a page already planned — but are never themselves removed. Costs one cached
+        SerpAPI search per node checked; set NODE_SERP_VALIDATION=0 to skip it entirely.
+        Best-effort: on any failure the original node list is returned untouched.
+        """
+        gap_nodes = [n for n in nodes if not n.cluster_label]
+        if str(getattr(settings, 'NODE_SERP_VALIDATION', '1')) != '1' or len(gap_nodes) < 2:
+            return nodes
+        try:
+            from services.keyword_clustering import cluster_by_serp
+
+            def _q(n):
+                base = (n.main_entity or n.title or '').strip()
+                ctx = (n.context or '').strip()
+                return f"{base} {ctx}".strip().lower() if ctx else base.lower()
+
+            # Anchors first so they survive the max_keywords cap ahead of any gap node.
+            anchors = [c['label'] for c in clusters_in]
+            probe, seen, by_query = [], set(), {}
+            for label in anchors:
+                k = label.strip().lower()
+                if k and k not in seen:
+                    seen.add(k)
+                    probe.append({"keyword": k, "volume": 0})
+            exact_dupes = set()
+            for n in gap_nodes:
+                k = _q(n)
+                if not k:
+                    continue
+                if k in seen:
+                    exact_dupes.add(id(n))   # same entity+context twice — no SERP needed to know
+                    continue
+                seen.add(k)
+                probe.append({"keyword": k, "volume": 0})
+                by_query[k] = n
+            if len(probe) < 2:
+                return [n for n in nodes if id(n) not in exact_dupes]
+
+            gl = (market or {}).get("gl") or "th"
+            groups = await cluster_by_serp(probe, location=gl, mode="hard",
+                                           max_keywords=len(probe))
+            anchor_keys = {a.strip().lower() for a in anchors}
+            node_by_label = {(n.cluster_label or '').strip().lower(): n
+                             for n in nodes if n.cluster_label}
+            drop = set(exact_dupes)
+            for g in groups:
+                members = [k.get("keyword") for k in (g.get("keywords") or [])]
+                if len(members) < 2:
+                    continue
+                group_nodes = [by_query[m] for m in members if m in by_query]
+                if not group_nodes:
+                    continue
+                # An anchor in the group means the cluster's page already owns this SERP — the gap
+                # nodes fold into that cluster's node rather than surviving as rival pages.
+                hit = next((m for m in members if m in anchor_keys), None)
+                if hit:
+                    keeper = node_by_label.get(hit)
+                else:
+                    keeper = min(group_nodes, key=lambda n: (n.priority or 9))
+                    group_nodes = [n for n in group_nodes if n is not keeper]
+                for loser in group_nodes:
+                    drop.add(id(loser))
+                    if keeper is not None:
+                        merged = list(keeper.merged_from or [])
+                        merged.append(loser.main_entity or loser.title)
+                        keeper.merged_from = merged
+                        links = list(keeper.internal_links or [])
+                        for l in (loser.internal_links or []):
+                            if l not in links:
+                                links.append(l)
+                        keeper.internal_links = links[:6]
+            if drop:
+                print(f"🔎 SERP distinctness: merged/dropped {len(drop)} duplicate node(s)")
+            return [n for n in nodes if id(n) not in drop]
+        except Exception as e:
+            print(f"⚠️ node SERP distinctness check failed: {str(e)[:120]}")
+            return nodes
 
     async def generate_node_brief(self, *, domain: str, business_model: str, node: Dict,
                                   market: Dict = None) -> str:
@@ -686,6 +834,7 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                     key_topics=key_topics, core_topics=core_topics, outer_topics=outer_topics,
                     own_paths=own_paths, competitor_context=competitor_context,
                     real_q=real_q, comp_subtopics=comp_subtopics, market=market,
+                    keyword_clusters=rd.get('keyword_clusters') or [],
                 )
                 # Persist a trimmed grounding snapshot so nodes can be regenerated later — via the
                 # regenerate-nodes endpoint — WITHOUT re-scraping the site or re-running this whole

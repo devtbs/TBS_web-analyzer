@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Resolve AI Overview citations. Google returns the AI Overview as a page_token, so reading who
     # it cites needs a SECOND SerpAPI call — doubling cost on affected keywords. Off by default.
     AI_OVERVIEW_DETAIL: str = "0"
+    # Verify that AI-invented topical-map nodes are genuinely distinct pages by comparing their
+    # SERPs, merging any that Google answers with the same URLs. Costs one cached SerpAPI search
+    # per node checked, once per analysis. Set to "0" to skip and trust the prompt instead.
+    NODE_SERP_VALIDATION: str = "1"
     # PageSpeed Insights (technical audit Core Web Vitals). Keyless works at very
     # low volume but is quickly rate-limited (429); set a free key for reliability.
     PAGESPEED_API_KEY: str = ""

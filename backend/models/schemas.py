@@ -128,6 +128,8 @@ class ContentArticle(BaseModel):
     context: Optional[str] = None           # the angle/dimension (e.g. "Sizing", "Recovery")
     suggested_url: Optional[str] = None      # respects existing architecture, or proposed
     internal_links: Optional[List[str]] = None  # 2-4 related node titles/entities to link
+    cluster_label: Optional[str] = None      # set when the node came from a SERP-verified cluster
+    merged_from: Optional[List[str]] = None  # entities folded in by the SERP distinctness check
     search_volume: Optional[int] = None      # attached from Mangools (secondary signal)
     kd: Optional[int] = None                 # keyword difficulty, if known
     brief: Optional[str] = None              # writer-ready content brief (markdown), generated on demand

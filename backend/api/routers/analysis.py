@@ -395,6 +395,9 @@ async def regenerate_topical_nodes(
         competitor_context=competitor_context or None,
         real_q=snapshot.get('real_q') or [], comp_subtopics=snapshot.get('comp_subtopics') or [],
         market=body.get('market'),
+        # The SERP-verified clusters persisted on the map — regenerating nodes must stay anchored to
+        # the same evidence the original run used, not drift back to invented topics.
+        keyword_clusters=primary.get('keyword_clusters') or [],
     )
 
     primary['content_articles'] = [a.model_dump() for a in content_articles]
