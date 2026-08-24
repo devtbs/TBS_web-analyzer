@@ -22,6 +22,11 @@
     <!-- Performance Hints -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Loaded here (not @import-ed from index.css) so the request starts immediately alongside
+         the app CSS instead of waiting for it to parse. Weights match what the app actually uses:
+         300 was never used, and 900 (font-black) is used ~130x but was previously missing. -->
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" />
 
     <!-- OpenGraph -->
     <meta property="og:title" content="TBS Web Analysis Platform" />
