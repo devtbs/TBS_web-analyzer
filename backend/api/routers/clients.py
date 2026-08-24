@@ -234,7 +234,7 @@ async def _client_overview_row(db, email: str, c: Client, days: int) -> dict:
     the RIGHT Google account (a cross-account client left these unset before, which is exactly why its
     property selector rendered blank)."""
     from services.gsc_service import GSCService
-    from api.routers._shared import _resolve_token
+    from api.routers._shared import _resolve_token, describe_provider_error
 
     base = {"client_id": c.id, "id": c.id, "name": c.name, "domain": c.domain,
             "gsc_property": c.gsc_property, "google_account_id": c.google_account_id,
@@ -253,7 +253,7 @@ async def _client_overview_row(db, email: str, c: Client, days: int) -> dict:
                 "sparkline": [r.get("clicks", 0) for r in (data.get("chart_data") or [])]}
     except Exception as e:
         logger.warning("overview: %s failed: %s", c.gsc_property, str(e)[:120])
-        return {**base, "error": "could not load — the account may need reconnecting"}
+        return {**base, **describe_provider_error(e)}
 
 
 def _overview_clients(db, email: str):
@@ -318,7 +318,7 @@ async def client_hub(client_id: str, days: int = 28,
     Ads headline metrics side by side. Each channel degrades independently — `null` = asset not
     linked, `{error}` = fetch failed — so one dead channel never blanks the page. Only headline keys
     are returned to keep the payload small; the deep-dive pages fetch the full breakdowns."""
-    from api.routers._shared import _gsc_service_for, _ga4_service_for, _ads_service_for
+    from api.routers._shared import _gsc_service_for, _ga4_service_for, _ads_service_for, describe_provider_error
 
     email = current_user.email
     client = resolve_client(db, email, client_id)
@@ -340,7 +340,7 @@ async def client_hub(client_id: str, days: int = 28,
                     "sparkline": [r.get("clicks", 0) for r in (d.get("chart_data") or [])]}
         except Exception as e:
             logger.warning("hub gsc %s: %s", client_id, str(e)[:120])
-            return {"error": "could not load Search Console — the account may need reconnecting"}
+            return describe_provider_error(e)
 
     async def _ga4():
         if not client.get("ga4_property_id"):
@@ -352,7 +352,7 @@ async def client_hub(client_id: str, days: int = 28,
                     "sparkline": [r.get("sessions", 0) for r in (d.get("chart_data") or [])]}
         except Exception as e:
             logger.warning("hub ga4 %s: %s", client_id, str(e)[:120])
-            return {"error": "could not load Analytics"}
+            return describe_provider_error(e, provider="Analytics")
 
     async def _ads():
         if not client.get("ads_customer_id"):
@@ -367,7 +367,7 @@ async def client_hub(client_id: str, days: int = 28,
                     "sparkline": [r.get("clicks", 0) for r in (d.get("chart_data") or [])]}
         except Exception as e:
             logger.warning("hub ads %s: %s", client_id, str(e)[:120])
-            return {"error": "could not load Google Ads"}
+            return describe_provider_error(e, provider="Google Ads")
 
     gsc, ga4, ads = await asyncio.gather(_gsc(), _ga4(), _ads())
     return {"client": client, "gsc": gsc, "ga4": ga4, "ads": ads}

@@ -38,7 +38,7 @@ function ChannelCard({ title, Icon, data, rows, onOpen, matching }) {
                     {matching ? 'Checking for a match…' : 'Not linked — add it in Edit.'}
                 </div>
             ) : data.error ? (
-                <div className="px-5 py-8 text-center text-[13px] text-red-500">{data.error}</div>
+                <div className="px-5 py-8 text-center text-[13px] text-red-500 leading-snug">{data.error}</div>
             ) : (
                 <>
                     <div className="px-5 pt-4 pb-2 space-y-2.5">

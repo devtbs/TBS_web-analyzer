@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 import { MagnifyingGlassIcon, ArrowPathIcon, ExclamationTriangleIcon,
          ChartPieIcon, MegaphoneIcon } from '@heroicons/react/24/outline';
@@ -40,7 +40,24 @@ function ClientCard({ c, onOpen, onEdit }) {
                 </div>
 
                 {c.error ? (
-                    <div className="px-5 py-8 text-center text-[13px] text-red-500">{c.error}</div>
+                    /* error_kind decides the action. A 403 means the account simply has no rights on
+                       this property, so sending the user to reconnect (as this card used to) is a
+                       dead end — they need to re-link the client or grant access in Search Console. */
+                    <div className="px-5 py-6 text-center">
+                        <p className="text-[13px] text-red-500 leading-snug">{c.error}</p>
+                        {(c.error_kind === 'no_access' || c.error_kind === 'not_found') && (
+                            <Link to={`/clients/${c.id}`}
+                                  className="inline-block mt-2.5 text-[12px] font-semibold text-indigo-600 hover:underline">
+                                Re-link this client →
+                            </Link>
+                        )}
+                        {c.error_kind === 'auth_expired' && (
+                            <Link to="/connections"
+                                  className="inline-block mt-2.5 text-[12px] font-semibold text-indigo-600 hover:underline">
+                                Reconnect account →
+                            </Link>
+                        )}
+                    </div>
                 ) : (
                     <>
                         <div className="px-5 pt-4 pb-2 space-y-2.5">

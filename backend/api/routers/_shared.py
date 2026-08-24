@@ -379,3 +379,41 @@ async def _stream_deck_generation(run, user_email: str = ""):
         yield _sse("result", {k: job[k] for k in ("document_id", "slides", "label")})
     else:
         yield _sse("error", {"detail": job.get("error") or "Generation failed."})
+
+
+def describe_provider_error(exc: Exception, *, provider: str = "Search Console") -> dict:
+    """Turn a Google API failure into an accurate, actionable message for a client card.
+
+    The card used to say "the account may need reconnecting" for EVERY failure, because the callers
+    caught bare Exception and threw the real reason away. That actively misled: a 403 means the
+    connected account simply is not a verified user on that property, so reconnecting changes
+    nothing — the user has to grant access in Search Console or link the client to a property the
+    account can actually see. Returns {error, error_kind} so the UI can offer the right next step.
+    """
+    msg = str(exc)
+    low = msg.lower()
+
+    # 403 / permission — the token is fine, the account just has no rights on this property.
+    if "403" in msg or "sufficient permission" in low or "verified user" in low:
+        return {"error_kind": "no_access",
+                "error": f"No {provider} access to this property — the connected Google account "
+                         f"isn't a verified user on it. Grant it access in {provider}, or link this "
+                         f"client to a property the account can see."}
+
+    # 401 / bad refresh token — this is the one where reconnecting IS the fix.
+    if "401" in msg or "invalid_grant" in low or "invalid credentials" in low or "unauthorized" in low:
+        return {"error_kind": "auth_expired",
+                "error": f"{provider} sign-in has expired — reconnect the Google account."}
+
+    if "429" in msg or "quota" in low or "rate limit" in low or "ratelimitexceeded" in low:
+        return {"error_kind": "rate_limit",
+                "error": f"{provider} rate limit hit — this usually clears on its own; try again shortly."}
+
+    if "404" in low or "not found" in low:
+        return {"error_kind": "not_found",
+                "error": f"This {provider} property no longer exists — it may have been deleted or "
+                         f"renamed. Re-link the client to a current property."}
+
+    # Unknown: say so honestly rather than guessing at a cause, and keep a short detail for context.
+    detail = msg.strip().split("\n")[0][:120]
+    return {"error_kind": "unknown", "error": f"Could not load {provider}: {detail}"}
