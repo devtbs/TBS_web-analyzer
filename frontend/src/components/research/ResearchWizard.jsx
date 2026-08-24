@@ -83,6 +83,9 @@ export default function ResearchWizard({ clientId = null }) {
     const location = useLocation();
     const [siteProps, setSiteProps] = useState([]);
     const [manualUrl, setManualUrl] = useState('');
+    // Semantic-SEO "source context": how the site makes money. A site-level anchor that decides which
+    // attributes of the central entity matter, and therefore what belongs in Core vs Outer.
+    const [sourceContext, setSourceContext] = useState('');
     // Specific pages picked via "Select Pages" — the AI queries get seeded from THESE instead of the
     // whole site. Handed back from the page picker (return=wizard).
     const [seedPages, setSeedPages] = useState([]);
@@ -136,7 +139,7 @@ export default function ResearchWizard({ clientId = null }) {
 
     // Snapshot the whole wizard so a run can be reopened and continued later.
     const snapshot = () => ({
-        step, countryGl, manualUrl,
+        step, countryGl, manualUrl, sourceContext,
         aiQueries, selectedQueries: [...selectedQueries],
         competitors, selectedDomains: [...selectedDomains], manualDomains,
         keywords, selectedKw: [...selectedKw], excludeRanked, maxKd, minVol, groupSimilar,
@@ -159,6 +162,7 @@ export default function ResearchWizard({ clientId = null }) {
         setMinVol(s.minVol ?? 0);
         setGroupSimilar(s.groupSimilar !== false);
         setClusters(s.clusters || []);
+        setSourceContext(s.sourceContext || '');
         setStep(s.step || 1);
     };
 
@@ -300,6 +304,7 @@ export default function ResearchWizard({ clientId = null }) {
                 urls: [site.startsWith('http') ? site : `https://${site}`],
                 research: { seeds: [...selectedQueries], domains: allDomains(), keywords: chosen, clusters },
                 market: { gl: country.gl, location_id: country.locId },
+                source_context: sourceContext.trim() || undefined,
             });
             // Persist the run + link it to the analysis it produced, so the client hub can jump straight
             // back to the built map. Best-effort — never block navigation on the save.
@@ -415,6 +420,14 @@ export default function ResearchWizard({ clientId = null }) {
                         </button>
                     </div>
                     {site && <p className="text-[12px] text-slate-400 mt-2">Target: {site}</p>}
+
+                    <div className="mt-5">
+                        <label className="text-[13px] font-bold text-slate-600">How does this site make money? <span className="font-normal text-slate-400">— optional, but it decides which topics count as Core</span></label>
+                        <textarea value={sourceContext} onChange={e => setSourceContext(e.target.value)} rows={2}
+                            placeholder="e.g. Sells WSET-accredited wine courses in Bangkok to hospitality staff and enthusiasts; revenue is course enrolments."
+                            className="mt-1.5 w-full px-4 py-3 border border-slate-300 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none" />
+                        <p className="text-[12px] text-slate-400 mt-1">The same entity needs a different map per business model — a wine school needs certification and schedules, a wine shop needs vintage and shipping.</p>
+                    </div>
                 </div>
             )}
 

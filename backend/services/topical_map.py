@@ -65,13 +65,52 @@ class TopicalMapGenerator:
                                      outer_topics: List[str], own_paths: List[str],
                                      competitor_context: List[Dict] = None,
                                      real_q: List[str] = None, comp_subtopics: List[str] = None,
-                                     market: Dict = None, keyword_clusters: List[Dict] = None):
+                                     market: Dict = None, keyword_clusters: List[Dict] = None,
+                                     covered: List[Dict] = None, own_pages: List[Dict] = None,
+                                     source_context: str = None):
         """Bridge Topic Suggester — propose 20 distinct topical nodes (entity+context pages, not
         keyword variants) + bridge topics connecting clusters. Standalone (no scraping, no
         comprehensive-analysis call) so it can be re-run on its own — see the `regenerate-nodes`
         endpoint — much faster/cheaper than a full re-analysis. Returns
         (content_articles: List[ContentArticle], bridge_topics: List[str])."""
         from models.schemas import ContentArticle
+
+        # SOURCE CONTEXT — in semantic SEO this is a SITE-level anchor: how the site actually makes
+        # money. It decides which attributes of the central entity matter at all (a wine school needs
+        # certification/instructors/schedules; a wine shop needs vintage/price/shipping) and therefore
+        # what belongs in Core vs Outer. Without it the model optimises for volume alone.
+        sc_block = ''
+        if (source_context or '').strip():
+            sc_block = (
+                f"\n\nSOURCE CONTEXT (how {domain} makes money — the lens for EVERY decision below):\n"
+                f"  {source_context.strip()}\n"
+                "  - Core section = nodes that directly serve this. Outer section = nodes that build\n"
+                "    authority and feed Core through internal links.\n"
+                "  - Reject any topic that cannot be tied back to this, however high its volume.\n"
+                "  - Choose each node's CONTEXT (angle) by which attribute matters to THIS business\n"
+                "    model, not by what is generically interesting about the entity."
+            )
+
+        # REAL COVERAGE — what the site already ranks for. The prompt used to pass only the first 8
+        # scraped key topics, so the model re-proposed pages the client had already published.
+        cov_block = ''
+        cov_q = [c for c in (covered or []) if c.get('query')][:30]
+        cov_p = [p for p in (own_pages or []) if p.get('url')][:25]
+        if cov_q or cov_p:
+            parts = []
+            if cov_q:
+                parts.append("  Queries it already ranks top-10 for:\n    "
+                             + "; ".join(f"{c['query']} (#{c.get('position')})" for c in cov_q))
+            if cov_p:
+                parts.append("  Pages already earning impressions:\n    "
+                             + "\n    ".join(str(p['url']) for p in cov_p))
+            cov_block = (
+                "\n\nALREADY COVERED (REAL Search Console data — this is what the site genuinely has):\n"
+                + "\n".join(parts)
+                + "\n\n  COVERAGE RULE: do NOT propose a node that duplicates any of the above. If a\n"
+                  "  node deliberately strengthens an existing page's topic from a NEW angle, say so in\n"
+                  "  source_context and make sure the angle is genuinely different, not a rewrite."
+            )
 
         # SERP-VERIFIED CLUSTERS — the strongest grounding we have. Each cluster is a set of keywords
         # Google ranks the SAME URLs for, so it is one page by evidence rather than by opinion. These
@@ -143,8 +182,8 @@ class TopicalMapGenerator:
 Propose NEW topical nodes that strengthen this site's topical graph. Each node is a DISTINCT
 page defined by a MAIN ENTITY + a CONTEXT (angle/dimension) — NOT a keyword variant.
 
-Already covered: {', '.join((key_topics or [])[:8])}
-Core areas: {', '.join((core_topics or [])[:4])} | Outer areas: {', '.join((outer_topics or [])[:4])}{cluster_block}{url_block}{comp_block}{real_block}
+Known topics: {', '.join((key_topics or [])[:8])}
+Core areas: {', '.join((core_topics or [])[:4])} | Outer areas: {', '.join((outer_topics or [])[:4])}{sc_block}{cov_block}{cluster_block}{url_block}{comp_block}{real_block}
 
 FIND GAPS OF THESE TYPES (use only those that fit the subject): missing sub-entity, missing
 attribute, missing process, missing classification/type, missing problem, missing solution, missing
@@ -402,6 +441,7 @@ Be specific to THIS entity/context — do not write generic advice. Return ONLY 
         ads_customer_id: str = None,
         research: dict = None,
         market: dict = None,
+        source_context: str = None,
     ) -> TopicalMapData:
         """
         Generate comprehensive topical map using AI with detailed 8-part semantic analysis.
@@ -533,7 +573,16 @@ Analyze the provided website data and create a comprehensive topical map followi
 Return ONLY valid JSON without markdown formatting."""
         
         # ── CALL 1: metadata, semantic, taxonomy, competitive (NO articles) ──
-        prompt = f"""Analyze this website and return a topical map in JSON.
+        # The site's own statement of how it makes money outranks anything inferred from the page copy,
+        # so business_model / core vs outer / priority_areas must be judged against it.
+        sc_line = (
+            f"\n\nSOURCE CONTEXT stated by the site owner — how {domain} makes money. Treat this as\n"
+            f"authoritative over anything you infer from the copy, and judge business_model,\n"
+            f"content_strategy.core_topics vs outer_topics and priority_areas against it:\n"
+            f"  {source_context.strip()}"
+        ) if (source_context or '').strip() else ''
+
+        prompt = f"""Analyze this website and return a topical map in JSON.{sc_line}
 
 Website Data:
 {json.dumps(content_data, indent=2)}
@@ -835,6 +884,8 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                     own_paths=own_paths, competitor_context=competitor_context,
                     real_q=real_q, comp_subtopics=comp_subtopics, market=market,
                     keyword_clusters=rd.get('keyword_clusters') or [],
+                    covered=rd.get('already_ranked') or [], own_pages=rd.get('own_pages') or [],
+                    source_context=source_context,
                 )
                 # Persist a trimmed grounding snapshot so nodes can be regenerated later — via the
                 # regenerate-nodes endpoint — WITHOUT re-scraping the site or re-running this whole
@@ -842,6 +893,10 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                 grounding_snapshot = {
                     "real_q": real_q[:25], "comp_subtopics": comp_subtopics[:25],
                     "own_paths": own_paths[:25],
+                    # Coverage + the money angle, so a later regenerate stays as grounded as this run.
+                    "already_ranked": (rd.get('already_ranked') or [])[:30],
+                    "own_pages": (rd.get('own_pages') or [])[:25],
+                    "source_context": source_context,
                 }
             except Exception as e:
                 print(f"⚠️ Article generation failed: {str(e)}, continuing without articles")
@@ -1139,7 +1194,7 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
     async def generate_multiple(self, scraped_data_list: List[Dict], *, db=None, email: str = None,
                                 gsc_property: str = None, account_id: int = None,
                                 ads_customer_id: str = None, research: dict = None,
-                                market: dict = None) -> List[TopicalMapData]:
+                                market: dict = None, source_context: str = None) -> List[TopicalMapData]:
         """
         Generate topical maps for multiple URLs.
 
@@ -1183,7 +1238,8 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
             tasks.append(self.generate_topical_map_with_ai(
                 primary_data, competitor_context=competitor_context or None,
                 db=db, email=email, gsc_property=gsc_property,
-                account_id=account_id, ads_customer_id=ads_customer_id, research=research, market=market))
+                account_id=account_id, ads_customer_id=ads_customer_id, research=research, market=market,
+                source_context=source_context))
         
         if tasks:
             # Use return_exceptions=True to allow partial success

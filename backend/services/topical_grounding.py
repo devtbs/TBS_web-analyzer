@@ -107,6 +107,48 @@ async def _adjacent_topic_seeds(domain: str, seeds: List[str], gsc_queries: List
         return []
 
 
+async def _fetch_gsc_coverage(out: Dict, db, email: Optional[str], gsc_property: Optional[str],
+                              account_id: Optional[int]) -> None:
+    """Populate gsc_queries / already_ranked / own_pages — what the site ALREADY covers.
+
+    Runs for the wizard path too. It previously did not: curated mode returned before this ran, so a
+    wizard-built map only knew the 8 key topics scraped off the homepage and happily re-proposed pages
+    the client already ranks for. Mutates `out`; never raises.
+    """
+    if not (gsc_property and db is not None and email):
+        return
+    try:
+        from api.routers._shared import _gsc_service_for
+        svc = _gsc_service_for(db, email, account_id)
+        rows = await svc.get_top_queries(gsc_property, days=90)
+        out["gsc_queries"] = [
+            {"query": r.get("query"), "clicks": r.get("clicks"),
+             "impressions": r.get("impressions"), "position": r.get("position")}
+            for r in (rows or [])[:GSC_QUERY_CAP] if r.get("query")
+        ]
+    except Exception as e:
+        logger.warning("grounding GSC failed for %s: %s", gsc_property, str(e)[:150])
+
+    # Queries the site ALREADY ranks well for (pos<=10) — "already optimized", excluded from opps.
+    out["already_ranked"] = sorted(
+        [{"query": q["query"], "position": round(q["position"], 1)} for q in out["gsc_queries"]
+         if q.get("position") is not None and q["position"] <= 10],
+        key=lambda x: x["position"])[:30]
+
+    # Real pages that already earn impressions — the site's actual coverage, far better evidence than
+    # scraped nav labels for deciding whether a proposed node is genuinely new.
+    try:
+        from api.routers._shared import _gsc_service_for
+        pages = await _gsc_service_for(db, email, account_id).get_top_pages(gsc_property, days=90)
+        out["own_pages"] = [
+            {"url": p.get("page") or p.get("url"), "clicks": p.get("clicks"),
+             "position": round(p["position"], 1) if p.get("position") is not None else None}
+            for p in (pages or [])[:40] if (p.get("page") or p.get("url"))
+        ]
+    except Exception as e:
+        logger.warning("grounding GSC pages failed for %s: %s", gsc_property, str(e)[:150])
+
+
 async def _grounding_from_research(out: Dict, domain: str, own: str, research: Dict) -> Dict:
     """Build the real_data block from the wizard's curated selection (keywords/clusters/domains)."""
     domains = [_bare(d) for d in (research.get("domains") or []) if d]
@@ -167,26 +209,17 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         "keyword_volumes": [],   # NEW opportunities (already-ranked queries excluded)
         "keyword_clusters": [],  # opportunities grouped into content pieces by SERP overlap
         "already_ranked": [],    # queries the site already ranks <=10 for (for context)
+        "own_pages": [],         # the site's real ranking pages — what it ALREADY covers
     }
     own = _bare(domain)
+
+    # ── 0. The site's own ranking queries + pages (GSC) — real ground truth AND the best SERP
+    # seeds. Fetched before the wizard branch so curated maps get coverage data too.
+    await _fetch_gsc_coverage(out, db, email, gsc_property, account_id)
 
     # ── Curated (wizard) mode: use the user's selections directly. ───────────────────────────
     if research and (research.get("keywords") or research.get("domains") or research.get("clusters")):
         return await _grounding_from_research(out, domain, own, research)
-
-    # ── 0. The site's own ranking queries (GSC) — real ground truth AND the best SERP seeds. ────
-    if gsc_property and db is not None and email:
-        try:
-            from api.routers._shared import _gsc_service_for
-            svc = _gsc_service_for(db, email, account_id)
-            rows = await svc.get_top_queries(gsc_property, days=90)
-            out["gsc_queries"] = [
-                {"query": r.get("query"), "clicks": r.get("clicks"),
-                 "impressions": r.get("impressions"), "position": r.get("position")}
-                for r in (rows or [])[:GSC_QUERY_CAP] if r.get("query")
-            ]
-        except Exception as e:
-            logger.warning("grounding GSC failed for %s: %s", gsc_property, str(e)[:150])
 
     # Seed the SERP with the site's REAL ranking queries when we have them — far more relevant than
     # homepage headings (a wine school seeds wine queries, not generic nav labels). Blend in a couple
@@ -250,13 +283,9 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
     # Broaden into closely-related subject areas around the theme (wine → pairing, cheese, regions…).
     out["adjacent_topics"] = await _adjacent_topic_seeds(domain, seeds, out["gsc_queries"], out["competitor_topics"])
 
-    # Queries the site ALREADY ranks well for (pos<=10) — "already optimized", excluded from opps.
-    won = {(q.get("query") or "").lower() for q in out["gsc_queries"]
-           if q.get("position") is not None and q["position"] <= 10}
-    out["already_ranked"] = sorted(
-        [{"query": q["query"], "position": round(q["position"], 1)} for q in out["gsc_queries"]
-         if q.get("position") is not None and q["position"] <= 10],
-        key=lambda x: x["position"])[:30]
+    # Queries the site ALREADY ranks well for are "already optimized" and excluded from opportunities
+    # (out["already_ranked"] was filled by _fetch_gsc_coverage above).
+    won = {(q.get("query") or "").lower() for q in out["already_ranked"]}
     own_brand = _brand_tokens([c.get("domain", "") for c in out["serp"]["top_competitors"]], own)
 
     def _is_opportunity(kw_lower: str) -> bool:

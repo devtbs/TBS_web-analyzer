@@ -92,7 +92,7 @@ async def stream_progress(
 
 
 async def process_analysis(analysis_id: str, urls: List[str], user_email: str = None, research: dict = None,
-                           market: dict = None):
+                           market: dict = None, source_context: str = None):
     """Background task to process analysis with AI"""
     from database import SessionLocal
     db = SessionLocal()
@@ -140,7 +140,7 @@ async def process_analysis(analysis_id: str, urls: List[str], user_email: str = 
             print(f"[{analysis_id}] client resolve skipped: {str(e)[:100]}")
         topical_maps = await topical_generator.generate_multiple(
             scraped_data, db=db, email=user_email, gsc_property=gsc_property, account_id=account_id,
-            research=research, market=market)
+            research=research, market=market, source_context=source_context)
         await check_cancelled()
 
         # Generate comparison with AI (if multiple URLs)
@@ -217,7 +217,7 @@ async def analyze_urls(
 
     # Process in background
     background_tasks.add_task(process_analysis, analysis_id, request.urls, current_user.email,
-                              request.research, request.market)
+                              request.research, request.market, request.source_context)
 
     return AnalysisResponse(
         analysis_id=analysis_id,
@@ -398,6 +398,10 @@ async def regenerate_topical_nodes(
         # The SERP-verified clusters persisted on the map — regenerating nodes must stay anchored to
         # the same evidence the original run used, not drift back to invented topics.
         keyword_clusters=primary.get('keyword_clusters') or [],
+        covered=snapshot.get('already_ranked') or [], own_pages=snapshot.get('own_pages') or [],
+        # Let the caller re-state the money angle (e.g. it was wrong first time); fall back to the
+        # one the original run used.
+        source_context=body.get('source_context') or snapshot.get('source_context'),
     )
 
     primary['content_articles'] = [a.model_dump() for a in content_articles]

@@ -11,6 +11,9 @@ class URLAnalysisRequest(BaseModel):
     # Target market for keyword volumes/SERP, e.g. {"gl":"us","location_id":2840}. Overrides the
     # domain-derived default (which is Thailand) — set per client since some target global, some local.
     market: Optional[dict] = None
+    # Semantic-SEO "source context": how the site makes money, in the user's own words. A site-level
+    # anchor that decides which attributes of the central entity matter, and so what is Core vs Outer.
+    source_context: Optional[str] = None
 
 
 class UserInfo(BaseModel):
