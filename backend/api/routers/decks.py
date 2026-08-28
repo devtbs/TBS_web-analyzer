@@ -1,6 +1,7 @@
 """AI deck generation routes (HTML-based): generate from GSC, GA4, Google Ads or an
 uploaded PDF, preview saved decks, download, and list AI providers."""
-from fastapi import APIRouter, Depends, HTTPException, status, Body, UploadFile, File, Form
+from fastapi import (APIRouter, Depends, HTTPException, status, Body, UploadFile, File, Form,
+                     BackgroundTasks)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,10 @@ router = APIRouter()
 # (the deck is already rendered then) so the first open is instant too. Single uvicorn process ⇒
 # in-memory is fine (same pattern as _DECK_JOBS); after a restart it lazily refills on first open.
 import time as _time
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
 _SLIDES_CACHE: dict = {}          # document_id -> (ts, slides_payload)
 _SLIDES_CACHE_TTL = 6 * 60 * 60   # 6h
 _SLIDES_CACHE_MAX = 24            # cap memory — evict oldest beyond this
@@ -559,3 +564,103 @@ async def presentation_ai_deck_combined(
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+# ── Scheduled decks ─────────────────────────────────────────────────────────────────────────
+# A schedule reruns one of the generators above on chosen days of the month, unattended. The deck
+# it produces is an ordinary Document filed against the schedule's client, so it shows up in
+# Documents and on the client hub exactly like a hand-made one.
+
+@router.get("/api/presentation/schedules")
+async def list_deck_schedules(client_id: str = None,
+                              current_user: UserInfo = Depends(get_current_user),
+                              db: Session = Depends(get_db)):
+    from services import deck_schedule_service as dss
+    from database import DeckSchedule
+    q = db.query(DeckSchedule).filter(DeckSchedule.user_email == current_user.email)
+    if client_id:
+        q = q.filter(DeckSchedule.client_id == client_id)
+    rows = q.order_by(DeckSchedule.created_at.desc()).all()
+    return {"schedules": [dss.to_dict(s) for s in rows]}
+
+
+@router.post("/api/presentation/schedules")
+async def create_deck_schedule(body: dict = Body(...),
+                               current_user: UserInfo = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    from services import deck_schedule_service as dss
+    if (body.get("source") or "gsc") not in dss.SOURCES:
+        raise HTTPException(status_code=400, detail=f"source must be one of {', '.join(dss.SOURCES)}")
+    days = [int(d) for d in (body.get("days_of_month") or []) if str(d).isdigit() and 1 <= int(d) <= 31]
+    if not days:
+        raise HTTPException(status_code=400, detail="Pick at least one day of the month.")
+    sched = dss.create(db, current_user.email, {**body, "days_of_month": days})
+    return dss.to_dict(sched)
+
+
+@router.patch("/api/presentation/schedules/{schedule_id}")
+async def update_deck_schedule(schedule_id: str, body: dict = Body(...),
+                               current_user: UserInfo = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    from services import deck_schedule_service as dss
+    from database import DeckSchedule
+    s = (db.query(DeckSchedule)
+         .filter(DeckSchedule.id == schedule_id, DeckSchedule.user_email == current_user.email).first())
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    for f in ("name", "source", "params", "hour", "minute", "timezone", "active", "client_id"):
+        if f in body:
+            setattr(s, f, body[f])
+    if "days_of_month" in body:
+        s.days_of_month = sorted({int(d) for d in body["days_of_month"]
+                                  if str(d).isdigit() and 1 <= int(d) <= 31})
+    db.commit()
+    return dss.to_dict(s)
+
+
+@router.delete("/api/presentation/schedules/{schedule_id}")
+async def delete_deck_schedule(schedule_id: str,
+                               current_user: UserInfo = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    from database import DeckSchedule
+    s = (db.query(DeckSchedule)
+         .filter(DeckSchedule.id == schedule_id, DeckSchedule.user_email == current_user.email).first())
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    db.delete(s)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.post("/api/presentation/schedules/{schedule_id}/run")
+async def run_deck_schedule_now(schedule_id: str, background: BackgroundTasks,
+                                current_user: UserInfo = Depends(get_current_user),
+                                db: Session = Depends(get_db)):
+    """Fire a schedule immediately — the way to verify a schedule works without waiting for its
+    day. Runs in the background (a deck takes minutes) and does NOT consume the day's slot."""
+    from services import deck_schedule_service as dss
+    from database import DeckSchedule, SessionLocal
+    s = (db.query(DeckSchedule)
+         .filter(DeckSchedule.id == schedule_id, DeckSchedule.user_email == current_user.email).first())
+    if not s:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    async def _go(sid: str):
+        d = SessionLocal()
+        try:
+            sc = d.query(DeckSchedule).filter(DeckSchedule.id == sid).first()
+            res = await dss.run_schedule(d, sc)
+            sc.last_status, sc.last_error = "ok", None
+            sc.last_document_id, sc.last_run_at = res["document_id"], datetime.utcnow()
+        except Exception as e:
+            logger.error("manual schedule run %s failed: %s", sid, str(e)[:300])
+            if sc:
+                sc.last_status, sc.last_error = "error", str(e)[:500]
+        finally:
+            try:
+                d.commit()
+            finally:
+                d.close()
+
+    background.add_task(_go, s.id)
+    return {"started": True}

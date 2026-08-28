@@ -61,9 +61,15 @@ async def startup_event():
         # gunicorn worker starts its own scheduler, only one worker actually spends SerpAPI credits.
         scheduler.add_job(collect_due, CronTrigger(hour=6, minute=0),
                           id="daily_rank_collect", replace_existing=True)
+        # Scheduled AI presentations. Ticks every 15 minutes and fires whatever is due in its own
+        # timezone; each schedule claims its local day before generating, so a tick that overlaps a
+        # still-running deck cannot produce a duplicate.
+        from services.deck_schedule_service import run_due as run_due_decks
+        scheduler.add_job(run_due_decks, CronTrigger(minute="*/15"),
+                          id="deck_schedules", replace_existing=True)
         scheduler.start()
         app.state.scheduler = scheduler
-        print("⏰ Schedulers started (alerts 07:00, rank collect 06:00)")
+        print("⏰ Schedulers started (alerts 07:00, rank collect 06:00, deck schedules */15m)")
     except Exception as e:
         print(f"⚠️  Alert scheduler not started: {e}")
 

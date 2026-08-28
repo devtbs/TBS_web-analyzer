@@ -64,6 +64,105 @@ const siteTags = (url) => {
 const Presentation = () => {
     const { switchAccount } = useAuth();
     const [mode, setMode] = useState('gsc');
+
+    /* ── Recurring schedules ─────────────────────────────────────────────
+       A schedule reuses whatever is configured above (source, site, period, model, design) and
+       reruns it unattended on chosen days of the month. The deck lands in Documents against the
+       selected client, exactly like a hand-made one. */
+    const [schedules, setSchedules] = useState([]);
+    const [schedName, setSchedName] = useState('');
+    const [schedDays, setSchedDays] = useState([1]);
+    const [schedHour, setSchedHour] = useState(5);
+    const [schedMinute, setSchedMinute] = useState(0);
+    const [schedTz, setSchedTz] = useState('Asia/Bangkok');
+    const [schedBusy, setSchedBusy] = useState(false);
+
+    const loadSchedules = async () => {
+        try {
+            const { data } = await api.get('/api/presentation/schedules');
+            setSchedules(data.schedules || []);
+        } catch { /* non-fatal — the page still generates decks */ }
+    };
+    useEffect(() => { loadSchedules(); }, []);
+
+    /* Snapshot the CURRENT form into schedule params, so a schedule reproduces exactly what the
+       Generate button would make right now. Kept in one place because every source needs a
+       different site identifier. */
+    const scheduleParams = () => {
+        const base = {
+            days, provider, images: useImages, notes, creativity, pipeline, style,
+            theme_mode: themeMode,
+            ...(themeMode === 'custom' ? { custom_color: customColor } : {}),
+            ...(pipeline === 'layered' ? { models: resolvedLayerModels(provider) } : {}),
+            ...(brandTerms.trim() ? { brand_terms: brandTerms } : {}),
+            account_id: localStorage.getItem('selected_account_id') || null,
+        };
+        if (mode === 'gsc') return { ...base, property: propUrl };
+        if (mode === 'ga4') return { ...base, property_id: ga4PropId };
+        if (mode === 'ads') return { ...base, customer_id: adsCustId, label: adsLabel || '' };
+        if (mode === 'bing') return { ...base, site: bingSite?.url, bing_account_id: bingSite?.account_id };
+        return {   // combined
+            ...base,
+            property: combined.gsc ? propUrl : '',
+            property_id: combined.ga4 ? ga4PropId : '',
+            customer_id: combined.ads ? adsCustId : '',
+            label: adsLabel || '',
+        };
+    };
+
+    const scheduleTarget = () => {
+        if (mode === 'gsc' || mode === 'combined') return propUrl;
+        if (mode === 'ga4') return ga4PropId;
+        if (mode === 'ads') return adsCustId;
+        if (mode === 'bing') return bingSite?.url;
+        return '';
+    };
+
+    const saveSchedule = async () => {
+        const target = scheduleTarget();
+        if (!target) { toast.error('Pick a site above first'); return; }
+        if (!schedDays.length) { toast.error('Pick at least one day of the month'); return; }
+        setSchedBusy(true);
+        try {
+            await api.post('/api/presentation/schedules', {
+                name: schedName.trim() || `${mode.toUpperCase()} deck — ${target}`,
+                source: mode, params: scheduleParams(),
+                days_of_month: schedDays, hour: schedHour, minute: schedMinute, timezone: schedTz,
+                client_id: localStorage.getItem('selected_client_id') || null,
+            });
+            toast.success('Schedule saved');
+            setSchedName('');
+            await loadSchedules();
+        } catch (e) { toast.error(e.response?.data?.detail || 'Could not save schedule'); }
+        finally { setSchedBusy(false); }
+    };
+
+    const runScheduleNow = async (id) => {
+        setSchedBusy(true);
+        try {
+            await api.post(`/api/presentation/schedules/${id}/run`);
+            toast.success('Building now — it will appear in Documents when finished');
+        } catch { toast.error('Could not start that schedule'); }
+        finally { setSchedBusy(false); }
+    };
+
+    const toggleSchedule = async (sc) => {
+        setSchedBusy(true);
+        try {
+            await api.patch(`/api/presentation/schedules/${sc.id}`, { active: !sc.active });
+            await loadSchedules();
+        } catch { toast.error('Could not update schedule'); }
+        finally { setSchedBusy(false); }
+    };
+
+    const deleteSchedule = async (id) => {
+        setSchedBusy(true);
+        try {
+            await api.delete(`/api/presentation/schedules/${id}`);
+            setSchedules(ss => ss.filter(x => x.id !== id));
+        } catch { toast.error('Could not delete schedule'); }
+        finally { setSchedBusy(false); }
+    };
     // Combined deck: any subset of GSC / GA4 / Ads for ONE client. Reuses the per-platform
     // pickers below rather than duplicating them.
     const [combined, setCombined] = useState({ gsc: true, ga4: true, ads: false });
@@ -126,7 +225,7 @@ const Presentation = () => {
     const [customColor, setCustomColor] = useState('#3C8DD9');
     const [style, setStyle] = useState('tbs');                // 'tbs' | 'auto' | preset letter A-L
     // Options groups start collapsed — the defaults are shown as a summary on each header.
-    const [openSec, setOpenSec] = useState({ ai: false, design: false, notes: false });
+    const [openSec, setOpenSec] = useState({ ai: false, design: false, notes: false, schedule: false });
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
     const [brandTerms, setBrandTerms] = useState('');   // extra brand names to keep out of the deck
@@ -1021,6 +1120,113 @@ const Presentation = () => {
                             <input value={brandTerms} onChange={(e) => setBrandTerms(e.target.value)} disabled={generating}
                                 placeholder="jesse and sons, jesse & son, jessies"
                                 className={fieldCls + ' text-sm'} />
+                        </div>
+                    )}
+                </Section>
+
+                <Section title="Schedule (recurring)" open={openSec.schedule}
+                    onToggle={() => setOpenSec(o => ({ ...o, schedule: !o.schedule }))}
+                    summary={schedules.length ? `${schedules.length} schedule${schedules.length !== 1 ? 's' : ''}` : 'None'}>
+                    <p className="text-xs text-slate-500 mb-3">
+                        Builds this deck automatically using the settings above — same source, site, period,
+                        model and design. Each one is saved to Documents under the selected client.
+                    </p>
+
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Name</label>
+                    <input value={schedName} onChange={(e) => setSchedName(e.target.value)}
+                        placeholder="e.g. Monthly GSC report — tbs-marketing.com"
+                        className={fieldCls + ' text-sm mb-3'} />
+
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Days of the month</label>
+                    <div className="flex flex-wrap gap-1 mb-1">
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                            <button key={d} type="button"
+                                onClick={() => setSchedDays(ds => ds.includes(d) ? ds.filter(x => x !== d) : [...ds, d].sort((a, b) => a - b))}
+                                className={`w-8 h-8 rounded-lg text-xs font-bold border transition-colors ${schedDays.includes(d) ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
+                                {d}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">
+                        Pick any number of days — e.g. 1 and 15 for twice a month. A day past the end of a short
+                        month (29–31) runs on that month's last day instead of being skipped.
+                    </p>
+
+                    <div className="flex flex-wrap gap-3 mb-3">
+                        <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1">Time</label>
+                            <div className="flex items-center gap-1">
+                                <select value={schedHour} onChange={(e) => setSchedHour(+e.target.value)} className={fieldCls + ' text-sm w-20'}>
+                                    {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{String(h).padStart(2, '0')}</option>)}
+                                </select>
+                                <span className="font-bold text-slate-400">:</span>
+                                <select value={schedMinute} onChange={(e) => setSchedMinute(+e.target.value)} className={fieldCls + ' text-sm w-20'}>
+                                    {[0, 15, 30, 45].map(m => <option key={m} value={m}>{String(m).padStart(2, '0')}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="flex-1 min-w-[190px]">
+                            <label className="block text-sm font-semibold text-slate-700 mb-1">Timezone</label>
+                            <select value={schedTz} onChange={(e) => setSchedTz(e.target.value)} className={fieldCls + ' text-sm'}>
+                                <option value="Asia/Bangkok">Bangkok (ICT)</option>
+                                <option value="America/New_York">New York (EST/EDT)</option>
+                                <option value="America/Chicago">Chicago (CST/CDT)</option>
+                                <option value="America/Denver">Denver (MST/MDT)</option>
+                                <option value="America/Los_Angeles">Los Angeles (PST/PDT)</option>
+                                <option value="Europe/London">London (GMT/BST)</option>
+                                <option value="Asia/Singapore">Singapore</option>
+                                <option value="Australia/Sydney">Sydney</option>
+                                <option value="UTC">UTC</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">
+                        Daylight saving is handled — 5am stays 5am year round.
+                    </p>
+
+                    <button type="button" onClick={saveSchedule} disabled={schedBusy || !schedDays.length}
+                        className="px-4 py-2 bg-[#26397A] text-white rounded-lg font-bold text-sm disabled:opacity-50">
+                        {schedBusy ? 'Saving…' : 'Save schedule'}
+                    </button>
+
+                    {schedules.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
+                            {schedules.map(sc => (
+                                <div key={sc.id} className="rounded-lg border border-slate-200 p-3">
+                                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-slate-800 truncate">{sc.name}</p>
+                                            <p className="text-xs text-slate-500">
+                                                {sc.source.toUpperCase()} · day {(sc.days_of_month || []).join(', ')} ·{' '}
+                                                {String(sc.hour).padStart(2, '0')}:{String(sc.minute).padStart(2, '0')} {sc.timezone}
+                                            </p>
+                                            {sc.next_run && (
+                                                <p className="text-xs text-emerald-700 mt-0.5">
+                                                    Next: {new Date(sc.next_run).toLocaleString()}
+                                                </p>
+                                            )}
+                                            {sc.last_status === 'error' && (
+                                                <p className="text-xs text-red-500 mt-0.5">Last run failed: {sc.last_error}</p>
+                                            )}
+                                            {sc.last_status === 'ok' && sc.last_run_at && (
+                                                <p className="text-xs text-slate-400 mt-0.5">
+                                                    Last built {new Date(sc.last_run_at).toLocaleDateString()}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button type="button" onClick={() => runScheduleNow(sc.id)} disabled={schedBusy}
+                                                className="text-xs font-semibold text-indigo-600 hover:underline">Run now</button>
+                                            <button type="button" onClick={() => toggleSchedule(sc)} disabled={schedBusy}
+                                                className="text-xs font-semibold text-slate-500 hover:underline">
+                                                {sc.active ? 'Pause' : 'Resume'}
+                                            </button>
+                                            <button type="button" onClick={() => deleteSchedule(sc.id)} disabled={schedBusy}
+                                                className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </Section>

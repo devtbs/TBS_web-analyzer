@@ -350,3 +350,39 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+class DeckSchedule(Base):
+    """A recurring AI-presentation job: build a deck for one site on chosen days of the month.
+
+    Days-of-month + a local time, not a cron string, because that is how client reporting is actually
+    described ("the 1st and the 15th at 5am"). `timezone` is an IANA name so 5am stays 5am across DST
+    — the server runs UTC. `params` holds the same options the manual generator takes (provider,
+    pipeline, models, design, notes, and the source-specific property/customer id), so a scheduled
+    deck is identical to one made by hand.
+
+    `last_run_on` is the LOCAL date of the last successful fire and is what makes the job idempotent:
+    the scheduler ticks every 15 minutes, so without it a schedule would regenerate all day. It also
+    means a missed tick (deploy, restart) still fires later the same day rather than being skipped.
+    create_all() adds this table; no migration needed.
+    """
+    __tablename__ = "deck_schedules"
+
+    id            = Column(String, primary_key=True, index=True)
+    user_email    = Column(String, index=True, nullable=False)
+    client_id     = Column(String, index=True, nullable=True)   # deck is filed against this client
+    name          = Column(String, nullable=False)
+    source        = Column(String, nullable=False)   # gsc | ga4 | ads | bing | combined
+    params        = Column(JSON, nullable=False, default=dict)
+    days_of_month = Column(JSON, nullable=False, default=list)  # e.g. [1, 15]
+    hour          = Column(Integer, nullable=False, default=5)
+    minute        = Column(Integer, nullable=False, default=0)
+    timezone      = Column(String, nullable=False, default="Asia/Bangkok")
+    active        = Column(Boolean, default=True, nullable=False)
+
+    last_run_on   = Column(Date, nullable=True)      # local date of last fire — the idempotency key
+    last_run_at   = Column(DateTime, nullable=True)
+    last_status   = Column(String, nullable=True)    # ok | error
+    last_error    = Column(Text, nullable=True)
+    last_document_id = Column(String, nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
