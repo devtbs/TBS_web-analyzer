@@ -76,6 +76,10 @@ const Presentation = () => {
     const [schedMinute, setSchedMinute] = useState(0);
     const [schedTz, setSchedTz] = useState('Asia/Bangkok');
     const [schedBusy, setSchedBusy] = useState(false);
+    // Which platforms THIS schedule covers, chosen here rather than inherited from the active tab —
+    // one site may only warrant Search Console while another wants GSC + Analytics together.
+    // Bing is exclusive: the combined generator only understands GSC/GA4/Ads.
+    const [schedSrc, setSchedSrc] = useState({ gsc: true, ga4: false, ads: false, bing: false });
 
     const loadSchedules = async () => {
         try {
@@ -88,6 +92,28 @@ const Presentation = () => {
     /* Snapshot the CURRENT form into schedule params, so a schedule reproduces exactly what the
        Generate button would make right now. Kept in one place because every source needs a
        different site identifier. */
+    // What each platform would be built from, and whether that is actually available. Surfaced in
+    // the UI so a missing property is a visible blocker rather than a deck that silently omits it.
+    const SCHED_PLATFORMS = [
+        { key: 'gsc', label: 'Search Console', target: () => propUrl, hint: 'Pick a site on the GSC tab' },
+        { key: 'ga4', label: 'Analytics', target: () => ga4PropId, hint: 'Pick a property on the GA4 tab' },
+        { key: 'ads', label: 'Google Ads', target: () => adsCustId, hint: 'Pick an account on the Google Ads tab' },
+        { key: 'bing', label: 'Bing', target: () => bingSite?.url, hint: 'Pick a site on the Bing tab' },
+    ];
+    const schedChosen = SCHED_PLATFORMS.filter(p => schedSrc[p.key]);
+    const schedMissing = schedChosen.filter(p => !p.target());
+    // One platform = that source; several = the combined generator. Bing cannot be combined.
+    const schedSource = schedSrc.bing ? 'bing'
+        : schedChosen.length > 1 ? 'combined'
+        : (schedChosen[0]?.key || '');
+
+    const toggleSchedSrc = (key) => setSchedSrc(prev => (
+        // Ticking Bing clears the rest and vice versa — the combined deck has no Bing section.
+        key === 'bing'
+            ? { gsc: false, ga4: false, ads: false, bing: !prev.bing }
+            : { ...prev, bing: false, [key]: !prev[key] }
+    ));
+
     const scheduleParams = () => {
         const base = {
             days, provider, images: useImages, notes, creativity, pipeline, style,
@@ -97,36 +123,33 @@ const Presentation = () => {
             ...(brandTerms.trim() ? { brand_terms: brandTerms } : {}),
             account_id: localStorage.getItem('selected_account_id') || null,
         };
-        if (mode === 'gsc') return { ...base, property: propUrl };
-        if (mode === 'ga4') return { ...base, property_id: ga4PropId };
-        if (mode === 'ads') return { ...base, customer_id: adsCustId, label: adsLabel || '' };
-        if (mode === 'bing') return { ...base, site: bingSite?.url, bing_account_id: bingSite?.account_id };
-        return {   // combined
+        if (schedSource === 'bing') return { ...base, site: bingSite?.url, bing_account_id: bingSite?.account_id };
+        if (schedSource === 'gsc') return { ...base, property: propUrl };
+        if (schedSource === 'ga4') return { ...base, property_id: ga4PropId };
+        if (schedSource === 'ads') return { ...base, customer_id: adsCustId, label: adsLabel || '' };
+        return {   // combined — only the ticked platforms are passed through
             ...base,
-            property: combined.gsc ? propUrl : '',
-            property_id: combined.ga4 ? ga4PropId : '',
-            customer_id: combined.ads ? adsCustId : '',
+            property: schedSrc.gsc ? propUrl : '',
+            property_id: schedSrc.ga4 ? ga4PropId : '',
+            customer_id: schedSrc.ads ? adsCustId : '',
             label: adsLabel || '',
         };
     };
 
-    const scheduleTarget = () => {
-        if (mode === 'gsc' || mode === 'combined') return propUrl;
-        if (mode === 'ga4') return ga4PropId;
-        if (mode === 'ads') return adsCustId;
-        if (mode === 'bing') return bingSite?.url;
-        return '';
-    };
+    const scheduleTarget = () => schedChosen[0]?.target() || '';
 
     const saveSchedule = async () => {
+        if (!schedChosen.length) { toast.error('Choose at least one data source for this schedule'); return; }
+        if (schedMissing.length) {
+            toast.error(`${schedMissing.map(p => p.label).join(', ')}: no site selected yet`); return;
+        }
         const target = scheduleTarget();
-        if (!target) { toast.error('Pick a site above first'); return; }
         if (!schedDays.length) { toast.error('Pick at least one day of the month'); return; }
         setSchedBusy(true);
         try {
             await api.post('/api/presentation/schedules', {
-                name: schedName.trim() || `${mode.toUpperCase()} deck — ${target}`,
-                source: mode, params: scheduleParams(),
+                name: schedName.trim() || `${schedChosen.map(p => p.label).join(' + ')} — ${target}`,
+                source: schedSource, params: scheduleParams(),
                 days_of_month: schedDays, hour: schedHour, minute: schedMinute, timezone: schedTz,
                 client_id: localStorage.getItem('selected_client_id') || null,
             });
@@ -1128,9 +1151,41 @@ const Presentation = () => {
                     onToggle={() => setOpenSec(o => ({ ...o, schedule: !o.schedule }))}
                     summary={schedules.length ? `${schedules.length} schedule${schedules.length !== 1 ? 's' : ''}` : 'None'}>
                     <p className="text-xs text-slate-500 mb-3">
-                        Builds this deck automatically using the settings above — same source, site, period,
-                        model and design. Each one is saved to Documents under the selected client.
+                        Builds a deck automatically on the days you choose, using the period, model and design
+                        set above. Each one is saved to Documents under the selected client.
                     </p>
+
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Include</label>
+                    <div className="flex flex-wrap gap-2 mb-1">
+                        {SCHED_PLATFORMS.map(pl => {
+                            const on = schedSrc[pl.key];
+                            const target = pl.target();
+                            return (
+                                <button key={pl.key} type="button" onClick={() => toggleSchedSrc(pl.key)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${on ? (target ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-red-50 text-red-700 border-red-300') : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
+                                    {on && <CheckIcon className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />}{pl.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {/* Show the exact site each ticked platform resolves to — a schedule that silently
+                        omitted a platform would only be discovered by reading the finished deck. */}
+                    <div className="mb-3 space-y-0.5">
+                        {schedChosen.map(pl => (
+                            <p key={pl.key} className={`text-xs ${pl.target() ? 'text-slate-500' : 'text-red-600 font-semibold'}`}>
+                                {pl.label}: {pl.target() || `— ${pl.hint}`}
+                            </p>
+                        ))}
+                        {schedChosen.length > 1 && !schedSrc.bing && (
+                            <p className="text-xs text-slate-400 pt-0.5">Builds one combined deck covering all of the above.</p>
+                        )}
+                        {schedSrc.bing && (
+                            <p className="text-xs text-slate-400 pt-0.5">Bing decks are built on their own — they can't be combined with Google sources.</p>
+                        )}
+                        {!schedChosen.length && (
+                            <p className="text-xs text-red-600 font-semibold">Choose at least one data source.</p>
+                        )}
+                    </div>
 
                     <label className="block text-sm font-semibold text-slate-700 mb-1">Name</label>
                     <input value={schedName} onChange={(e) => setSchedName(e.target.value)}
@@ -1184,7 +1239,8 @@ const Presentation = () => {
                         Daylight saving is handled — 5am stays 5am year round.
                     </p>
 
-                    <button type="button" onClick={saveSchedule} disabled={schedBusy || !schedDays.length}
+                    <button type="button" onClick={saveSchedule}
+                        disabled={schedBusy || !schedDays.length || !schedChosen.length || schedMissing.length > 0}
                         className="px-4 py-2 bg-[#26397A] text-white rounded-lg font-bold text-sm disabled:opacity-50">
                         {schedBusy ? 'Saving…' : 'Save schedule'}
                     </button>
