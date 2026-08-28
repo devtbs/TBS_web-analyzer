@@ -81,111 +81,6 @@ const Presentation = () => {
     // Bing is exclusive: the combined generator only understands GSC/GA4/Ads.
     const [schedSrc, setSchedSrc] = useState({ gsc: true, ga4: false, ads: false, bing: false });
 
-    const loadSchedules = async () => {
-        try {
-            const { data } = await api.get('/api/presentation/schedules');
-            setSchedules(data.schedules || []);
-        } catch { /* non-fatal — the page still generates decks */ }
-    };
-    useEffect(() => { loadSchedules(); }, []);
-
-    /* Snapshot the CURRENT form into schedule params, so a schedule reproduces exactly what the
-       Generate button would make right now. Kept in one place because every source needs a
-       different site identifier. */
-    // What each platform would be built from, and whether that is actually available. Surfaced in
-    // the UI so a missing property is a visible blocker rather than a deck that silently omits it.
-    const SCHED_PLATFORMS = [
-        { key: 'gsc', label: 'Search Console', target: () => propUrl, hint: 'Pick a site on the GSC tab' },
-        { key: 'ga4', label: 'Analytics', target: () => ga4PropId, hint: 'Pick a property on the GA4 tab' },
-        { key: 'ads', label: 'Google Ads', target: () => adsCustId, hint: 'Pick an account on the Google Ads tab' },
-        { key: 'bing', label: 'Bing', target: () => bingSite?.url, hint: 'Pick a site on the Bing tab' },
-    ];
-    const schedChosen = SCHED_PLATFORMS.filter(p => schedSrc[p.key]);
-    const schedMissing = schedChosen.filter(p => !p.target());
-    // One platform = that source; several = the combined generator. Bing cannot be combined.
-    const schedSource = schedSrc.bing ? 'bing'
-        : schedChosen.length > 1 ? 'combined'
-        : (schedChosen[0]?.key || '');
-
-    const toggleSchedSrc = (key) => setSchedSrc(prev => (
-        // Ticking Bing clears the rest and vice versa — the combined deck has no Bing section.
-        key === 'bing'
-            ? { gsc: false, ga4: false, ads: false, bing: !prev.bing }
-            : { ...prev, bing: false, [key]: !prev[key] }
-    ));
-
-    const scheduleParams = () => {
-        const base = {
-            days, provider, images: useImages, notes, creativity, pipeline, style,
-            theme_mode: themeMode,
-            ...(themeMode === 'custom' ? { custom_color: customColor } : {}),
-            ...(pipeline === 'layered' ? { models: resolvedLayerModels(provider) } : {}),
-            ...(brandTerms.trim() ? { brand_terms: brandTerms } : {}),
-            account_id: localStorage.getItem('selected_account_id') || null,
-        };
-        if (schedSource === 'bing') return { ...base, site: bingSite?.url, bing_account_id: bingSite?.account_id };
-        if (schedSource === 'gsc') return { ...base, property: propUrl };
-        if (schedSource === 'ga4') return { ...base, property_id: ga4PropId };
-        if (schedSource === 'ads') return { ...base, customer_id: adsCustId, label: adsLabel || '' };
-        return {   // combined — only the ticked platforms are passed through
-            ...base,
-            property: schedSrc.gsc ? propUrl : '',
-            property_id: schedSrc.ga4 ? ga4PropId : '',
-            customer_id: schedSrc.ads ? adsCustId : '',
-            label: adsLabel || '',
-        };
-    };
-
-    const scheduleTarget = () => schedChosen[0]?.target() || '';
-
-    const saveSchedule = async () => {
-        if (!schedChosen.length) { toast.error('Choose at least one data source for this schedule'); return; }
-        if (schedMissing.length) {
-            toast.error(`${schedMissing.map(p => p.label).join(', ')}: no site selected yet`); return;
-        }
-        const target = scheduleTarget();
-        if (!schedDays.length) { toast.error('Pick at least one day of the month'); return; }
-        setSchedBusy(true);
-        try {
-            await api.post('/api/presentation/schedules', {
-                name: schedName.trim() || `${schedChosen.map(p => p.label).join(' + ')} — ${target}`,
-                source: schedSource, params: scheduleParams(),
-                days_of_month: schedDays, hour: schedHour, minute: schedMinute, timezone: schedTz,
-                client_id: localStorage.getItem('selected_client_id') || null,
-            });
-            toast.success('Schedule saved');
-            setSchedName('');
-            await loadSchedules();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Could not save schedule'); }
-        finally { setSchedBusy(false); }
-    };
-
-    const runScheduleNow = async (id) => {
-        setSchedBusy(true);
-        try {
-            await api.post(`/api/presentation/schedules/${id}/run`);
-            toast.success('Building now — it will appear in Documents when finished');
-        } catch { toast.error('Could not start that schedule'); }
-        finally { setSchedBusy(false); }
-    };
-
-    const toggleSchedule = async (sc) => {
-        setSchedBusy(true);
-        try {
-            await api.patch(`/api/presentation/schedules/${sc.id}`, { active: !sc.active });
-            await loadSchedules();
-        } catch { toast.error('Could not update schedule'); }
-        finally { setSchedBusy(false); }
-    };
-
-    const deleteSchedule = async (id) => {
-        setSchedBusy(true);
-        try {
-            await api.delete(`/api/presentation/schedules/${id}`);
-            setSchedules(ss => ss.filter(x => x.id !== id));
-        } catch { toast.error('Could not delete schedule'); }
-        finally { setSchedBusy(false); }
-    };
     // Combined deck: any subset of GSC / GA4 / Ads for ONE client. Reuses the per-platform
     // pickers below rather than duplicating them.
     const [combined, setCombined] = useState({ gsc: true, ga4: true, ads: false });
@@ -478,6 +373,116 @@ const Presentation = () => {
         insights: layerModels.insights || prov,
         html: layerModels.html || prov,
     });
+
+    /* Schedule derivation lives HERE, below every piece of state it reads. It was originally
+       up with the schedule useState calls, where `schedMissing` evaluated p.target() -> propUrl
+       before that const existed: a temporal-dead-zone ReferenceError on every render, which put
+       the whole page into the error boundary. Derived values must follow their inputs. */
+    const loadSchedules = async () => {
+        try {
+            const { data } = await api.get('/api/presentation/schedules');
+            setSchedules(data.schedules || []);
+        } catch { /* non-fatal — the page still generates decks */ }
+    };
+    useEffect(() => { loadSchedules(); }, []);
+
+    /* Snapshot the CURRENT form into schedule params, so a schedule reproduces exactly what the
+       Generate button would make right now. Kept in one place because every source needs a
+       different site identifier. */
+    // What each platform would be built from, and whether that is actually available. Surfaced in
+    // the UI so a missing property is a visible blocker rather than a deck that silently omits it.
+    const SCHED_PLATFORMS = [
+        { key: 'gsc', label: 'Search Console', target: () => propUrl, hint: 'Pick a site on the GSC tab' },
+        { key: 'ga4', label: 'Analytics', target: () => ga4PropId, hint: 'Pick a property on the GA4 tab' },
+        { key: 'ads', label: 'Google Ads', target: () => adsCustId, hint: 'Pick an account on the Google Ads tab' },
+        { key: 'bing', label: 'Bing', target: () => bingSite?.url, hint: 'Pick a site on the Bing tab' },
+    ];
+    const schedChosen = SCHED_PLATFORMS.filter(p => schedSrc[p.key]);
+    const schedMissing = schedChosen.filter(p => !p.target());
+    // One platform = that source; several = the combined generator. Bing cannot be combined.
+    const schedSource = schedSrc.bing ? 'bing'
+        : schedChosen.length > 1 ? 'combined'
+        : (schedChosen[0]?.key || '');
+
+    const toggleSchedSrc = (key) => setSchedSrc(prev => (
+        // Ticking Bing clears the rest and vice versa — the combined deck has no Bing section.
+        key === 'bing'
+            ? { gsc: false, ga4: false, ads: false, bing: !prev.bing }
+            : { ...prev, bing: false, [key]: !prev[key] }
+    ));
+
+    const scheduleParams = () => {
+        const base = {
+            days, provider, images: useImages, notes, creativity, pipeline, style,
+            theme_mode: themeMode,
+            ...(themeMode === 'custom' ? { custom_color: customColor } : {}),
+            ...(pipeline === 'layered' ? { models: resolvedLayerModels(provider) } : {}),
+            ...(brandTerms.trim() ? { brand_terms: brandTerms } : {}),
+            account_id: localStorage.getItem('selected_account_id') || null,
+        };
+        if (schedSource === 'bing') return { ...base, site: bingSite?.url, bing_account_id: bingSite?.account_id };
+        if (schedSource === 'gsc') return { ...base, property: propUrl };
+        if (schedSource === 'ga4') return { ...base, property_id: ga4PropId };
+        if (schedSource === 'ads') return { ...base, customer_id: adsCustId, label: adsLabel || '' };
+        return {   // combined — only the ticked platforms are passed through
+            ...base,
+            property: schedSrc.gsc ? propUrl : '',
+            property_id: schedSrc.ga4 ? ga4PropId : '',
+            customer_id: schedSrc.ads ? adsCustId : '',
+            label: adsLabel || '',
+        };
+    };
+
+    const scheduleTarget = () => schedChosen[0]?.target() || '';
+
+    const saveSchedule = async () => {
+        if (!schedChosen.length) { toast.error('Choose at least one data source for this schedule'); return; }
+        if (schedMissing.length) {
+            toast.error(`${schedMissing.map(p => p.label).join(', ')}: no site selected yet`); return;
+        }
+        const target = scheduleTarget();
+        if (!schedDays.length) { toast.error('Pick at least one day of the month'); return; }
+        setSchedBusy(true);
+        try {
+            await api.post('/api/presentation/schedules', {
+                name: schedName.trim() || `${schedChosen.map(p => p.label).join(' + ')} — ${target}`,
+                source: schedSource, params: scheduleParams(),
+                days_of_month: schedDays, hour: schedHour, minute: schedMinute, timezone: schedTz,
+                client_id: localStorage.getItem('selected_client_id') || null,
+            });
+            toast.success('Schedule saved');
+            setSchedName('');
+            await loadSchedules();
+        } catch (e) { toast.error(e.response?.data?.detail || 'Could not save schedule'); }
+        finally { setSchedBusy(false); }
+    };
+
+    const runScheduleNow = async (id) => {
+        setSchedBusy(true);
+        try {
+            await api.post(`/api/presentation/schedules/${id}/run`);
+            toast.success('Building now — it will appear in Documents when finished');
+        } catch { toast.error('Could not start that schedule'); }
+        finally { setSchedBusy(false); }
+    };
+
+    const toggleSchedule = async (sc) => {
+        setSchedBusy(true);
+        try {
+            await api.patch(`/api/presentation/schedules/${sc.id}`, { active: !sc.active });
+            await loadSchedules();
+        } catch { toast.error('Could not update schedule'); }
+        finally { setSchedBusy(false); }
+    };
+
+    const deleteSchedule = async (id) => {
+        setSchedBusy(true);
+        try {
+            await api.delete(`/api/presentation/schedules/${id}`);
+            setSchedules(ss => ss.filter(x => x.id !== id));
+        } catch { toast.error('Could not delete schedule'); }
+        finally { setSchedBusy(false); }
+    };
 
     // Persist running jobs (with a server job_id) so a reload can re-attach.
     useEffect(() => {
