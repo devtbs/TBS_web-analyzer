@@ -596,6 +596,52 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     // One file with the whole analysis: each section as its own titled block (own header row),
     // separated by a blank line. Opens fine in Excel/Sheets and keeps each table's real columns
     // instead of squashing everything into a lowest-common-denominator shape.
+    // JSON export — produces the TBS Topical Map Editor's own interchange format, verified against
+    // a real 1,589-row export from that tool. Shape:
+    //   { products: {slug: {title,url,intent,audience}}, topic_products: [row, ...] }
+    // Every row carries exactly these 12 fields; the editor writes all of them on every row, so we
+    // do too rather than relying on its importer to fill defaults.
+    //
+    // `entity`/`cluster` are lowercase slugs (always equal to each other in the editor's data),
+    // while `sub`/`sub_learning_area` are Title Case prose and always duplicate each other.
+    const slugify = (v) => String(v || '').toLowerCase().trim()
+        .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    const editorRow = (a, i, language) => {
+        const entity = slugify(a.category_l1 || a.main_entity);
+        return {
+            topic: a.main_entity || a.title || '',
+            // The editor's status vocabulary is New Core / Complete / Review / Existing / In progress.
+            // Everything we generate is a proposal, so it lands as New Core.
+            status: 'New Core',
+            cluster: entity,
+            entity,
+            sub: a.context || a.category_l2 || 'Learning',
+            sub_learning_area: a.context || a.category_l2 || 'Learning',
+            url: a.suggested_url
+                ? (a.suggested_url.endsWith('/') ? a.suggested_url : `${a.suggested_url}/`)
+                : '',
+            // `primary` and `supporting_content` are references INTO products — product slugs, not
+            // topic names. We have no product catalogue here, so they stay empty rather than
+            // pointing at keys that don't exist. (This is why internal_links can't be carried over:
+            // they are topic names, and this schema has no field for topic-to-topic links.)
+            primary: '',
+            supporting_content: [],
+            language,
+            id: i + 1,
+            source_pages: null,
+        };
+    };
+
+    const exportJson = () => {
+        const language = (activeMap.url || '').includes('/th') ? 'th' : 'en';
+        const payload = {
+            products: {},
+            topic_products: mergedArticles.map((a, i) => editorRow(a, i, language)),
+        };
+        _dl(JSON.stringify(payload, null, 2), `${_slug}-topic-product-map.json`, 'application/json');
+    };
+
     const exportEverythingCsv = () => {
         const lines = [];
         lines.push([csvEsc(`Topical Map — ${activeMap.central_entity || getDomain(activeMap.url)}`)].join(','));
@@ -841,6 +887,14 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                     >
                         <ArrowDownTrayIcon className="w-4 h-4" />
                         Full CSV
+                    </button>
+                    <button
+                        onClick={exportJson}
+                        title="Topical map as JSON — import into the TBS Topical Map Editor or another site"
+                        className="flex items-center gap-2 px-3 py-2 sm:py-2.5 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-xl font-bold text-sm transition-all whitespace-nowrap"
+                    >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        JSON
                     </button>
                     <button
                         onClick={exportAllToPDF}
