@@ -447,7 +447,10 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     // (paste into a doc/brief) and as CSV (drop into a content calendar / sheet). This is the
     // "last mile" — hand the client the actual map as data, not just a picture.
     const _dl = (text, filename, mime) => {
-        const blob = new Blob(['﻿' + text], { type: `${mime};charset=utf-8;` });
+        // The BOM is there so Excel reads CSV as UTF-8. It must NOT go on JSON: a leading BOM makes
+        // JSON.parse (and most importers) throw, so an exported map would be rejected outright.
+        const bom = mime.includes('csv') ? '﻿' : '';
+        const blob = new Blob([bom + text], { type: `${mime};charset=utf-8;` });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = filename; a.click();
@@ -607,8 +610,39 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     const slugify = (v) => String(v || '').toLowerCase().trim()
         .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
+    // The editor groups by a SMALL vocabulary — its own 1,589-row map uses 8 entities and 8
+    // sub-areas. Slugifying each node's category instead produced 18 entities across 20 rows, so
+    // every topic became its own parent and the Entity coverage view was useless.
+    //
+    // The site's own URL architecture is the most reliable grouping signal we have: the AI already
+    // assigns nodes to /wine/, /sake/, /services/ coherently, and those segments ARE the site's
+    // real sections. Fall back to the category slug only when a node has no URL.
+    const editorEntity = (a) => {
+        const seg = String(a.suggested_url || '').replace(/^\/+/, '').split('/')[0];
+        return slugify(seg) || slugify(a.category_l1 || a.main_entity);
+    };
+
+    // Map onto the editor's fixed sub-area vocabulary. Anything unmatched becomes Learning, which is
+    // the dominant value in its own data (1014/1589) — a safe, editable default.
+    const SUB_AREAS = [
+        [/pair|cheese|food match/i, 'Pairing'],
+        [/career|job|profession/i, 'Career'],
+        [/brew|production|making|vineyard|harvest|ferment/i, 'Production'],
+        // Service before Experiences: "Wine Tasting Etiquette" is about service, but would otherwise
+        // match "tasting" first. Order these most-specific-first.
+        [/storage|serving|service|delivery|shipping|etiquette|decant/i, 'Service'],
+        [/tasting|class|course|tour|experience|event|workshop/i, 'Experiences'],
+        [/industry|market|trend|news|business|report/i, 'Industry'],
+        [/select|choos|buy|shop|style|invest|collect|price/i, 'Selection'],
+    ];
+    const editorSub = (a) => {
+        const hay = `${a.context || ''} ${a.title || ''} ${a.main_entity || ''}`;
+        return (SUB_AREAS.find(([re]) => re.test(hay)) || [null, 'Learning'])[1];
+    };
+
     const editorRow = (a, i, language) => {
-        const entity = slugify(a.category_l1 || a.main_entity);
+        const entity = editorEntity(a);
+        const sub = editorSub(a);
         return {
             topic: a.main_entity || a.title || '',
             // The editor's status vocabulary is New Core / Complete / Review / Existing / In progress.
@@ -616,8 +650,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             status: 'New Core',
             cluster: entity,
             entity,
-            sub: a.context || a.category_l2 || 'Learning',
-            sub_learning_area: a.context || a.category_l2 || 'Learning',
+            sub,
+            sub_learning_area: sub,
             url: a.suggested_url
                 ? (a.suggested_url.endsWith('/') ? a.suggested_url : `${a.suggested_url}/`)
                 : '',
