@@ -22,10 +22,21 @@ _CACHE: Dict[tuple, tuple] = {}
 _TTL = 24 * 60 * 60   # Mangools de-dupes identical lookups within 24h, so cache for 24h.
 
 # TLD → Mangools location_id (subset; falls back to Thailand to match the SERP default).
+# Mangools location ids are 2000 + the ISO-3166 numeric country code (de=276 -> 2276).
+# An unmapped TLD silently falls back to Thailand, which is how a Swiss hotel ended up being
+# researched against the Thai market — so keep this list broad rather than minimal.
 _TLD_LOCATION = {
     "th": 2764, "uk": 2826, "co.uk": 2826, "au": 2036, "com.au": 2036, "sg": 2702,
     "my": 2458, "ph": 2608, "vn": 2704, "in": 2356, "jp": 2392, "us": 2840, "ca": 2124,
     "de": 2276, "fr": 2250,
+    # Europe
+    "ch": 2756, "at": 2040, "it": 2380, "es": 2724, "nl": 2528, "be": 2056, "ie": 2372,
+    "pt": 2620, "se": 2752, "no": 2578, "dk": 2208, "fi": 2246, "pl": 2616, "cz": 2203,
+    "gr": 2300, "ro": 2642, "hu": 2348, "co.uk": 2826,
+    # Asia-Pacific / Middle East / Americas
+    "nz": 2554, "co.nz": 2554, "hk": 2344, "id": 2360, "co.id": 2360, "kr": 2410,
+    "tw": 2158, "ae": 2784, "sa": 2682, "za": 2710, "co.za": 2710, "br": 2076,
+    "com.br": 2076, "mx": 2484, "com.mx": 2484, "ar": 2032, "com.ar": 2032,
 }
 _DEFAULT_LOCATION = 2764   # Thailand
 _DEFAULT_LANGUAGE = 0      # Any Language
