@@ -14,13 +14,7 @@ import api from '../api/axios';
 import toast from 'react-hot-toast';
 import { prettyUrl } from '../utils/url';
 
-// Target market for keyword volumes / SERP (Quick Analysis). Defaults to Thailand; pick per client.
-const QUICK_MARKETS = [
-    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
-    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
-    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
-    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
-];
+import { MARKETS as QUICK_MARKETS } from '../constants/markets';
 
 /* ── Favicon helper ─────────────────────────────────────────── */
 const Favicon = ({ url, size = 20 }) => {

@@ -8,12 +8,7 @@ import Favicon from '../components/ui/Favicon';
 
 /* Self-hosted keyword rank tracker — daily Google positions from our own SerpAPI (replaces SE Ranking). */
 
-const COUNTRIES = [
-    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
-    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
-    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
-    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
-];
+import { MARKETS as COUNTRIES } from '../constants/markets';
 const bareDomain = (u) => (u || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
 const posColor = (p) => p == null ? 'text-slate-300' : p <= 3 ? 'text-emerald-600' : p <= 10 ? 'text-teal-600' : p <= 20 ? 'text-amber-600' : 'text-slate-500';
 

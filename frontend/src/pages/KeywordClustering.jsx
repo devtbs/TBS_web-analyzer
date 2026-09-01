@@ -9,12 +9,7 @@ import GSCPropertySelector from '../components/gsc/GSCPropertySelector';
    Paste/import keywords → live SERP fetch → cluster by shared ranking URLs → pillar + AI intent +
    AI page brief + GSC gap flag. Async job with progress; results persist. */
 
-const COUNTRIES = [
-    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
-    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
-    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
-    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
-];
+import { MARKETS as COUNTRIES } from '../constants/markets';
 const INTENT_COLOR = {
     informational: 'bg-sky-100 text-sky-700', commercial: 'bg-amber-100 text-amber-700',
     transactional: 'bg-emerald-100 text-emerald-700', navigational: 'bg-violet-100 text-violet-700',

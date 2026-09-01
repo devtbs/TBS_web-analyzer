@@ -8,13 +8,7 @@ import { motion } from 'framer-motion';
 import Favicon from '../components/ui/Favicon';
 import { prettyUrl } from '../utils/url';
 
-// Target market for keyword volumes / SERP. Defaults to Thailand; pick where the client's customers search.
-const MARKETS = [
-    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
-    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
-    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
-    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
-];
+import { MARKETS } from '../constants/markets';
 
 const PageSelector = () => {
     const [searchParams] = useSearchParams();

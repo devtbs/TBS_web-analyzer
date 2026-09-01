@@ -7,12 +7,7 @@ import api from '../api/axios';
 /* Keyword Discovery — seed-first expansion (Keyword-Insights style). Enter a few seeds → a large
    keyword universe with real volume/KD. Mangools-powered (cheap); SERP questions optional. */
 
-const COUNTRIES = [
-    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
-    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
-    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
-    { label: 'Japan', gl: 'jp', locId: 2392 }, { label: 'India', gl: 'in', locId: 2356 },
-];
+import { MARKETS as COUNTRIES } from '../constants/markets';
 const kdColor = (kd) => kd == null ? 'text-slate-400' : kd <= 30 ? 'text-emerald-600' : kd <= 50 ? 'text-amber-600' : 'text-red-500';
 
 export default function KeywordDiscovery() {

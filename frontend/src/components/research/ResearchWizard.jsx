@@ -11,22 +11,8 @@ import GSCPropertySelector from '../gsc/GSCPropertySelector';
 
 const bareDomain = (u) => (u || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
 // Country → SERP gl code + Mangools location_id.
-const COUNTRIES = [
-    { label: 'Thailand', gl: 'th', locId: 2764 }, { label: 'United States', gl: 'us', locId: 2840 },
-    { label: 'United Kingdom', gl: 'uk', locId: 2826 }, { label: 'Australia', gl: 'au', locId: 2036 },
-    { label: 'Singapore', gl: 'sg', locId: 2702 }, { label: 'Malaysia', gl: 'my', locId: 2458 },
-    { label: 'Philippines', gl: 'ph', locId: 2608 }, { label: 'Vietnam', gl: 'vn', locId: 2704 },
-    { label: 'India', gl: 'in', locId: 2356 }, { label: 'Japan', gl: 'jp', locId: 2392 },
-    { label: 'Canada', gl: 'ca', locId: 2124 }, { label: 'Germany', gl: 'de', locId: 2276 },
-    { label: 'France', gl: 'fr', locId: 2250 },
-];
-const guessCountry = (domain) => {
-    const d = (domain || '').toLowerCase();
-    if (d.endsWith('.co.uk')) return 'uk';
-    if (d.endsWith('.com.au')) return 'au';
-    const tld = d.split('.').pop();
-    return (COUNTRIES.find(c => c.gl === tld) || {}).gl || 'th';
-};
+import { MARKETS as COUNTRIES, guessMarket } from '../../constants/markets';
+const guessCountry = guessMarket;
 const kdColor = (kd) => kd == null ? 'text-slate-400' : kd <= 30 ? 'text-emerald-600' : kd <= 50 ? 'text-amber-600' : 'text-red-500';
 
 // Near-duplicate collapse: keywords that reduce to the same word-set are rewordings of one topic
