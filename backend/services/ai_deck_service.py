@@ -233,6 +233,50 @@ GSC_STRUCTURE = (
 )
 
 
+# Structure for the PROSPECT PROPOSAL deck (AIO / GEO / AEO pitch).
+# Not a client report: this is sales collateral for a site we have no access to, so every number
+# comes from the prospect analysis (SERP + Mangools + measured AI Overview visibility) and there is
+# no Search Console data anywhere in it. Follows the six-section arc of the Panorama proposal.
+PROPOSAL_STRUCTURE = (
+    "1. Cover Slide — the prospect's brand/domain, 'AI Search Visibility Proposal', and the date as a subtitle, "
+    "on a professional hero visual. NO metrics on the cover.\n"
+    "2. Why Now — the shift to AI-first discovery. Use the WHY NOW facts supplied in the data verbatim as stat "
+    "callouts (do NOT invent statistics — if a figure is not in the data, do not state one). Contrast how buyers "
+    "used to search with how they search now. Frame it as a market shift already underway, not a prediction. "
+    "Stat callouts and a short narrative; no charts needed.\n"
+    "3. One Strategy — the unifying thesis: AIO + GEO + AEO are one discipline, strengthening an entity's "
+    "prominence and its place in the knowledge graph. A clean two-column comparison of the classic approach vs the "
+    "modern one. Make clear that SEO fundamentals still apply — this extends them, it does not replace them.\n"
+    "4. The Three Pillars — one slide (or three compact panels) defining AIO (visibility inside AI answers), "
+    "GEO (influencing what future models learn), AEO (winning the retrieval path each assistant uses). Include the "
+    "AI-to-retrieval-index mapping from the data as a small table. Keep each definition to two sentences.\n"
+    "5. Where {brand} Stands Today — THE EVIDENCE SLIDE, and the heart of the deck. Use AI VISIBILITY exactly as "
+    "given: how many queries were checked, how many returned an AI Overview, and in how many this brand was cited. "
+    "State it as a fraction ('cited in 1 of 6 AI answers checked'), NEVER as an invented percentage of the whole "
+    "market. Pair it with the queries where the brand was absent. Honest and specific, not alarmist.\n"
+    "6. Who Is Being Cited Instead — from CITED COMPETITORS: a ranked table of the domains the AI cited, with "
+    "citation counts. Where aggregators/OTAs/directories dominate, call out that the brand is being intermediated "
+    "by third parties on its own topics — that is the commercial cost of absence.\n"
+    "7. Search Demand & Competitive Landscape — from KEYWORD OPPORTUNITIES and COMPETITORS: the real monthly "
+    "search volume available in this niche and who currently holds the organic ground. One chart (bar of volume by "
+    "keyword) plus a compact competitor list.\n"
+    "8. The Coverage Gap — from CORE TOPICS / OUTER TOPICS / CONTENT GAPS: what a complete topical footprint for "
+    "this business looks like versus what exists now. Show Core (revenue-driving) and Outer (authority-building) as "
+    "two clearly-labelled groups, and name the gaps.\n"
+    "9. Sample Content Plan — from CONTENT PLAN: a readable table of ~10 representative pages (entity · angle · "
+    "suggested URL · monthly volume where known). Label it clearly as a representative sample of a larger map, "
+    "not the finished plan.\n"
+    "10. The Plan — the sequenced engagement, as numbered steps with what each produces: technical foundation and "
+    "schema; the full topical map; structured answer pages; authority and digital PR; measurement. Each step gets "
+    "one line on the deliverable and one on why it comes at that point in the order.\n"
+    "11. How We Measure It — the reporting model: which metrics move first (AI citations, tracked prompts), which "
+    "follow (rankings, traffic), and the cadence. Be explicit that AI visibility is the leading indicator here.\n"
+    "12. Investment — from PRICING: the tiers as clean comparison cards showing monthly fee and what scales between "
+    "them, plus the one-time audit option. Show the currency exactly as given. No discounting language.\n"
+    "13. Closing — a short recap of the gap found and the first step, with a clear call to action and contact line."
+)
+
+
 # Structure for the GA4-only website-analytics deck (Google Analytics on-site behaviour).
 # No Search Console / organic-search slides — this deck is purely GA4.
 GA4_STRUCTURE = (

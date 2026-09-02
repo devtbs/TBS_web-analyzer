@@ -64,6 +64,10 @@ const siteTags = (url) => {
 const Presentation = () => {
     const { switchAccount } = useAuth();
     const [mode, setMode] = useState('gsc');
+    // Proposal decks are built from a finished PROSPECT analysis, not a Google property — there is
+    // no account to read for a site we don't own.
+    const [analyses, setAnalyses] = useState([]);
+    const [analysisId, setAnalysisId] = useState('');
 
     /* ── Recurring schedules ─────────────────────────────────────────────
        A schedule reuses whatever is configured above (source, site, period, model, design) and
@@ -337,7 +341,8 @@ const Presentation = () => {
     const combinedReady = (combined.gsc && !!propUrl)
         || (combined.ga4 && (!!ga4PropId || (combinedGa4Auto && combined.gsc && !!propUrl)))
         || (combined.ads && !!adsCustId);
-    const canGenerate = mode === 'combined' ? combinedReady
+    const canGenerate = mode === 'proposal' ? !!analysisId
+        : mode === 'combined' ? combinedReady
         : mode === 'gsc' ? !!propUrl
         : mode === 'ga4' ? !!ga4PropId
         : mode === 'ads' ? !!adsCustId
@@ -378,6 +383,13 @@ const Presentation = () => {
        up with the schedule useState calls, where `schedMissing` evaluated p.target() -> propUrl
        before that const existed: a temporal-dead-zone ReferenceError on every render, which put
        the whole page into the error boundary. Derived values must follow their inputs. */
+    useEffect(() => {
+        if (mode !== 'proposal' || analyses.length) return;
+        api.get('/api/history')
+            .then(r => setAnalyses((r.data.analyses || r.data || []).filter(a => a.status === 'completed')))
+            .catch(() => toast.error('Could not load analyses'));
+    }, [mode]);
+
     const loadSchedules = async () => {
         try {
             const { data } = await api.get('/api/presentation/schedules');
@@ -555,6 +567,10 @@ const Presentation = () => {
                 if (combined.ads && adsCustId) { qs.set('ads_customer_id', adsCustId); qs.set('ads_label', adsLabel || ''); }
                 response = await fetch(`/api/presentation/ai-deck-combined?${qs.toString()}`,
                     { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
+            } else if (mode === 'proposal') {
+                response = await fetch(
+                    `/api/presentation/ai-deck-proposal?analysis_id=${encodeURIComponent(analysisId)}&images=${useImages}${prov ? `&provider=${prov}` : ''}`,
+                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
             } else if (mode === 'gsc') {
                 response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${prov}&images=${useImages}`,
@@ -672,8 +688,8 @@ const Presentation = () => {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
                 className="mt-6 bg-white border border-slate-200 rounded-2xl p-6 md:p-8 shadow-sm">
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-6">
-                    {[['combined', 'Combined'], ['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['bing', 'Bing'], ['pdf', 'From a PDF']].map(([m, label]) => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 mb-6">
+                    {[['combined', 'Combined'], ['gsc', 'GSC'], ['ga4', 'GA4'], ['ads', 'Google Ads'], ['bing', 'Bing'], ['proposal', 'Proposal'], ['pdf', 'From a PDF']].map(([m, label]) => (
                         <button key={m} onClick={() => setMode(m)} disabled={generating}
                             className={`py-2.5 px-2 rounded-xl font-bold text-sm border transition-colors ${
                                 mode === m ? 'bg-[#26397A] text-white border-[#26397A]' : 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'}`}>
@@ -681,6 +697,27 @@ const Presentation = () => {
                         </button>
                     ))}
                 </div>
+
+                {mode === 'proposal' && (
+                    <div className="mb-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Prospect analysis</label>
+                        <select value={analysisId} onChange={(e) => setAnalysisId(e.target.value)}
+                            disabled={generating} className={fieldCls + ' text-sm'}>
+                            <option value="">Choose a completed analysis…</option>
+                            {analyses.map(a => (
+                                <option key={a.analysis_id} value={a.analysis_id}>
+                                    {(a.urls && a.urls[0]) || a.label || a.analysis_id}
+                                    {a.created_at ? ` — ${new Date(a.created_at).toLocaleDateString()}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-slate-500 mt-2">
+                            Builds an AIO/GEO/AEO pitch from a Quick Analysis: measured AI-answer visibility,
+                            who is cited instead, the coverage gap, a sample content plan and your rate card.
+                            Uses no Search Console data — it works for sites you have no access to.
+                        </p>
+                    </div>
+                )}
 
                 {mode === 'combined' && (
                     <div className="mb-6">

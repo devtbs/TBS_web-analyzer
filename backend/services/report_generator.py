@@ -1502,3 +1502,175 @@ async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
     html = resolve_ai_icons(html)
     html = _apply_theme(html, palette["accent"], palette["accent2"])
     return {"site": site, "domain": name, "html": html, "artifacts": artifacts}
+
+
+# ============================================================================
+# PROSPECT PROPOSAL DECK (AIO / GEO / AEO pitch)
+# ============================================================================
+# Sales collateral for a site we have no access to. Everything measurable comes from a prospect
+# analysis (SERP + Mangools + AI Overview readings); there is deliberately NO Search Console data.
+
+# Edit these rates here — they are the only place pricing is defined, so changing a tier needs no
+# code change elsewhere. Taken from the Panorama proposal as the standing TBS rate card.
+PROPOSAL_PRICING = {
+    "currency": "THB",
+    "tiers": [
+        {"name": "Starter", "monthly": 40000,
+         "for": "Single location, one language, core AI visibility",
+         "includes": ["10 tracked AI prompts", "50 SEO keywords", "2 answer pages / month",
+                      "Monthly dashboard"]},
+        {"name": "Mid-Market", "monthly": 80000,
+         "for": "Multi-service or multi-language, competitive niche",
+         "includes": ["30 tracked AI prompts", "150 SEO keywords", "5 answer pages / month",
+                      "Digital PR outreach", "Monthly dashboard + review"]},
+        {"name": "Enterprise", "monthly": 150000,
+         "for": "Multi-location or multi-brand, category leadership",
+         "includes": ["75+ tracked AI prompts", "400+ SEO keywords", "10+ answer pages / month",
+                      "Tier-1 digital PR", "Quarterly strategy review"]},
+        {"name": "Custom", "monthly": None,
+         "for": "Groups, franchises, or bespoke scope",
+         "includes": ["Scoped to requirement"]},
+    ],
+    "one_time_audit": 25000,
+    "scales_with": ["tracked AI prompts", "SEO keywords", "locations / languages",
+                    "content pieces per month", "backlink and PR volume"],
+}
+
+# Stated as fact in the deck, so keep these sourced and current rather than letting the model
+# invent market statistics — the structure explicitly forbids inventing any.
+PROPOSAL_WHY_NOW = [
+    "AI Overviews now appear on the majority of informational Google queries.",
+    "Users who see an AI answer still click through when the source is cited — being cited is the "
+    "new click.",
+    "Assistants answer from a retrieval index, not from a ranking page: being #1 on Google does not "
+    "mean being present in the answer.",
+]
+
+# Which retrieval index each assistant leans on — the AEO argument for why one strategy is not enough.
+PROPOSAL_AI_INDEX_MAP = [
+    {"assistant": "ChatGPT Search", "index": "Bing"},
+    {"assistant": "Claude", "index": "Brave"},
+    {"assistant": "Google AI Overviews / Gemini", "index": "Google"},
+    {"assistant": "Perplexity", "index": "Own crawler + Bing"},
+    {"assistant": "Copilot", "index": "Bing"},
+]
+
+
+def _proposal_brief(analysis: Dict) -> str:
+    """Turn a stored prospect analysis into the deck's data brief.
+
+    Reads ONLY what a prospect run can produce. Anything absent is rendered as "(none)" so the
+    model omits that slide rather than inventing content for it.
+    """
+    maps = analysis.get("topical_maps") or []
+    m = maps[0] if maps else {}
+    strat = m.get("content_strategy") or {}
+    aiv = m.get("ai_visibility") or {}
+    domain = _domain_from(m.get("url") or "")
+    brand = m.get("central_entity") or domain
+
+    def _lines(rows, fmt, empty="(none)"):
+        out = [fmt(r) for r in rows]
+        return "\n".join(out) if out else empty
+
+    kw = [k for k in (m.get("keyword_volumes") or []) if k.get("keyword")][:15]
+    arts = (m.get("content_articles") or [])[:10]
+    comps = (m.get("competitive_analysis") or {}).get("top_competitors") or []
+
+    cited = aiv.get("top_cited_competitors") or []
+    ai_block = "(none — no AI Overviews were returned for the queries checked)"
+    if aiv.get("queries_checked"):
+        ai_block = (
+            f"  Queries checked: {aiv.get('queries_checked')}\n"
+            f"  Returned an AI Overview: {aiv.get('ai_overview_present')}\n"
+            f"  Of those, resolved (sources readable): {aiv.get('resolved')}\n"
+            f"  {brand} was cited in: {aiv.get('cited_count')} of {aiv.get('resolved')}\n"
+            f"  Cited on: {', '.join(aiv.get('cited_queries') or []) or '(none)'}\n"
+            f"  Absent on: {', '.join(aiv.get('not_cited_queries') or []) or '(none)'}"
+        )
+
+    return f"""BRAND: {brand}
+DOMAIN: {domain}
+BUSINESS MODEL: {m.get('business_model') or '(unknown)'}
+CENTRAL ENTITY: {m.get('central_entity') or '(unknown)'}
+
+WHY NOW (state these as given; do NOT add statistics of your own):
+{chr(10).join('  - ' + f for f in PROPOSAL_WHY_NOW)}
+
+AI ASSISTANT → RETRIEVAL INDEX:
+{_lines(PROPOSAL_AI_INDEX_MAP, lambda r: f"  {r['assistant']} → {r['index']}")}
+
+AI VISIBILITY (measured on live SERPs — report as a fraction, never as a market percentage):
+{ai_block}
+
+CITED COMPETITORS (domains the AI cited instead):
+{_lines(cited, lambda r: f"  {r['domain']} — cited {r['citations']}x")}
+
+COMPETITORS (organic):
+{_lines([{'d': c} for c in comps[:10]], lambda r: f"  {r['d']}")}
+
+KEYWORD OPPORTUNITIES (real monthly volume):
+{_lines(kw, lambda k: f"  {k.get('keyword')} — {k.get('avg_monthly_searches') or 0}/mo, KD {k.get('kd')}")}
+
+CORE TOPICS (revenue-driving): {', '.join(strat.get('core_topics') or []) or '(none)'}
+OUTER TOPICS (authority-building): {', '.join(strat.get('outer_topics') or []) or '(none)'}
+CONTENT GAPS: {', '.join(strat.get('content_gaps') or []) or '(none)'}
+
+CONTENT PLAN (representative sample of a larger map):
+{_lines(arts, lambda a: f"  {a.get('main_entity')} · {a.get('context')} · {a.get('suggested_url') or '(proposed)'} · {a.get('search_volume') or '—'}/mo")}
+
+PRICING (currency {PROPOSAL_PRICING['currency']}; one-time audit {PROPOSAL_PRICING['one_time_audit']}):
+{_lines(PROPOSAL_PRICING['tiers'], lambda t: f"  {t['name']} — {t['monthly'] or 'on application'}/mo — {t['for']} — includes: {'; '.join(t['includes'])}")}
+  Scales with: {', '.join(PROPOSAL_PRICING['scales_with'])}
+"""
+
+
+def _domain_from(url: str) -> str:
+    from urllib.parse import urlparse
+    try:
+        return (urlparse(url).netloc or url).replace("www.", "").strip("/")
+    except Exception:
+        return (url or "").replace("www.", "").strip("/")
+
+
+async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = True,
+                                    notes: str = "", on_progress=None, creativity: str = "balanced",
+                                    pipeline: str = "single", models: Optional[dict] = None,
+                                    theme_mode: str = "tbs", custom_color: Optional[str] = None,
+                                    style: str = "tbs", prompt: Optional[str] = None) -> Dict:
+    """AIO/GEO/AEO proposal deck built from a completed PROSPECT analysis.
+
+    Takes the stored analysis rather than a live API service, because the whole point is that we
+    have no credentials for this site — the evidence is what the prospect run measured.
+    """
+    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
+                                          _AI_IMG_RE, PROPOSAL_STRUCTURE, _apply_theme)
+    from services.highlights import to_brief_block
+    from config import settings
+
+    maps = analysis.get("topical_maps") or []
+    if not maps:
+        raise ValueError("This analysis has no topical map yet — let it finish before building a proposal.")
+    m = maps[0]
+    domain = _domain_from(m.get("url") or "")
+    brand = m.get("central_entity") or domain
+
+    if on_progress:
+        await on_progress("Assembling proposal evidence…")
+    brief = _proposal_brief(analysis) + to_brief_block(notes)
+    palette = await resolve_deck_palette(theme_mode, custom_color, domain)
+    brand_directive = _brand_accent_directive(palette["accent"], palette["accent2"])
+    image_cache = {} if images else None
+    artifacts = {}
+
+    html = await generate_deck_html(
+        brief, prompt=prompt, brand=brand_directive,
+        structure=PROPOSAL_STRUCTURE.replace("{brand}", brand),
+        provider=provider or settings.DEFAULT_AI_PROVIDER,
+        on_progress=on_progress, image_cache=image_cache, seed=domain,
+        creativity=creativity, pipeline=pipeline, models=models, style=style, artifacts=artifacts)
+    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
+            if images else _AI_IMG_RE.sub("", html))
+    html = resolve_ai_icons(html)
+    html = _apply_theme(html, palette["accent"], palette["accent2"])
+    return {"domain": domain, "brand": brand, "html": html, "artifacts": artifacts}

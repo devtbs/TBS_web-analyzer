@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from models.schemas import UserInfo
 from auth.auth import get_current_user
 from database import get_db, Document
+from utils.storage import database_store
 from config import settings
 from typing import Optional
 from api.routers._shared import (
@@ -564,6 +565,56 @@ async def presentation_ai_deck_combined(
 
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+@router.post("/api/presentation/ai-deck-proposal")
+async def presentation_ai_deck_proposal(
+    analysis_id: str,
+    provider: str = None,
+    images: bool = True,
+    body: dict = Body(default={}),
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """AIO/GEO/AEO PROPOSAL deck for a prospect, built from a completed Quick Analysis.
+
+    Unlike the client-reporting decks this takes no Google service: a prospect is a site we have no
+    access to, so the evidence is whatever the prospect analysis measured (SERP competitors, real
+    keyword volume, and AI Overview citations). Query: ?analysis_id=<id>."""
+    from services.report_generator import generate_ai_proposal_deck
+    from services.image_service import images_enabled
+    _require_llm_key()
+
+    analysis = database_store.get_analysis(db, analysis_id, current_user.email)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    maps = analysis.get("topical_maps") or []
+    if not maps:
+        raise HTTPException(status_code=400,
+                            detail="That analysis has no topical map yet — wait for it to finish.")
+    label = _domain_of(maps[0].get("url") or "") or "Proposal"
+    client_id = _resolve_deck_client(db, current_user.email, body)
+
+    async def run(on_progress, set_doc_id):
+        doc_id = _create_deck_placeholder(current_user.email, source="proposal", label=label,
+                                          provider=provider or "auto", client_id=client_id)
+        set_doc_id(doc_id)
+        result = await generate_ai_proposal_deck(
+            analysis, provider=provider, images=images and images_enabled(),
+            notes=(body or {}).get("notes", ""),
+            creativity=(body or {}).get("creativity", "balanced"),
+            pipeline=(body or {}).get("pipeline", "single"),
+            models=_parse_models((body or {}).get("models")),
+            theme_mode=(body or {}).get("theme_mode", "tbs"),
+            custom_color=(body or {}).get("custom_color"),
+            style=(body or {}).get("style", "tbs"), on_progress=on_progress)
+        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
+                                             artifacts=result.get("artifacts"))
+        return {"document_id": doc_id, "slides": slides, "label": result["brand"]}
+
+    return StreamingResponse(_stream_deck_generation(run, current_user.email),
+                             media_type="text/event-stream", headers=_SSE_HEADERS)
+
 
 
 # ── Scheduled decks ─────────────────────────────────────────────────────────────────────────
