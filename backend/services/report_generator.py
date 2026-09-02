@@ -1578,7 +1578,18 @@ def _proposal_brief(analysis: Dict) -> str:
     comps = (m.get("competitive_analysis") or {}).get("top_competitors") or []
 
     cited = aiv.get("top_cited_competitors") or []
-    ai_block = "(none — no AI Overviews were returned for the queries checked)"
+    # Three distinct states, and conflating them would put a false claim in a client-facing deck:
+    #   missing   — the analysis predates AI-visibility capture, so nothing was measured
+    #   measured, no AI Overviews appeared
+    #   measured, with results
+    if not aiv:
+        ai_block = ("(NOT MEASURED — this analysis was run before AI visibility capture existed. "
+                    "OMIT the visibility and cited-competitors slides entirely; do NOT state or "
+                    "imply anything about this brand's presence in AI answers.)")
+    elif not aiv.get("queries_checked"):
+        ai_block = "(none — no queries could be checked)"
+    else:
+        ai_block = ""
     if aiv.get("queries_checked"):
         ai_block = (
             f"  Queries checked: {aiv.get('queries_checked')}\n"

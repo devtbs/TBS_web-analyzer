@@ -585,8 +585,10 @@ async def presentation_ai_deck_proposal(
     from services.image_service import images_enabled
     _require_llm_key()
 
-    analysis = database_store.get_analysis(db, analysis_id, current_user.email)
-    if not analysis:
+    # get_analysis does NOT scope by user, so the ownership check has to be explicit — otherwise
+    # any analysis id would build a proposal from someone else's data.
+    analysis = database_store.get_analysis(db, analysis_id)
+    if not analysis or analysis.get("user_email") != current_user.email:
         raise HTTPException(status_code=404, detail="Analysis not found")
     maps = analysis.get("topical_maps") or []
     if not maps:
