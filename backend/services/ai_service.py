@@ -7,6 +7,51 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def _mcp_tools() -> list:
+    """Remote MCP servers to expose to the Responses API, parsed from OPENAI_MCP_SERVERS.
+
+    OpenAI dials these servers itself and executes the tool calls server-side, so no MCP client is
+    needed here. Returns [] on empty or malformed config — a bad server list must not take deck
+    generation down with it.
+    """
+    raw = (getattr(settings, "OPENAI_MCP_SERVERS", "") or "").strip()
+    if not raw:
+        return []
+    try:
+        entries = json.loads(raw)
+        if isinstance(entries, dict):
+            entries = [entries]
+    except Exception as e:
+        logger.error("OPENAI_MCP_SERVERS is not valid JSON — ignoring it: %s", str(e)[:120])
+        return []
+
+    tools = []
+    for e in entries:
+        if not isinstance(e, dict) or not e.get("url"):
+            logger.warning("MCP server entry skipped (needs at least a url): %r", e)
+            continue
+        tool = {
+            "type": "mcp",
+            "server_label": e.get("label") or "mcp",
+            "server_url": e["url"],
+            # Deck generation is unattended: an approval request would arrive as an output item
+            # with nobody to answer it, and the run would stall. Default to never, per-server
+            # overridable for anyone driving this interactively.
+            "require_approval": e.get("require_approval", "never"),
+        }
+        if e.get("description"):
+            tool["server_description"] = e["description"]
+        if e.get("allowed_tools"):
+            tool["allowed_tools"] = e["allowed_tools"]
+        if e.get("authorization"):
+            tool["authorization"] = e["authorization"]
+        tools.append(tool)
+    if tools:
+        logger.info("MCP servers attached to Responses API: %s",
+                    ", ".join(t["server_label"] for t in tools))
+    return tools
+
 # Optional async progress reporter threaded through the deck pipeline so long runs can
 # stream phase-by-phase status to the UI. None = silent (the default everywhere).
 ProgressCb = Optional[Callable[[str], Awaitable[None]]]
@@ -64,6 +109,20 @@ AI_PROVIDERS = {
 # (8 * 8192 ≈ 65K tokens), far beyond any single-call ceiling. The loop stops early as
 # soon as the model finishes naturally, so most decks won't use them all.
 _MAX_CONTINUATIONS = 8
+
+
+def _warn_if_awaiting_approval(output) -> None:
+    """An MCP server set to require approval returns an `mcp_approval_request` output item and then
+    waits. Nothing in this pipeline can answer one, so the tool call simply never happens — log it
+    loudly instead of letting the deck come back quietly missing whatever the tool would have added.
+    """
+    for item in (output or []):
+        if getattr(item, "type", None) == "mcp_approval_request":
+            logger.error(
+                "MCP tool %r on server %r needs approval, which this pipeline cannot give — the "
+                "call was skipped. Set require_approval to \"never\" for this server, or add the "
+                "tool to allowed_tools.",
+                getattr(item, "name", "?"), getattr(item, "server_label", "?"))
 
 
 class AIService:
@@ -222,9 +281,13 @@ class AIService:
         # model can return an empty deck. See OPENAI_REASONING_EFFORT in config.py.
         if reasoning_effort:
             kwargs["reasoning"] = {"effort": reasoning_effort}
+        mcp = _mcp_tools()
+        if mcp:
+            kwargs["tools"] = mcp
 
         if on_delta is None:
             resp = await client.responses.create(**kwargs)
+            _warn_if_awaiting_approval(getattr(resp, "output", None))
             reason = "stop"
             if getattr(resp, "status", None) == "incomplete":
                 det = getattr(resp, "incomplete_details", None)
@@ -247,6 +310,7 @@ class AIService:
                         logger.exception("on_delta callback failed (continuing stream)")
             elif etype in ("response.completed", "response.incomplete"):
                 r = getattr(event, "response", None)
+                _warn_if_awaiting_approval(getattr(r, "output", None))
                 det = getattr(r, "incomplete_details", None)
                 if getattr(det, "reason", None) == "max_output_tokens":
                     reason = "length"
