@@ -35,6 +35,15 @@ AI_PROVIDERS = {
     # seat key) reaches every one on prepaid credit. They are reasoning models (they emit hidden
     # reasoning_content that eats into the token budget), so they get a larger per-call ceiling;
     # the continuation loop (below) still stitches long single responses.
+    # OpenAI via the RESPONSES API (/v1/responses), not chat-completions — a different endpoint and
+    # payload shape, so it takes its own code path below. `model` is read from settings at call time
+    # because the id lives in .env; the provider is hidden from the picker until it is set.
+    "luna": {"key": "OPENAI_API_KEY", "base_url": None, "model": None,
+             "model_setting": "OPENAI_RESPONSES_MODEL", "api": "responses",
+             "label": "GPT-5.6 Luna", "max_tokens": 32768,
+             # Reasoning models reject `temperature`; leave it off unless you know it is accepted.
+             "temperature": False,
+             "reasoning_setting": "OPENAI_REASONING_EFFORT"},
     "qwen3.7-max": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
                     "model": "qwen3.7-max", "label": "Qwen3.7 Max", "max_tokens": 16384},
     "qwen3.7-plus": {"key": "QWEN_API_KEY", "base_url": _TOKEN_PLAN_BASE,
@@ -132,6 +141,13 @@ class AIService:
         if not api_key:
             raise ValueError(f"{cfg['label']} API key not configured ({cfg['key']}).")
 
+        # Providers whose model id lives in .env (see OPENAI_RESPONSES_MODEL) resolve it here.
+        model_id = cfg.get("model") or getattr(settings, cfg.get("model_setting") or "", "")
+        if not model_id:
+            raise ValueError(
+                f"{cfg['label']} model id not configured ({cfg.get('model_setting')}). "
+                f"Set it in backend/.env and restart.")
+
         kwargs = {"api_key": api_key}
         if cfg["base_url"]:
             kwargs["base_url"] = cfg["base_url"]
@@ -150,10 +166,21 @@ class AIService:
         # endpoints and the Token Plan's dedicated maas.aliyuncs.com base URL — keying it to
         # "dashscope" alone silently dropped the flag when we moved onto the plan.
         extra_body = {"enable_thinking": False} if "aliyuncs" in (cfg.get("base_url") or "") else None
+        # The Responses API is a different endpoint with a different payload; everything else about
+        # this loop (continuation on truncation, streaming deltas) works the same, so only the single
+        # call swaps out.
+        use_responses = cfg.get("api") == "responses"
+        send_temp = temperature if cfg.get("temperature", True) else None
+        reasoning_effort = getattr(settings, cfg.get("reasoning_setting") or "", "") or None
+
         parts: List[str] = []
         for attempt in range(_MAX_CONTINUATIONS + 1):
-            content, finish_reason = await self._complete_once(
-                client, cfg["model"], messages, max_tokens, on_delta, extra_body, temperature)
+            if use_responses:
+                content, finish_reason = await self._respond_once(
+                    client, model_id, messages, max_tokens, on_delta, send_temp, reasoning_effort)
+            else:
+                content, finish_reason = await self._complete_once(
+                    client, model_id, messages, max_tokens, on_delta, extra_body, temperature)
             parts.append(content)
             logger.info("provider=%s call %d finish_reason=%s (chars so far=%d)",
                         provider, attempt + 1, finish_reason, sum(len(p) for p in parts))
@@ -171,6 +198,59 @@ class AIService:
                 "content already written, do not restart, and do not add any preface — "
                 "output only the continuation so the two parts concatenate seamlessly."})
         return "".join(parts)
+
+    async def _respond_once(self, client, model, messages, max_tokens, on_delta: DeltaCb,
+                            temperature: Optional[float] = None,
+                            reasoning_effort: Optional[str] = None):
+        """One call against the OpenAI RESPONSES API (/v1/responses).
+
+        Returns (content, finish_reason) in the same shape as _complete_once so the continuation
+        loop above is shared: "length" when the model hit max_output_tokens, else "stop".
+
+        Two shape differences from chat-completions worth knowing: the system prompt goes in
+        `instructions` rather than as a message, and truncation is reported as
+        status="incomplete" + incomplete_details.reason instead of a finish_reason.
+        """
+        instructions = next((m["content"] for m in messages if m["role"] == "system"), None)
+        conversation = [m for m in messages if m["role"] != "system"]
+        kwargs = {"model": model, "input": conversation, "max_output_tokens": max_tokens}
+        if instructions:
+            kwargs["instructions"] = instructions
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        # Cap hidden reasoning: it is billed and spends max_output_tokens, so an uncapped reasoning
+        # model can return an empty deck. See OPENAI_REASONING_EFFORT in config.py.
+        if reasoning_effort:
+            kwargs["reasoning"] = {"effort": reasoning_effort}
+
+        if on_delta is None:
+            resp = await client.responses.create(**kwargs)
+            reason = "stop"
+            if getattr(resp, "status", None) == "incomplete":
+                det = getattr(resp, "incomplete_details", None)
+                if getattr(det, "reason", None) == "max_output_tokens":
+                    reason = "length"
+            return (getattr(resp, "output_text", "") or ""), reason
+
+        buf: List[str] = []
+        reason = "stop"
+        stream = await client.responses.create(**kwargs, stream=True)
+        async for event in stream:
+            etype = getattr(event, "type", "")
+            if etype == "response.output_text.delta":
+                piece = getattr(event, "delta", "") or ""
+                if piece:
+                    buf.append(piece)
+                    try:
+                        await on_delta("".join(buf))
+                    except Exception:
+                        logger.exception("on_delta callback failed (continuing stream)")
+            elif etype in ("response.completed", "response.incomplete"):
+                r = getattr(event, "response", None)
+                det = getattr(r, "incomplete_details", None)
+                if getattr(det, "reason", None) == "max_output_tokens":
+                    reason = "length"
+        return "".join(buf), reason
 
     async def _complete_once(self, client, model, messages, max_tokens, on_delta: DeltaCb,
                              extra_body: Optional[dict] = None, temperature: float = 0.8):
@@ -211,8 +291,13 @@ class AIService:
         """List providers that have an API key set, for the UI picker."""
         out = []
         for pid, cfg in AI_PROVIDERS.items():
-            if getattr(settings, cfg["key"], ""):
-                out.append({"id": pid, "label": cfg["label"]})
+            if not getattr(settings, cfg["key"], ""):
+                continue
+            # A provider whose model id comes from .env is only usable once that is set too —
+            # listing it early would put an option in the picker that fails on click.
+            if not (cfg.get("model") or getattr(settings, cfg.get("model_setting") or "", "")):
+                continue
+            out.append({"id": pid, "label": cfg["label"]})
         return out
 
     async def analyze_with_groq(self, prompt: str, system_prompt: str = None) -> str:
