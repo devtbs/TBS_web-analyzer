@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import json
 import logging
+import re
 
 from services.ai_service import ai_service
 
