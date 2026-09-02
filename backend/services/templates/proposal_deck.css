@@ -838,3 +838,20 @@ html, body { background: var(--paper); }
 .slide-hero { width: 100%; height: 190px; object-fit: cover; border-radius: 10px;
               margin: 1.25rem 0 0; display: block; }
 .slide-cover .slide-hero { height: 230px; }
+
+/* ===== TOPICAL MAP (rendered from the analysis, not an image) ===== */
+/* Drawn in markup rather than fetched as a picture so it is always current, always on-brand,
+   and stays sharp at any zoom or print size. */
+.tmap { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+.tmap-col { border: 1px solid #e9eaec; border-radius: 10px; padding: 1rem 1.1rem; background: var(--white); }
+.tmap-col.core { border-left: 3px solid var(--blue); }
+.tmap-col.outer { border-left: 3px solid var(--green); }
+.tmap-head { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 0.72rem;
+             letter-spacing: 0.14em; text-transform: uppercase; color: var(--gray); margin-bottom: 0.6rem; }
+.tmap-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.tmap-chip { font-size: 0.82rem; padding: 0.28rem 0.6rem; border-radius: 999px;
+             background: var(--blue-light); color: var(--charcoal); white-space: nowrap; }
+.tmap-col.outer .tmap-chip { background: var(--green-light); }
+.tmap-gaps { margin-top: 0.9rem; }
+.tmap-gaps .tmap-chip { background: var(--yellow-light); }
+.tmap-foot { font-size: 0.78rem; color: var(--gray); margin-top: 0.8rem; }

@@ -1720,6 +1720,50 @@ def _proposal_hero_image(analysis: Dict) -> str:
     return ""
 
 
+TOPICAL_MAP_TOKEN = "<!--TOPICAL_MAP-->"
+
+
+def _render_topical_map(m: Dict) -> str:
+    """Draw the topical map in markup from the analysis.
+
+    Rendered deterministically rather than described to the model, because this is the one slide
+    that must be FACTUALLY the client's map — a model paraphrasing it would drift. Also stays sharp
+    in print and needs no image hosting.
+    """
+    cs = m.get("content_strategy") or {}
+    core = [t for t in (cs.get("core_topics") or []) if t][:8]
+    outer = [t for t in (cs.get("outer_topics") or []) if t][:10]
+    gaps = [t for t in (cs.get("content_gaps") or []) if t][:6]
+    nodes = len(m.get("content_articles") or [])
+    clusters = len(m.get("keyword_clusters") or [])
+    if not (core or outer):
+        return ""
+
+    chips = lambda xs: "".join(f'<span class="tmap-chip">{_esc(x)}</span>' for x in xs)
+    parts = ['<div class="tmap">']
+    if core:
+        parts.append('<div class="tmap-col core"><div class="tmap-head">Core — revenue-driving</div>'
+                     f'<div class="tmap-list">{chips(core)}</div></div>')
+    if outer:
+        parts.append('<div class="tmap-col outer"><div class="tmap-head">Outer — authority-building</div>'
+                     f'<div class="tmap-list">{chips(outer)}</div></div>')
+    parts.append("</div>")
+    if gaps:
+        parts.append('<div class="tmap-gaps"><div class="tmap-head">Gaps to close</div>'
+                     f'<div class="tmap-list">{chips(gaps)}</div></div>')
+    bits = [f"{len(core)} core areas", f"{len(outer)} supporting areas"]
+    if nodes:
+        bits.append(f"{nodes} planned pages")
+    if clusters:
+        bits.append(f"{clusters} SERP-verified clusters")
+    parts.append(f'<p class="tmap-foot">{" · ".join(bits)}</p>')
+    return "".join(parts)
+
+
+def _esc(v) -> str:
+    return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
 async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = False,
                                     notes: str = "", on_progress=None, creativity: str = "balanced",
                                     pipeline: str = "single", models: Optional[dict] = None,
@@ -1760,6 +1804,14 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
         "\n\nHERO IMAGE: none available for this site — do not add any <img> tags at all."
     )
 
+    tmap_html = _render_topical_map(m)
+    tmap_rule = (
+        f"\n\nTOPICAL MAP: on the coverage-gap slide (17), after the title and one short intro "
+        f"sentence, output the literal token {TOPICAL_MAP_TOKEN} on its own line and NOTHING else in "
+        "that slide's body. The real map is injected there from the analysis — do not list the core "
+        "or outer topics yourself, and do not describe them."
+    ) if tmap_html else ""
+
     sequence = "\n".join(
         f"{i}. [{num.replace('{brand}', brand)}] {desc.replace('{brand}', brand)}"
         for i, (num, desc) in enumerate(PROPOSAL_SLIDES, 1))
@@ -1780,7 +1832,7 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     user = (f"BRAND: {brand}\n\nSLIDE SEQUENCE (produce these, in this order, omitting any whose "
             f"data is missing):\n{sequence}\n\n"
             f"EXAMPLES — copy this markup vocabulary exactly:\n{_proposal_examples()}"
-            f"{hero_rule}\n\n"
+            f"{hero_rule}{tmap_rule}\n\n"
             f"DATA:\n{brief}")
 
     if on_progress:
@@ -1788,6 +1840,15 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     body = await ai_service.analyze_with_provider(
         user, system, provider=provider or settings.DEFAULT_AI_PROVIDER, on_progress=on_progress)
     body = re.sub(r"^```(?:html)?|```$", "", body.strip(), flags=re.M).strip()
+    # Substitute the real map. If the model ignored the token, append the map to the gap slide
+    # anyway rather than silently shipping a proposal with no map in it.
+    if tmap_html:
+        if TOPICAL_MAP_TOKEN in body:
+            body = body.replace(TOPICAL_MAP_TOKEN, tmap_html)
+        else:
+            logger.warning("proposal deck: model omitted %s — appending the map to the last slide",
+                           TOPICAL_MAP_TOKEN)
+            body = body.replace("</div>\n</div>", f"{tmap_html}</div></div>", 1)
 
     html = (f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
