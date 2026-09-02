@@ -77,7 +77,8 @@ async def run_schedule(db, sched: DeckSchedule) -> dict:
     email = sched.user_email
     acct = p.get("account_id")
     days = int(p.get("days") or 28)
-    provider = p.get("provider") or "deepseek"
+    from config import settings
+    provider = p.get("provider") or settings.DEFAULT_AI_PROVIDER
     images = bool(p.get("images", True)) and images_enabled()
     common = {
         "provider": provider, "images": images,

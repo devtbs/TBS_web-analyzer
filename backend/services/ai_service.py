@@ -203,7 +203,7 @@ class AIService:
         )
 
     async def analyze_with_provider(self, prompt: str, system_prompt: str = None,
-                                    provider: str = "deepseek", on_progress: ProgressCb = None,
+                                    provider: str = None, on_progress: ProgressCb = None,
                                     on_delta: DeltaCb = None, temperature: float = 0.8) -> str:
         """Generate text with a user-chosen OpenAI-compatible provider (DeepSeek,
         OpenAI, Qwen, Kimi, xAI). Used for AI-designed presentations.
@@ -213,6 +213,9 @@ class AIService:
         the moment they appear, instead of waiting for the whole deck). The full text is
         still returned either way.
         """
+        # Unspecified means "use the product default" (DEFAULT_AI_PROVIDER), resolved through the
+        # same fallback the analysis path uses so an unconfigured default degrades instead of 500ing.
+        provider = resolve_provider(provider or settings.DEFAULT_AI_PROVIDER)
         cfg = AI_PROVIDERS.get(provider)
         if not cfg:
             raise ValueError(f"Unknown AI provider: {provider}")

@@ -167,7 +167,7 @@ export default function ClientHub() {
         if (!(client.gsc_property || client.ga4_property_id || client.ads_customer_id)) {
             toast.error('Link at least one platform (GSC / GA4 / Ads) first.'); return;
         }
-        const qs = new URLSearchParams({ days: 28, provider: 'deepseek', images: true });
+        const qs = new URLSearchParams({ days: 28, images: true });
         if (client.gsc_property) qs.set('property', client.gsc_property);
         if (client.ga4_property_id) qs.set('ga4_property_id', client.ga4_property_id);
         if (client.ads_customer_id) { qs.set('ads_customer_id', client.ads_customer_id); qs.set('ads_label', client.name || ''); }
@@ -177,7 +177,7 @@ export default function ClientHub() {
                 if (type === 'progress') setGenMsg(d.message || 'Working…');
                 else if (type === 'result') { setGenMsg(null); toast.success('Deck ready'); loadDecks(); }
                 else if (type === 'error') { setGenMsg(null); toast.error(d.detail || 'Generation failed'); }
-            }, { method: 'POST', body: { client_id: id, brand_terms: client.brand_terms || '', provider: 'deepseek' } });
+            }, { method: 'POST', body: { client_id: id, brand_terms: client.brand_terms || '' } });
         } catch { setGenMsg(null); toast.error('Generation failed'); }
     };
 

@@ -666,10 +666,10 @@ async def _run_generate_deck(args: dict, ctx: ToolContext) -> dict:
 
     source = args.get("source")
     days = int(args.get("days", 28))
-    # Decks are long structured HTML — keep them on the app's tested deck provider
-    # (DeepSeek). MiniMax-M1 is a reasoning model whose <think> output would corrupt the
-    # HTML; it drives the chat, not the deck rendering.
-    provider = "deepseek"
+    # Decks are long structured HTML, so they go to the app's deck provider (DEFAULT_AI_PROVIDER),
+    # NOT to whatever model is driving this chat — MiniMax-M1 is a reasoning model whose <think>
+    # output would corrupt the HTML.
+    provider = settings.DEFAULT_AI_PROVIDER
     token, is_refresh = _resolve_token(ctx.db, ctx.user_email, ctx.account_id)
 
     if source == "gsc":

@@ -138,7 +138,7 @@ const Presentation = () => {
 
     // shared
     const [providers, setProviders] = useState([]);
-    const [provider, setProvider] = useState('deepseek');
+    const [provider, setProvider] = useState('luna');
     const [compareModels, setCompareModels] = useState([]);   // extra models to run the SAME deck on
     const [pipeline, setPipeline] = useState('single');       // 'single' | 'layered'
     const [layerModels, setLayerModels] = useState({ planner: '', insights: '', html: '' });
@@ -180,7 +180,10 @@ const Presentation = () => {
                 const res = await api.get('/api/presentation/ai-providers');
                 const list = res.data.providers || [];
                 setProviders(list);
-                if (list.length) setProvider(list.some(p => p.id === 'deepseek') ? 'deepseek' : list[0].id);
+                // Prefer the product default; fall back to whatever is actually configured so the
+                // picker never lands on a provider with no key.
+                if (list.length) setProvider(list.some(p => p.id === 'luna') ? 'luna'
+                    : list.some(p => p.id === 'deepseek') ? 'deepseek' : list[0].id);
             } catch {}
         })();
     }, []);

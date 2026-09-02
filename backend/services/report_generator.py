@@ -730,7 +730,7 @@ async def resolve_deck_palette(theme_mode: str = "tbs", custom_color: Optional[s
 
 
 async def generate_ai_gsc_deck(service, property_url: str, days: int = 28, *,
-                               provider: str = "deepseek", prompt: Optional[str] = None,
+                               provider: str = None, prompt: Optional[str] = None,
                                images: bool = True, notes: str = "", on_progress=None,
                                ga4_service=None, creativity: str = "balanced",
                                pipeline: str = "single", models: Optional[dict] = None,
@@ -842,7 +842,7 @@ Use only these numbers. Report declines HONESTLY and PROMINENTLY — state each 
 
 
 async def generate_ai_ga4_deck(service, property_id: str, days: int = 28, *,
-                               label: str = "", provider: str = "deepseek",
+                               label: str = "", provider: str = None,
                                prompt: Optional[str] = None, images: bool = True,
                                notes: str = "", on_progress=None,
                                creativity: str = "balanced",
@@ -1046,7 +1046,7 @@ On the COVER slide, show this reporting period ({period_label}) as the subtitle.
 
 
 async def generate_ai_ads_deck(service, customer_id: str, days: int = 28, *,
-                               label: str = "", provider: str = "deepseek",
+                               label: str = "", provider: str = None,
                                prompt: Optional[str] = None, images: bool = True,
                                notes: str = "", on_progress=None,
                                creativity: str = "balanced",
@@ -1251,7 +1251,7 @@ async def generate_ai_combined_deck(*, days: int = 28,
                                     ga4_service=None, ga4_property_id: str = "",
                                     ads_service=None, ads_customer_id: str = "",
                                     ads_label: str = "",
-                                    provider: str = "deepseek", prompt: Optional[str] = None,
+                                    provider: str = None, prompt: Optional[str] = None,
                                     images: bool = True, notes: str = "", on_progress=None,
                                     creativity: str = "balanced", pipeline: str = "single",
                                     models: Optional[dict] = None, theme_mode: str = "tbs",
@@ -1468,7 +1468,7 @@ use for a table showing which AI queries the site wins, with intent/topic/citati
 
 
 async def generate_ai_bing_deck(access_token: str, site: str, days: int = 28, *,
-                                label: str = "", provider: str = "deepseek",
+                                label: str = "", provider: str = None,
                                 prompt: Optional[str] = None, images: bool = True,
                                 notes: str = "", ai_perf_csv: Optional[str] = None,
                                 ai_perf_data: Optional[Dict] = None,
