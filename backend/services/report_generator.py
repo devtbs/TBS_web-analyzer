@@ -1689,6 +1689,37 @@ PROPOSAL_SLIDES = [
 ]
 
 
+def _proposal_hero_image(analysis: Dict) -> str:
+    """Pick a hero photo for the cover/close from the ANALYSED SITE's own scraped images.
+
+    A proposal about a hotel should show that hotel, not stock photography — and we already
+    crawled the site, so its own imagery is right there. Prefers a large content image over
+    logos/icons/sprites, which make for poor covers.
+    """
+    # The scraper's `images` list is populated only by the BeautifulSoup path; every analysis here
+    # comes through Firecrawl, where the images live in the markdown as ![alt](url). Read both, so
+    # this works on analyses that already exist rather than needing a re-scrape.
+    bad = ("logo", "icon", "sprite", "favicon", "avatar", "badge", "placeholder",
+           "award", "banner", ".svg", ".gif")
+    candidates = []
+    for page in (analysis.get("scraped_data") or []):
+        for img in (page.get("images") or []):
+            src = (img.get("src") or img.get("url") or "").strip()
+            if src.startswith("http") and not (img.get("alt") or "").lower().startswith(("logo", "icon")):
+                candidates.append(src)
+        candidates += re.findall(r"!\[[^\]]*\]\((https?://[^\s\)]+)\)", page.get("markdown") or "")
+
+    for src in candidates:
+        low = src.lower()
+        if any(b in low for b in bad):
+            continue
+        # Skip anything that is plainly not a photograph.
+        if not any(low.split("?")[0].endswith(e) for e in (".jpg", ".jpeg", ".png", ".webp", ".avif")):
+            continue
+        return src
+    return ""
+
+
 async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = False,
                                     notes: str = "", on_progress=None, creativity: str = "balanced",
                                     pipeline: str = "single", models: Optional[dict] = None,
@@ -1714,10 +1745,20 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     m = maps[0]
     domain = _domain_from(m.get("url") or "")
     brand = m.get("central_entity") or domain
+    hero = _proposal_hero_image(analysis)
 
     if on_progress:
         await on_progress("Assembling proposal evidence…")
     brief = _proposal_brief(analysis) + to_brief_block(notes)
+
+    hero_rule = (
+        f"\n\nHERO IMAGE: on the COVER slide and the CLOSING slide only, include exactly:\n"
+        f'  <img class="slide-hero" src="{hero}" alt="{brand}">\n'
+        "Place it after the title/subtitle block. Do not put it on any other slide and do not "
+        "invent any other image URL."
+    ) if hero else (
+        "\n\nHERO IMAGE: none available for this site — do not add any <img> tags at all."
+    )
 
     sequence = "\n".join(
         f"{i}. [{num.replace('{brand}', brand)}] {desc.replace('{brand}', brand)}"
@@ -1738,7 +1779,8 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     )
     user = (f"BRAND: {brand}\n\nSLIDE SEQUENCE (produce these, in this order, omitting any whose "
             f"data is missing):\n{sequence}\n\n"
-            f"EXAMPLES — copy this markup vocabulary exactly:\n{_proposal_examples()}\n\n"
+            f"EXAMPLES — copy this markup vocabulary exactly:\n{_proposal_examples()}"
+            f"{hero_rule}\n\n"
             f"DATA:\n{brief}")
 
     if on_progress:

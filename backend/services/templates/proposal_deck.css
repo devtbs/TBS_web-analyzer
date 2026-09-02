@@ -12,6 +12,15 @@
   --yellow-light: #FBF5DA;
 }
 
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Kanit', system-ui, -apple-system, sans-serif;
+  color: var(--charcoal);
+  background: var(--paper);
+  line-height: 1.5;
+}
+
 /* ===== SLIDE FRAMEWORK ===== */
 /* Restrained, professional tone: white/charcoal/light-gray surface, single accent
    for highlights. No saturated brand backgrounds on cards or sections. */
@@ -809,3 +818,23 @@ body.fs-locked { overflow: hidden; }
   .audit-grid { grid-template-columns: 1fr; }
   .hero { padding: 2.5rem 1.5rem; }
 }
+
+
+
+/* ===== STANDALONE / PDF ===== */
+/* In the source page each slide sits inside a viewer that sizes it. Exported on its own, a
+   min-height card leaves the bottom half of every PDF page blank — so pin slides to a real
+   16:9 frame and push the footer to the bottom edge. */
+html, body { background: var(--paper); }
+.slide-block { max-width: 1100px; margin: 0 auto 1.5rem; padding: 0; }
+.slide { aspect-ratio: 16 / 9; min-height: 0; justify-content: flex-start; }
+.slide .slide-foot { margin-top: auto; }
+@media print {
+  .slide-block { margin: 0; page-break-after: always; break-after: page; }
+  .slide { border: none; border-radius: 0; box-shadow: none; }
+}
+
+/* Cover and closing hero image, taken from the analysed site itself. */
+.slide-hero { width: 100%; height: 190px; object-fit: cover; border-radius: 10px;
+              margin: 1.25rem 0 0; display: block; }
+.slide-cover .slide-hero { height: 230px; }
