@@ -111,6 +111,26 @@ AI_PROVIDERS = {
 _MAX_CONTINUATIONS = 8
 
 
+def resolve_provider(name: str) -> str:
+    """Return `name` if that provider is usable, else fall back to one that is.
+
+    Without this, setting DEFAULT_AI_PROVIDER to a model whose API key is not in .env yet would
+    break EVERY analysis in the product, not just decks — a config typo becoming a total outage.
+    """
+    name = (name or "").strip() or "deepseek"
+    cfg = AI_PROVIDERS.get(name)
+    if cfg and getattr(settings, cfg["key"], "") and (
+            cfg.get("model") or getattr(settings, cfg.get("model_setting") or "", "")):
+        return name
+    for fallback in ("deepseek", "qwen3.7-plus", "glm"):
+        fb = AI_PROVIDERS.get(fallback)
+        if fb and getattr(settings, fb["key"], ""):
+            logger.warning("AI provider %r is not configured — falling back to %r.", name, fallback)
+            return fallback
+    logger.error("No AI provider is configured (tried %r and the fallbacks).", name)
+    return name
+
+
 def _warn_if_awaiting_approval(output) -> None:
     """An MCP server set to require approval returns an `mcp_approval_request` output item and then
     waits. Nothing in this pipeline can answer one, so the tool call simply never happens — log it
@@ -414,18 +434,21 @@ class AIService:
             print(f"DeepSeek API error: {str(e)}")
             raise
     
-    async def analyze_with_ai(self, prompt: str, system_prompt: str = None, prefer_anthropic: bool = True, use_deepseek: bool = False) -> str:
+    async def analyze_with_ai(self, prompt: str, system_prompt: str = None, prefer_anthropic: bool = True,
+                              use_deepseek: bool = False, provider: str = None) -> str:
+        """Run an analysis prompt on the heavyweight model, or Groq for quick/cheap work.
+
+        `use_deepseek` is a historical name: it never really meant "DeepSeek", it meant "use the
+        good model rather than the fast one". It now routes to DEFAULT_AI_PROVIDER so switching the
+        product's model is one setting instead of an edit at 60+ call sites. Pass `provider` to pin
+        a specific one.
         """
-        Analyze content using either Groq or DeepSeek based on use_deepseek parameter
-        """
-        if use_deepseek:
-            if not self.deepseek_client:
-                raise ValueError("DeepSeek API key not configured")
-            return await self.analyze_with_deepseek(prompt, system_prompt)
-        else:
-            if not self.groq_client:
-                raise ValueError("Groq API key not configured")
-            return await self.analyze_with_groq(prompt, system_prompt)
+        chosen = provider or (resolve_provider(settings.DEFAULT_AI_PROVIDER) if use_deepseek else None)
+        if chosen:
+            return await self.analyze_with_provider(prompt, system_prompt, provider=chosen)
+        if not self.groq_client:
+            raise ValueError("Groq API key not configured")
+        return await self.analyze_with_groq(prompt, system_prompt)
     
     async def extract_json(self, prompt: str, system_prompt: str = None, use_deepseek: bool = False) -> dict:
         """Extract structured JSON data using AI with robust parsing"""
