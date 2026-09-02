@@ -131,6 +131,29 @@ def resolve_provider(name: str) -> str:
     return name
 
 
+async def _create_response(client, kwargs: dict, stream: bool = False):
+    """Call the Responses API, dropping MCP tools if the MCP server is the thing that failed.
+
+    OpenAI fetches each MCP server's tool list before running the model, so an unreachable or
+    unauthorised server returns 424 external_connector_error and the WHOLE request fails — no deck
+    at all. MCP is an enhancement, not a dependency: a Maton outage (or a bad token) must not stop
+    a scheduled client report from being written. Retry once without tools, and say so loudly.
+    """
+    try:
+        return await client.responses.create(**kwargs, **({"stream": True} if stream else {}))
+    except Exception as e:
+        msg = str(e)
+        mcp_failed = "external_connector_error" in msg or "MCP server" in msg
+        if not (mcp_failed and kwargs.get("tools")):
+            raise
+        labels = [t.get("server_label") for t in kwargs.get("tools") or []]
+        logger.error("MCP server(s) %s unreachable (%s) — retrying WITHOUT tools so the "
+                     "generation still completes. Check the server URL and its API key.",
+                     labels, msg[:160])
+        retry = {k: v for k, v in kwargs.items() if k != "tools"}
+        return await client.responses.create(**retry, **({"stream": True} if stream else {}))
+
+
 def _warn_if_awaiting_approval(output) -> None:
     """An MCP server set to require approval returns an `mcp_approval_request` output item and then
     waits. Nothing in this pipeline can answer one, so the tool call simply never happens — log it
@@ -309,7 +332,7 @@ class AIService:
             kwargs["tools"] = mcp
 
         if on_delta is None:
-            resp = await client.responses.create(**kwargs)
+            resp = await _create_response(client, kwargs)
             _warn_if_awaiting_approval(getattr(resp, "output", None))
             reason = "stop"
             if getattr(resp, "status", None) == "incomplete":
@@ -320,7 +343,7 @@ class AIService:
 
         buf: List[str] = []
         reason = "stop"
-        stream = await client.responses.create(**kwargs, stream=True)
+        stream = await _create_response(client, kwargs, stream=True)
         async for event in stream:
             etype = getattr(event, "type", "")
             if etype == "response.output_text.delta":
