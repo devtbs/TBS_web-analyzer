@@ -855,3 +855,15 @@ html, body { background: var(--paper); }
 .tmap-gaps { margin-top: 0.9rem; }
 .tmap-gaps .tmap-chip { background: var(--yellow-light); }
 .tmap-foot { font-size: 0.78rem; color: var(--gray); margin-top: 0.8rem; }
+
+/* ===== FONT SAFETY ===== */
+/* The deck HTML is re-wrapped by the preview/PDF pipeline, so a rule bound only to `body` can be
+   lost and text falls back to the browser default — which is a SERIF. Bind the family to the slide
+   itself, and give a full system fallback stack so it degrades to a sans even when the remote
+   Google font never loads (the PDF renderer often cannot fetch it). */
+.slide, .slide-block, .slide *, .slide-block * {
+  font-family: 'Kanit', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
+.slide .slide-title, .slide .slide-num, .slide .huge-num, .slide h1, .slide h2, .slide h3 {
+  font-family: 'Outfit', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+}
