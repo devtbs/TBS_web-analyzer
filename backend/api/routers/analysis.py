@@ -92,7 +92,8 @@ async def stream_progress(
 
 
 async def process_analysis(analysis_id: str, urls: List[str], user_email: str = None, research: dict = None,
-                           market: dict = None, source_context: str = None):
+                           market: dict = None, source_context: str = None,
+                           prospect: bool = False):
     """Background task to process analysis with AI"""
     from database import SessionLocal
     db = SessionLocal()
@@ -126,7 +127,12 @@ async def process_analysis(analysis_id: str, urls: List[str], user_email: str = 
         # If the analyzed site is one of the user's clients, ground the map in its real GSC queries.
         gsc_property = account_id = None
         try:
-            if user_email and urls:
+            # Prospect mode short-circuits BEFORE the client lookup. Relying on "there is no client
+            # row" was accidental protection: a prospect who is already a client under another
+            # domain spelling would have pulled their private Search Console data into a pitch.
+            if prospect:
+                print(f"[{analysis_id}] Prospect mode — Search Console deliberately not used")
+            elif user_email and urls:
                 from database import Client
                 from urllib.parse import urlparse
                 d = (urlparse(urls[0]).netloc or urls[0]).replace('www.', '')
@@ -140,7 +146,7 @@ async def process_analysis(analysis_id: str, urls: List[str], user_email: str = 
             print(f"[{analysis_id}] client resolve skipped: {str(e)[:100]}")
         topical_maps = await topical_generator.generate_multiple(
             scraped_data, db=db, email=user_email, gsc_property=gsc_property, account_id=account_id,
-            research=research, market=market, source_context=source_context)
+            research=research, market=market, source_context=source_context, prospect=prospect)
         await check_cancelled()
 
         # Generate comparison with AI (if multiple URLs)
@@ -217,7 +223,8 @@ async def analyze_urls(
 
     # Process in background
     background_tasks.add_task(process_analysis, analysis_id, request.urls, current_user.email,
-                              request.research, request.market, request.source_context)
+                              request.research, request.market, request.source_context,
+                              bool(request.prospect))
 
     return AnalysisResponse(
         analysis_id=analysis_id,

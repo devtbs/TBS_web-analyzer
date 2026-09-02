@@ -138,7 +138,10 @@ const NewAnalysis = () => {
             const token = localStorage.getItem('access_token');
             const _mk = QUICK_MARKETS.find(m => m.gl === marketGl) || QUICK_MARKETS[0];
             const response = await api.post('/api/analyze',
-                { urls: validUrls, market: { gl: _mk.gl, location_id: _mk.locId } }
+                // Quick Analysis is always a PROSPECT run: it profiles a site we have no access to,
+                // for a pitch. prospect:true stops the backend attaching Search Console even if a
+                // client happens to share the domain — grounding stays on SERP + Mangools.
+                { urls: validUrls, market: { gl: _mk.gl, location_id: _mk.locId }, prospect: true }
             );
             setSelectedPages([]);
             sessionStorage.removeItem('selectedPages');

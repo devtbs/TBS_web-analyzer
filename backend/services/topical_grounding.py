@@ -210,6 +210,7 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         "keyword_clusters": [],  # opportunities grouped into content pieces by SERP overlap
         "already_ranked": [],    # queries the site already ranks <=10 for (for context)
         "own_pages": [],         # the site's real ranking pages — what it ALREADY covers
+        "ai_visibility": {},     # AI Overview presence + who is cited (free with the SERP calls)
     }
     own = _bare(domain)
 
@@ -241,6 +242,9 @@ async def gather_grounding(domain: str, seed_keywords: List[str], *, db=None, em
         out["serp"]["top_competitors"] = comps
         out["serp"]["people_also_ask"] = serp.get("people_also_ask") or []
         out["serp"]["related_searches"] = serp.get("related_searches") or []
+        # Measured from the SERP pages we already fetched — for a prospect this is the only
+        # evidence available for "are they visible in AI answers?".
+        out["ai_visibility"] = serp.get("ai_visibility") or {}
         competitor_urls = [c["url"] for c in comps if c.get("url")][:COMPETITOR_SCRAPE_CAP]
     except Exception as e:
         logger.warning("grounding SERP failed for %s: %s", domain, str(e)[:150])

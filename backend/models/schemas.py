@@ -14,6 +14,10 @@ class URLAnalysisRequest(BaseModel):
     # Semantic-SEO "source context": how the site makes money, in the user's own words. A site-level
     # anchor that decides which attributes of the central entity matter, and so what is Core vs Outer.
     source_context: Optional[str] = None
+    # Prospect mode (Quick Analysis): the site is NOT a client, so never attach Search Console —
+    # not even if a client row happens to share the domain. Grounding still uses SERP + Mangools,
+    # which are the only sources available for a site we have no access to.
+    prospect: Optional[bool] = False
 
 
 class UserInfo(BaseModel):
@@ -230,6 +234,9 @@ class TopicalMapData(BaseModel):
     # Trimmed grounding data (real queries/competitor subtopics/own URL patterns) kept so the node
     # list can be regenerated later without re-scraping the site or re-running the full analysis.
     grounding_snapshot: Optional[Dict] = None
+    # Measured AI Overview visibility: how many checked queries showed an AI Overview, whether this
+    # site was cited, and which domains were cited instead. The headline evidence in a proposal.
+    ai_visibility: Optional[Dict] = None
     
     # Part 7: SEO Optimization
     seo_optimization: Optional[SEOOptimization] = None

@@ -66,7 +66,8 @@ class SerpService:
             'people_also_ask': [],
             'related_searches': [],
             'ranking_opportunities': [],
-            'content_types': {}
+            'content_types': {},
+            'ai_visibility': {},
         }
         
         try:
@@ -78,17 +79,21 @@ class SerpService:
             all_competitors = []
             all_paa = []
             all_related = []
-            
+            ai_pages = []
+
             for result in results:
                 if isinstance(result, dict):
                     all_competitors.extend(result.get('competitors', []))
                     all_paa.extend(result.get('paa', []))
                     all_related.extend(result.get('related', []))
+                    if result.get('ai_overview'):
+                        ai_pages.append(result['ai_overview'])
             
             # Deduplicate and rank
             insights['top_competitors'] = self._get_top_items(all_competitors, 10)
             insights['people_also_ask'] = self._get_top_items(all_paa, 15)
             insights['related_searches'] = self._get_top_items(all_related, 10)
+            insights['ai_visibility'] = self._summarise_ai_visibility(ai_pages, domain)
             
             print(f"✅ SERP insights collected:")
             print(f"   - {len(insights['top_competitors'])} competitors")
@@ -101,6 +106,44 @@ class SerpService:
         
         return insights
     
+    def _summarise_ai_visibility(self, ai_pages: List[Dict], domain: str = None) -> Dict:
+        """Turn per-query AI Overview readings into the headline a proposal needs:
+        how often an AI Overview appears, whether THIS site is ever cited, and who is cited instead.
+
+        `queries_checked` is deliberately reported alongside the rate — "cited in 0 of 6" is honest,
+        "0% AI presence" from a sample of six is not.
+        """
+        own = (domain or "").lower().replace("www.", "").strip("/")
+        checked = len(ai_pages)
+        with_ai = [p for p in ai_pages if p.get("present")]
+        resolved = [p for p in with_ai if not p.get("deferred")]
+
+        cited_queries, competitor_counts = [], {}
+        for page in resolved:
+            hit = False
+            for src in page.get("sources") or []:
+                d = src.get("domain", "")
+                if own and self._is_target(d, own):
+                    hit = True
+                else:
+                    competitor_counts[d] = competitor_counts.get(d, 0) + 1
+            if hit:
+                cited_queries.append(page.get("query"))
+
+        return {
+            "queries_checked": checked,
+            "ai_overview_present": len(with_ai),
+            "resolved": len(resolved),
+            "cited_count": len(cited_queries),
+            "cited_queries": cited_queries,
+            "not_cited_queries": [p.get("query") for p in resolved if p.get("query") not in cited_queries],
+            "citation_rate": round(len(cited_queries) / len(resolved), 3) if resolved else None,
+            "top_cited_competitors": [
+                {"domain": d, "citations": n}
+                for d, n in sorted(competitor_counts.items(), key=lambda kv: -kv[1])[:10]
+            ],
+        }
+
     async def _fetch_keyword_data(self, keyword: str, location: str = 'th') -> Dict:
         """Fetch SERP data for a single keyword"""
         try:
@@ -115,7 +158,7 @@ class SerpService:
             return result
         except Exception as e:
             print(f"   ⚠️  Error fetching '{keyword}': {str(e)}")
-            return {'competitors': [], 'paa': [], 'related': []}
+            return {'competitors': [], 'paa': [], 'related': [], 'ai_overview': None}
     
     def _search_google(self, keyword: str, location: str = None) -> Dict:
         """Synchronous Google search via SerpAPI"""
@@ -158,10 +201,29 @@ class SerpService:
             for search in results['related_searches']:
                 related.append(search.get('query', ''))
         
+        # AI Overview presence + who it cites. This SERP page is already paid for, so reading the
+        # AI block costs nothing extra — the same trick the rank tracker uses. For a prospect this
+        # is the only honest way to answer "is this brand visible in AI answers?", since we have no
+        # Search Console access to their site.
+        ai = results.get('ai_overview') or {}
+        ai_sources = []
+        for ref in (ai.get('references') or []):
+            link = ref.get('link', '')
+            ai_sources.append({'domain': self._extract_domain(link).lower(), 'url': link,
+                               'title': (ref.get('title') or '')[:200]})
+
         return {
             'competitors': competitors,
             'paa': paa,
-            'related': related
+            'related': related,
+            'ai_overview': {
+                'query': keyword,
+                'present': bool(ai),
+                # SerpAPI returns the block as a page_token when it needs a second call; we do not
+                # spend that here, so record it as present-but-unresolved rather than "no sources".
+                'deferred': bool(ai.get('page_token') and not ai.get('references')),
+                'sources': ai_sources[:10],
+            },
         }
     
     async def get_rank(self, keyword: str, domain: str, location: str = None) -> Dict:
