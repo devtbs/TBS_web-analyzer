@@ -6,6 +6,7 @@ keyword data; GSC and GA4 sections plug into `assemble_context()` the same way a
 those integrations come online.
 """
 from typing import Dict, List, Optional
+from pathlib import Path
 from datetime import datetime, timedelta
 import json
 import logging
@@ -1644,18 +1645,65 @@ def _domain_from(url: str) -> str:
         return (url or "").replace("www.", "").strip("/")
 
 
-async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = True,
+_TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+
+def _proposal_css() -> str:
+    return (_TEMPLATE_DIR / "proposal_deck.css").read_text(encoding="utf-8")
+
+
+def _proposal_examples() -> str:
+    return (_TEMPLATE_DIR / "proposal_examples.html").read_text(encoding="utf-8")
+
+
+# The reference deck's exact running order. The model fills these in; it does not choose them.
+PROPOSAL_SLIDES = [
+    ("01 · Cover", "Cover — the promise in four words, brand and date. No metrics."),
+    ("02 · Contents", "Contents — the six sections as a simple numbered list."),
+    ("Section 01", "Section divider — 'Why now'."),
+    ("04 · The shift", "How buyers discover this category has changed. Use the WHY NOW facts verbatim."),
+    ("05 · What 'good enough' SEO misses", "The trap: ranking is not being cited. Problem cards."),
+    ("Section 02", "Section divider — 'One strategy'."),
+    ("07 · The unified thesis", "AIO + GEO + AEO as one discipline strengthening entity prominence."),
+    ("08 · Old SEO vs Modern SEO", "Two compare-cards: same craft, different surface."),
+    ("Section 03", "Section divider — 'The 3 pillars'."),
+    ("10 · AIO", "AIO — visibility inside AI answers. Two sentences plus what it requires."),
+    ("11 · GEO", "GEO — influencing what future models learn."),
+    ("12 · AEO", "AEO — winning the retrieval path. Include the assistant→index table."),
+    ("13 · How the 3 pillars work together", "One team, one strategy, three surfaces."),
+    ("Section 04", "Section divider — '{brand} audit'."),
+    ("15 · Current state", "KPI stats from the analysis: demand available, competitors, coverage. "
+                           "If AI VISIBILITY is NOT MEASURED, omit every AI-presence number here."),
+    ("16 · Where {brand} isn't cited", "AI VISIBILITY as a fraction plus the absent queries, and "
+                                       "CITED COMPETITORS as a table. OMIT THIS SLIDE ENTIRELY if not measured."),
+    ("17 · The coverage gap", "CORE vs OUTER topics and the gaps — the topical map, from the analysis."),
+    ("Section 05", "Section divider — 'The plan'."),
+    ("19 · Plan of action", "The sequenced steps, numbered, each with its deliverable."),
+    ("20 · What we measure", "Leading vs lagging indicators and the reporting cadence."),
+    ("21 · Why TBS", "Short credibility slide."),
+    ("22 · Next steps", "The immediate first step and what it produces."),
+    ("Section 06", "Section divider — 'Pricing'."),
+    ("24 · Investment", "PRICING tiers as comparison cards plus the one-time audit."),
+    ("25 · Close", "Closing slide — the gap found, the first step, contact."),
+]
+
+
+async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = False,
                                     notes: str = "", on_progress=None, creativity: str = "balanced",
                                     pipeline: str = "single", models: Optional[dict] = None,
                                     theme_mode: str = "tbs", custom_color: Optional[str] = None,
                                     style: str = "tbs", prompt: Optional[str] = None) -> Dict:
-    """AIO/GEO/AEO proposal deck built from a completed PROSPECT analysis.
+    """AIO/GEO/AEO proposal deck, rendered into the reference template's exact markup and CSS.
 
-    Takes the stored analysis rather than a live API service, because the whole point is that we
-    have no credentials for this site — the evidence is what the prospect run measured.
+    Unlike the reporting decks this does NOT let the model design the page. The stylesheet and the
+    slide vocabulary are fixed (templates/proposal_deck.css, extracted from the approved deck), and
+    the model only writes the content inside those classes — so every proposal looks identical to
+    the reference rather than being reinvented each run.
+
+    `images` is ignored: this deck's only visuals are the topical map and stats drawn from the
+    chosen analysis, not stock or generated photography.
     """
-    from services.ai_deck_service import (generate_deck_html, resolve_ai_images, resolve_ai_icons,
-                                          _AI_IMG_RE, PROPOSAL_STRUCTURE, _apply_theme)
+    from services.ai_service import ai_service
     from services.highlights import to_brief_block
     from config import settings
 
@@ -1669,19 +1717,39 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     if on_progress:
         await on_progress("Assembling proposal evidence…")
     brief = _proposal_brief(analysis) + to_brief_block(notes)
-    palette = await resolve_deck_palette(theme_mode, custom_color, domain)
-    brand_directive = _brand_accent_directive(palette["accent"], palette["accent2"])
-    image_cache = {} if images else None
-    artifacts = {}
 
-    html = await generate_deck_html(
-        brief, prompt=prompt, brand=brand_directive,
-        structure=PROPOSAL_STRUCTURE.replace("{brand}", brand),
-        provider=provider or settings.DEFAULT_AI_PROVIDER,
-        on_progress=on_progress, image_cache=image_cache, seed=domain,
-        creativity=creativity, pipeline=pipeline, models=models, style=style, artifacts=artifacts)
-    html = (await resolve_ai_images(html, on_progress=on_progress, image_cache=image_cache)
-            if images else _AI_IMG_RE.sub("", html))
-    html = resolve_ai_icons(html)
-    html = _apply_theme(html, palette["accent"], palette["accent2"])
-    return {"domain": domain, "brand": brand, "html": html, "artifacts": artifacts}
+    sequence = "\n".join(
+        f"{i}. [{num.replace('{brand}', brand)}] {desc.replace('{brand}', brand)}"
+        for i, (num, desc) in enumerate(PROPOSAL_SLIDES, 1))
+
+    system = (
+        "You write the CONTENT of a fixed slide template. You do NOT design it.\n"
+        "Rules, all mandatory:\n"
+        "- Output ONLY a sequence of <div class=\"slide-block\"><div class=\"slide\">…</div></div> "
+        "blocks. No <html>, <head>, <style>, <script>, and no markdown fences.\n"
+        "- Use ONLY the class names that appear in the EXAMPLES. Never invent a class, never write "
+        "a style attribute, never add inline CSS. The stylesheet is fixed and anything else is unstyled.\n"
+        "- Every slide starts with <div class=\"slide-num\">…</div> then <h2 class=\"slide-title\">…</h2>.\n"
+        "- Never state a statistic that is not in the DATA. If a slide's data is missing or marked "
+        "NOT MEASURED, omit that slide entirely rather than inventing figures.\n"
+        "- Report AI visibility as a fraction ('cited in 1 of 4 AI answers checked'), never as a "
+        "percentage of the market."
+    )
+    user = (f"BRAND: {brand}\n\nSLIDE SEQUENCE (produce these, in this order, omitting any whose "
+            f"data is missing):\n{sequence}\n\n"
+            f"EXAMPLES — copy this markup vocabulary exactly:\n{_proposal_examples()}\n\n"
+            f"DATA:\n{brief}")
+
+    if on_progress:
+        await on_progress("Writing slides…")
+    body = await ai_service.analyze_with_provider(
+        user, system, provider=provider or settings.DEFAULT_AI_PROVIDER, on_progress=on_progress)
+    body = re.sub(r"^```(?:html)?|```$", "", body.strip(), flags=re.M).strip()
+
+    html = (f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+            f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+            f"<title>{brand} — AI Search Visibility Proposal</title>"
+            f"<link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800;900"
+            f"&family=Kanit:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">"
+            f"<style>{_proposal_css()}</style></head><body>{body}</body></html>")
+    return {"domain": domain, "brand": brand, "html": html, "artifacts": {}}
