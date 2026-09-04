@@ -141,17 +141,29 @@ async def publish(html: str, brand: str, domain: str = "") -> dict:
 
     tmp = Path(tempfile.mkdtemp(prefix="proposal-"))
     try:
-        (tmp / "index.html").write_text(html, encoding="utf-8")
+        # Only site/ is uploaded, so wrangler's own cache dir alongside it is never deployed.
+        site = tmp / "site"
+        site.mkdir()
+        (site / "index.html").write_text(html, encoding="utf-8")
         # Stop Cloudflare serving the deck to search engines — it is a private client document.
-        (tmp / "_headers").write_text("/*\n  X-Robots-Tag: noindex, nofollow\n", encoding="utf-8")
+        (site / "_headers").write_text("/*\n  X-Robots-Tag: noindex, nofollow\n", encoding="utf-8")
 
-        cmd = [_wrangler(), "--yes", "wrangler@latest", "pages", "deploy", str(tmp),
+        cmd = [_wrangler(), "--yes", "wrangler@latest", "pages", "deploy", str(site),
                f"--project-name={name}", "--branch=main", "--commit-dirty=true"]
+        # Run from the temp dir, NOT the app directory. wrangler walks up from its cwd looking for
+        # node_modules, and backend/ contains a root-owned one — it then tries to create a cache
+        # inside it and dies with EACCES after the upload has already succeeded. Its caches are
+        # pointed at the temp dir too, so nothing it writes depends on the app tree at all.
+        cache = tmp / ".cache"
+        cache.mkdir(exist_ok=True)
         proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            *cmd, cwd=str(tmp),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             env={"CLOUDFLARE_API_TOKEN": settings.CLOUDFLARE_API_TOKEN,
                  "CLOUDFLARE_ACCOUNT_ID": settings.CLOUDFLARE_ACCOUNT_ID,
                  "PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(Path.home()),
+                 "XDG_CACHE_HOME": str(cache), "npm_config_cache": str(cache),
+                 "WRANGLER_SEND_METRICS": "false",
                  "CI": "1", "NO_COLOR": "1"})
         try:
             out_b, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
