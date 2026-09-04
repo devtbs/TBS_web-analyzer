@@ -67,6 +67,63 @@ async def ensure_project(name: str) -> None:
             raise RuntimeError(f"Could not create Cloudflare Pages project {name!r}: {errs[:200]}")
 
 
+async def _zone_id(domain: str) -> Optional[str]:
+    """The Cloudflare zone holding this domain, or None if it is not active on this account."""
+    j = await _cf_root("GET", f"/zones?name={domain}")
+    for z in (j.get("result") or []):
+        if z.get("name") == domain:
+            if z.get("status") != "active":
+                logger.warning("zone %s is %s, not active — cannot attach a custom domain yet",
+                               domain, z.get("status"))
+                return None
+            return z.get("id")
+    return None
+
+
+async def _cf_root(method: str, path: str, payload: Optional[dict] = None) -> dict:
+    """Cloudflare call that is NOT account-scoped (zones live at the root)."""
+    import httpx
+    headers = {"Authorization": f"Bearer {settings.CLOUDFLARE_API_TOKEN}",
+               "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=45) as c:
+        r = await c.request(method, f"{_API}{path}", headers=headers,
+                            content=json.dumps(payload) if payload else None)
+    try:
+        return r.json()
+    except Exception:
+        return {"success": False, "errors": [{"message": r.text[:300]}]}
+
+
+async def attach_domain(project: str, host: str) -> bool:
+    """Point <host> at this Pages project, creating the CNAME if Cloudflare did not.
+
+    Returns True only when the hostname is actually attached — the caller falls back to the
+    pages.dev URL otherwise, so a DNS problem never leaves the user without a working link.
+    """
+    base = host.split(".", 1)[1] if "." in host else host
+    zone = await _zone_id(base)
+    if not zone:
+        return False
+
+    added = await _cf("POST", f"/pages/projects/{project}/domains", {"name": host})
+    errs = "; ".join(e.get("message", "") for e in (added.get("errors") or []))
+    if not added.get("success") and "already" not in errs.lower():
+        logger.error("could not attach %s to %s: %s", host, project, errs[:200])
+        return False
+
+    # Attaching usually creates the DNS record; add it ourselves when it did not.
+    recs = await _cf_root("GET", f"/zones/{zone}/dns_records?name={host}")
+    if not (recs.get("result") or []):
+        made = await _cf_root("POST", f"/zones/{zone}/dns_records", {
+            "type": "CNAME", "name": host, "content": f"{project}.pages.dev",
+            "proxied": True, "comment": "TBS proposal deck"})
+        if not made.get("success"):
+            logger.error("CNAME for %s failed: %s", host,
+                         [e.get("message") for e in (made.get("errors") or [])])
+            return False
+    return True
+
+
 def _wrangler() -> str:
     for candidate in ("npx", "/usr/bin/npx", "/usr/local/bin/npx"):
         if shutil.which(candidate) or Path(candidate).exists():
@@ -110,9 +167,19 @@ async def publish(html: str, brand: str, domain: str = "") -> dict:
         # wrangler prints the deployment URL; fall back to the project's stable address.
         m = re.search(r"https://[a-z0-9.-]+\.pages\.dev", out)
         deploy_url = m.group(0) if m else ""
-        logger.info("published proposal for %s to %s", brand, deploy_url or name)
-        return {"project": name,
-                "url": f"https://{name}.pages.dev",
-                "deployment_url": deploy_url}
+        url = f"https://{name}.pages.dev"
+
+        # Prefer a client-facing subdomain when one is configured and the zone is ready.
+        base = (settings.PROPOSAL_DOMAIN or "").strip().lstrip(".")
+        if base:
+            slug = re.sub(r"[^a-z0-9]+", "-", (brand or domain or "client").lower()).strip("-")[:40]
+            host = f"{slug or 'proposal'}.{base}"
+            if await attach_domain(name, host):
+                url = f"https://{host}"
+            else:
+                logger.warning("custom domain %s not ready — returning the pages.dev link", host)
+
+        logger.info("published proposal for %s to %s", brand, url)
+        return {"project": name, "url": url, "deployment_url": deploy_url}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
