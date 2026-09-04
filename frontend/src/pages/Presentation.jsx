@@ -76,6 +76,7 @@ const Presentation = () => {
     const [library, setLibrary] = useState([]);
     const [libService, setLibService] = useState('');
     const [libLang, setLibLang] = useState('en');
+    const [libFormat, setLibFormat] = useState('canva');
     const [libClients, setLibClients] = useState([]);
     const [libClientId, setLibClientId] = useState(localStorage.getItem('selected_client_id') || '');
     const [libSaving, setLibSaving] = useState(false);
@@ -686,15 +687,19 @@ const Presentation = () => {
     const libEntry = library.find(x => x.id === libService) || null;
     const libLangs = libEntry ? Object.keys(libEntry.languages) : [];
     const libLinks = (libEntry && libEntry.languages[libLang]) || {};
+    // Not every service has both formats in every language — fall back rather than leaving the
+    // picker on a format with no link behind it.
+    const libFormats = ['canva', 'slides'].filter(f => libLinks[f]);
+    const libFmt = libFormats.includes(libFormat) ? libFormat : (libFormats[0] || '');
 
     // Saving records WHICH approved deck was sent to WHICH client — the deck itself already
     // exists in Canva/Slides, so nothing is generated or copied here.
-    const saveFromLibrary = async (fmt) => {
-        if (!libEntry) return;
+    const saveFromLibrary = async () => {
+        if (!libEntry || !libFmt) return;
         setLibSaving(true);
         try {
             const { data } = await api.post('/api/presentation/proposal-library/attach', {
-                service: libService, language: libLang, format: fmt,
+                service: libService, language: libLang, format: libFmt,
                 client_id: libClientId || null,
                 analysis_id: analysisId || null,
             });
@@ -1206,31 +1211,30 @@ const Presentation = () => {
                             with this deck embedded underneath.
                         </p>
 
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {['canva', 'slides'].map(fmt => (
-                                <div key={fmt} className={`rounded-xl border px-4 py-3 ${
-                                    libLinks[fmt] ? 'border-slate-300' : 'border-slate-200 bg-slate-50'}`}>
-                                    <div className="font-bold text-sm text-slate-700">
-                                        {fmt === 'canva' ? 'Canva' : 'Google Slides'}
-                                    </div>
-                                    {libLinks[fmt] ? (
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                            <a href={libLinks[fmt]} target="_blank" rel="noopener noreferrer"
-                                                className="px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs hover:bg-[#26397A]/5">
-                                                Open
-                                            </a>
-                                            <button type="button" disabled={libSaving}
-                                                onClick={() => saveFromLibrary(fmt)}
-                                                className="px-3 py-1.5 rounded-lg bg-[#26397A] text-white font-bold text-xs hover:bg-[#1b2a5e] disabled:opacity-50">
-                                                {libSaving ? 'Saving…' : 'Save to client'}
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <p className="text-xs text-slate-400 mt-2">Not available for this language yet.</p>
-                                    )}
-                                </div>
+                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Format</label>
+                        <div className="flex flex-wrap gap-2">
+                            {[['canva', 'Canva'], ['slides', 'Google Slides']].map(([fmt, label]) => (
+                                <button key={fmt} type="button" disabled={!libLinks[fmt]}
+                                    onClick={() => { setLibFormat(fmt); setLibSaved(null); }}
+                                    className={`px-4 py-2.5 rounded-xl font-bold text-sm border transition-colors ${
+                                        libFmt === fmt ? 'bg-[#26397A] text-white border-[#26397A]'
+                                        : libLinks[fmt] ? 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'
+                                        : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'}`}>
+                                    {label}
+                                </button>
                             ))}
+                            {libFmt && (
+                                <a href={libLinks[libFmt]} target="_blank" rel="noopener noreferrer"
+                                    className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-bold text-sm hover:border-[#26397A]/50">
+                                    Open it ↗
+                                </a>
+                            )}
                         </div>
+                        {!libFmt && (
+                            <p className="text-xs text-red-600 mt-2 font-semibold">
+                                We have no deck for that service in this language yet.
+                            </p>
+                        )}
 
                         {libSaved && (
                             <div className="mt-3">
@@ -1253,8 +1257,9 @@ const Presentation = () => {
                             </div>
                         )}
                         <p className="text-xs text-slate-500 mt-3">
-                            These are the approved agency decks. Nothing is generated — saving records which
-                            proposal went to which client so it sits in Documents with the rest of their work.
+                            These are the approved agency decks — the deck itself is never modified. With an
+                            analysis chosen, the summary above it is written for that site; without one, this
+                            just records which proposal went to which client.
                         </p>
                     </div>
                 )}
@@ -1571,18 +1576,35 @@ const Presentation = () => {
                 </>}
 
 
-                {!libraryMode && <>
                 {/* Sticky CTA — stays reachable without scrolling past every option */}
                 <div className="sticky bottom-0 -mx-6 md:-mx-8 -mb-6 md:-mb-8 mt-6 px-6 md:px-8 py-4 bg-white/95 backdrop-blur border-t border-slate-200 rounded-b-2xl">
-                    <button onClick={generate} disabled={generating || !canGenerate}
-                        className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
-                        {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Starting…</>
-                            : <><SparklesIcon className="w-5 h-5" /> {compareModels.length ? `Generate ${1 + compareModels.length} decks` : 'Generate presentation'}</>}
-                    </button>
-                    <p className="text-xs text-slate-400 mt-2 text-center">
-                        Decks generate in the background — you can start more, leave, or reload this page; each appears in Documents.</p>
+                    {/* A ready-made proposal still has work to do when a summary is attached — the
+                        summary sections are written for this site — so it gets the same primary
+                        action rather than hiding behind the format cards. */}
+                    {libraryMode ? (
+                        <>
+                            <button onClick={saveFromLibrary} disabled={libSaving || !libFmt}
+                                className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
+                                {libSaving ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> {analysisId ? 'Writing the summary…' : 'Saving…'}</>
+                                    : <><SparklesIcon className="w-5 h-5" /> {analysisId ? 'Generate proposal page' : 'Save proposal to Documents'}</>}
+                            </button>
+                            <p className="text-xs text-slate-400 mt-2 text-center">
+                                {analysisId
+                                    ? 'Writes the summary for this site and embeds the chosen deck under it — about a minute.'
+                                    : 'Saves the deck link only. Pick an analysis above to publish it with a summary.'}</p>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={generate} disabled={generating || !canGenerate}
+                                className="w-full py-4 rounded-xl bg-[#26397A] text-white font-bold flex items-center justify-center gap-2 hover:bg-[#1b2a5e] transition-colors disabled:opacity-60">
+                                {generating ? <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Starting…</>
+                                    : <><SparklesIcon className="w-5 h-5" /> {compareModels.length ? `Generate ${1 + compareModels.length} decks` : 'Generate presentation'}</>}
+                            </button>
+                            <p className="text-xs text-slate-400 mt-2 text-center">
+                                Decks generate in the background — you can start more, leave, or reload this page; each appears in Documents.</p>
+                        </>
+                    )}
                 </div>
-                </>}
             </motion.div>
 
             {/* Active-job tracker: one row per in-flight/finished deck */}
