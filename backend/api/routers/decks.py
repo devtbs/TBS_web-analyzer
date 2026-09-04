@@ -642,8 +642,12 @@ async def publish_proposal(document_id: str,
         raise HTTPException(status_code=400, detail="That deck has no HTML to publish yet.")
 
     brand = content.get("label") or doc.title or "client"
+    # The stored deck is plain slides (so the preview renderer works); the published site gets the
+    # interactive viewer wrapped around them.
+    from services.report_generator import proposal_page_for_publish
     try:
-        res = await pub.publish(html, brand, content.get("domain") or "")
+        res = await pub.publish(proposal_page_for_publish(brand, html), brand,
+                                content.get("domain") or "")
     except Exception as e:
         logger.error("publish %s failed: %s", document_id, str(e)[:300])
         raise HTTPException(status_code=502, detail=str(e)[:300])

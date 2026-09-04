@@ -1654,10 +1654,16 @@ def _proposal_css() -> str:
     return (_TEMPLATE_DIR / "proposal_deck.css").read_text(encoding="utf-8")
 
 
-def _proposal_page(brand: str, slides_html: str) -> str:
-    """Wrap the slides in the reference's own standalone page: viewer stage, keyboard navigation,
-    fullscreen and a PDF download — the same chrome as the approved deck, so a prospect gets a
-    proper presentation rather than a long scroll of cards.
+def _proposal_page(brand: str, slides_html: str, viewer: bool = False) -> str:
+    """Assemble the proposal page.
+
+    Two outputs, deliberately different:
+      viewer=False (default) — plain slides. This is what gets STORED and previewed: the preview
+        renderer screenshots each `.slide`, and the viewer script relocates every slide into a
+        single stage and hides the rest, which made the renderer find nothing and produce an
+        empty carousel.
+      viewer=True — the reference's standalone deck: stage, keyboard nav, fullscreen, PDF
+        download. Used only when publishing, where a browser actually runs the script.
     """
     def _tpl(name, default=""):
         try:
@@ -1672,12 +1678,23 @@ def _proposal_page(brand: str, slides_html: str) -> str:
         f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
         f"<style>{_proposal_fonts()}</style>"
         f"<style>{_proposal_css()}</style>"
-        f"<style>{_tpl('proposal_viewer.css')}</style>"
-        "</head><body>"
-        f"{_tpl('proposal_viewer.html')}"
-        f"{slides_html}"
-        f"<script>{_tpl('proposal_viewer.js')}</script>"
-        "</body></html>")
+        + (f"<style>{_tpl('proposal_viewer.css')}</style>" if viewer else "")
+        + "</head><body>"
+        + (_tpl("proposal_viewer.html") if viewer else "")
+        + slides_html
+        + (f"<script>{_tpl('proposal_viewer.js')}</script>" if viewer else "")
+        + "</body></html>")
+
+
+def proposal_page_for_publish(brand: str, stored_html: str) -> str:
+    """Re-wrap a stored proposal with the slide viewer, for publishing.
+
+    The stored deck is plain slides so the preview renderer can screenshot them; the published
+    site wants the interactive deck. Pull the slides back out and re-assemble.
+    """
+    m = re.search(r"<body[^>]*>(.*)</body>", stored_html, re.S)
+    slides = m.group(1) if m else stored_html
+    return _proposal_page(brand, slides, viewer=True)
 
 
 def _proposal_fonts() -> str:
