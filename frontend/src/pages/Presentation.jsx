@@ -665,6 +665,23 @@ const Presentation = () => {
         } finally { setPublishing(false); }
     };
 
+    // Open the deck as a prospect would see it — summary sections plus the interactive viewer.
+    // Fetched with auth and opened as a blob so no token ends up in a URL.
+    const openFullPreview = async () => {
+        if (!deckDocId) return;
+        try {
+            const res = await api.get(`/api/presentation/proposal/${deckDocId}/full`,
+                                      { responseType: 'blob' });
+            const url = URL.createObjectURL(new Blob([res.data], { type: 'text/html' }));
+            const w = window.open(url, '_blank');
+            if (!w) toast.error('Allow pop-ups to open the full preview');
+            // Give the new tab time to load before releasing the object URL.
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Could not open the full preview');
+        }
+    };
+
     const downloadDeck = async (fmt) => {
         if (!deckDocId) return;
         setDownloading(fmt);
@@ -1403,6 +1420,13 @@ const Presentation = () => {
                                 className="px-4 py-2 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-sm flex items-center gap-2 hover:bg-[#26397A]/5 disabled:opacity-60">
                                 <ArrowDownTrayIcon className="w-4 h-4" /> {downloading === 'pptx' ? 'Rendering…' : 'PPTX'}
                             </button>
+                            {mode === 'proposal' && (
+                                <button onClick={openFullPreview}
+                                    title="Open the full page — summary sections plus the slide viewer"
+                                    className="px-4 py-2 rounded-lg border border-emerald-600 text-emerald-700 font-bold text-sm hover:bg-emerald-50">
+                                    Full preview
+                                </button>
+                            )}
                             {mode === 'proposal' && (
                                 <button onClick={publishProposal} disabled={publishing}
                                     title="Publish to Cloudflare Pages as a shareable client link"

@@ -2,7 +2,7 @@
 uploaded PDF, preview saved decks, download, and list AI providers."""
 from fastapi import (APIRouter, Depends, HTTPException, status, Body, UploadFile, File, Form,
                      BackgroundTasks)
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session
 
 from models.schemas import UserInfo
@@ -617,6 +617,28 @@ async def presentation_ai_deck_proposal(
     return StreamingResponse(_stream_deck_generation(run, current_user.email),
                              media_type="text/event-stream", headers=_SSE_HEADERS)
 
+
+
+@router.get("/api/presentation/proposal/{document_id}/full")
+async def proposal_full_page(document_id: str,
+                             current_user: UserInfo = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    """The proposal exactly as a prospect would see it — summary sections, slide viewer and all.
+
+    The stored deck is deliberately plain slides so the preview renderer can screenshot them, so
+    this assembles the published form on demand. Lets you check the real page before it goes live.
+    """
+    from services.report_generator import proposal_page_for_publish
+    doc = (db.query(Document)
+           .filter(Document.id == document_id, Document.user_email == current_user.email).first())
+    if not doc:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    content = doc.content if isinstance(doc.content, dict) else {}
+    html = content.get("html") or ""
+    if not html:
+        raise HTTPException(status_code=400, detail="That deck has no HTML yet.")
+    brand = content.get("label") or doc.title or "client"
+    return Response(content=proposal_page_for_publish(brand, html), media_type="text/html")
 
 
 @router.post("/api/presentation/proposal/{document_id}/publish")
