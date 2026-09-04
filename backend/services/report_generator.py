@@ -1847,6 +1847,40 @@ def _proposal_hero_image(analysis: Dict) -> str:
 TOPICAL_MAP_TOKEN = "<!--TOPICAL_MAP-->"
 
 
+def _fix_intro_images(intro_html: str, tmap_html: str) -> str:
+    """Resolve the reference intro's images, which all point at RELATIVE files.
+
+    The reference page ships four screenshots (prompts-0pct.jpg, topic-map.jpg,
+    content-strategy.jpg, seranking-current-state.png) that exist only next to the original
+    deployment. Published anywhere else they 404 and the prospect sees broken-image alt text —
+    which is what shipped.
+
+    Only one of them has a real equivalent for a new client: the topical map, which we already
+    render ourselves. That figure becomes the client's OWN map, inlined as SVG (vector, so it stays
+    sharp and needs no rasteriser on the server).
+
+    Every other figure is REMOVED rather than back-filled with a site photo. Those figures are data
+    screenshots — a decorative photo under a caption reading "list of benchmark AI prompts" reads as
+    a mistake, and the remaining ones are screenshots of the reference client's own dashboard, which
+    must never reach a different prospect. The cards keep their stat blocks and prose either way.
+    """
+    if not intro_html:
+        return intro_html
+
+    def _replace(mo):
+        block = mo.group(0)
+        if 'topic-map' in block or 'topical map' in block.lower():
+            return f'<div class="problem-image problem-image-map">{tmap_html}</div>' if tmap_html else ""
+        return ""
+
+    # Figures are anchors wrapping an image — matched by shape, not by class, because the audit
+    # section uses .audit-image rather than .problem-image and would otherwise leave an empty
+    # clickable link behind pointing at the missing file. A bare <img> is handled after.
+    out = re.sub(r'<a\b[^>]*href="(?!https?:)[^"]*"[^>]*>\s*<img\b.*?</a>',
+                 _replace, intro_html, flags=re.S)
+    return re.sub(r'<img[^>]*src="(?!https?:)[^"]*"[^>]*/?>', _replace, out)
+
+
 def _render_topical_map(m: Dict) -> str:
     """Draw the client's topical map as an SVG cluster diagram.
 
@@ -2084,6 +2118,7 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
         outs = await asyncio.gather(*[_rewrite_slide(sec, brand, domain, brief, prov)
                                       for sec in intro])
         intro_out = "\n".join(o for o in outs if o)
+        intro_out = _fix_intro_images(intro_out, tmap_html)
 
     # ── Deterministic injections ─────────────────────────────────────────────────────────
     # The reference cover carries a RELATIVE image (hero-lake.jpg) that 404s anywhere else, and its

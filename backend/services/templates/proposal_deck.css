@@ -706,6 +706,16 @@ body.fs-locked { overflow: hidden; }
   width: 100%;
   height: auto;
 }
+/* The client's real topical map is inlined as SVG rather than a screenshot, so it needs the
+   sizing that .problem-image img would otherwise give it. */
+.problem-image-map {
+  padding: 0.75rem;
+}
+.problem-image-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 .problem-image-tall img {
   max-height: 480px;
   object-fit: contain;
