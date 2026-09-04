@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, DateTime, Date, Text, JSON, Boolean, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, Column, String, DateTime, Date, Text, JSON, Boolean, Integer, LargeBinary, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -386,3 +386,33 @@ class DeckSchedule(Base):
     last_error    = Column(Text, nullable=True)
     last_document_id = Column(String, nullable=True)
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ProposalDeckPdf(Base):
+    """A Canva-exported PDF of one ready-made proposal deck.
+
+    Canva cannot be embedded (its pages answer X-Frame-Options: SAMEORIGIN), so a published
+    proposal showed only a link out. A PDF export renders inline in every browser, which is what
+    makes the page read like the deck rather than a pointer to it.
+
+    Deliberately AGENCY-WIDE, not per user: these are the same five approved decks for everyone,
+    exactly like the link catalogue in services/proposal_library.py. One row per
+    (service, language, format) — re-uploading replaces it, so every proposal built afterwards
+    picks up the new export without being rebuilt.
+
+    Canva has no API we can export through (that needs OAuth against the account owning the
+    designs), so the PDF is exported by hand once per deck and uploaded here.
+    """
+    __tablename__ = "proposal_deck_pdfs"
+    __table_args__ = (UniqueConstraint("service", "language", "format", name="uq_proposal_deck_pdf"),)
+
+    id          = Column(String, primary_key=True, index=True)
+    service     = Column(String, nullable=False, index=True)   # matches proposal_library ids
+    language    = Column(String, nullable=False)               # en | th
+    format      = Column(String, nullable=False)               # canva | slides
+    filename    = Column(String, nullable=False)
+    size_bytes  = Column(Integer, nullable=False)
+    data        = Column(LargeBinary, nullable=False)
+    uploaded_by = Column(String, nullable=False)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime, default=datetime.utcnow, nullable=False)

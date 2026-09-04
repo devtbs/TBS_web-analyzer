@@ -1943,11 +1943,26 @@ def _deck_embed_url(entry: Dict) -> str:
     return ""
 
 
-def _deck_embed_block(entry: Dict, embed_url: str, brand: str) -> str:
-    """The deck itself, under the summary — embedded where the host allows it, linked otherwise."""
+# Placeholder for the deck PDF's URL. The stored page cannot know it: previewing wants the bytes
+# inlined, while publishing wants a real file next to index.html so the page stays small. Whoever
+# renders the page substitutes the form it needs.
+DECK_PDF_TOKEN = "__DECK_PDF__"
+
+
+def _deck_embed_block(entry: Dict, embed_url: str, brand: str, has_pdf: bool = False) -> str:
+    """The deck itself, under the summary.
+
+    Preference order, best first: an uploaded PDF export (renders inline everywhere, and is the
+    only way a Canva deck can be shown at all), then a Google Slides embed, then a link card.
+    """
     label = f"{entry.get('service_label', 'Proposal')} · {entry.get('format_label', '')}".strip(" ·")
     href = _esc(entry.get("url", ""))
-    if embed_url:
+    if has_pdf:
+        body = (f'<div class="deck-embed-frame deck-embed-pdf"><iframe src="{DECK_PDF_TOKEN}" '
+                f'title="{_esc(brand)} — {_esc(label)}" loading="lazy"></iframe></div>'
+                f'<a class="deck-embed-open" href="{DECK_PDF_TOKEN}" target="_blank" '
+                'rel="noopener">Open the deck as a PDF →</a>')
+    elif embed_url:
         body = (f'<div class="deck-embed-frame"><iframe src="{_esc(embed_url)}" '
                 f'title="{_esc(brand)} — {_esc(label)}" allowfullscreen '
                 f'loading="lazy" frameborder="0"></iframe></div>'
@@ -1965,7 +1980,8 @@ def _deck_embed_block(entry: Dict, embed_url: str, brand: str) -> str:
 
 
 async def generate_library_proposal(analysis: Dict, entry: Dict, *, provider: str = None,
-                                    notes: str = "", map_png: str = "", on_progress=None) -> Dict:
+                                    notes: str = "", map_png: str = "", has_pdf: bool = False,
+                                    on_progress=None) -> Dict:
     """A ready-made deck, published under a summary written about THIS prospect's site.
 
     The deck is one of the agency's approved Canva/Slides proposals and is not touched. What gets
@@ -2003,7 +2019,7 @@ async def generate_library_proposal(analysis: Dict, entry: Dict, *, provider: st
 
     if on_progress:
         await on_progress("Embedding the deck…")
-    body = _deck_embed_block(entry, _deck_embed_url(entry), brand)
+    body = _deck_embed_block(entry, _deck_embed_url(entry), brand, has_pdf=has_pdf)
     html = _proposal_page(brand, body, intro=intro_out)
     logger.info("library proposal for %s: %s (%s)", brand, entry.get("service"), entry.get("format"))
     return {"domain": domain, "brand": brand, "html": html}

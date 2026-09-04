@@ -960,3 +960,12 @@ html, body { background: var(--paper); }
   color: inherit;
   text-decoration: underline;
 }
+
+/* A PDF export is taller than 16:9 — it scrolls inside its own frame. */
+.deck-embed-pdf {
+  padding-top: 0;
+  height: min(85vh, 900px);
+}
+.deck-embed-pdf iframe {
+  position: static;
+}

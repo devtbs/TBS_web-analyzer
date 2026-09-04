@@ -131,8 +131,14 @@ def _wrangler() -> str:
     raise RuntimeError("npx not found on this host — cannot run wrangler.")
 
 
-async def publish(html: str, brand: str, domain: str = "") -> dict:
-    """Deploy one HTML page as a client's proposal site. Returns {url, project}."""
+async def publish(html: str, brand: str, domain: str = "",
+                  extra_files: Optional[dict] = None) -> dict:
+    """Deploy a client's proposal site. Returns {url, project}.
+
+    `extra_files` maps a filename to its bytes and is written next to index.html — used for the
+    deck PDF, which is served as its own file rather than inlined so the page stays small enough
+    to load quickly (and well under Cloudflare's per-file ceiling).
+    """
     if not is_configured():
         raise RuntimeError("Cloudflare is not configured — set CLOUDFLARE_API_TOKEN and "
                            "CLOUDFLARE_ACCOUNT_ID in backend/.env.")
@@ -147,6 +153,11 @@ async def publish(html: str, brand: str, domain: str = "") -> dict:
         (site / "index.html").write_text(html, encoding="utf-8")
         # Stop Cloudflare serving the deck to search engines — it is a private client document.
         (site / "_headers").write_text("/*\n  X-Robots-Tag: noindex, nofollow\n", encoding="utf-8")
+        for name, blob in (extra_files or {}).items():
+            # Flat filenames only — never let a caller write outside the deploy directory.
+            safe = Path(name).name
+            if safe and blob:
+                (site / safe).write_bytes(blob)
 
         cmd = [_wrangler(), "--yes", "wrangler@latest", "pages", "deploy", str(site),
                f"--project-name={name}", "--branch=main", "--commit-dirty=true"]

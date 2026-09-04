@@ -83,6 +83,8 @@ const Presentation = () => {
     const [libClientId, setLibClientId] = useState(localStorage.getItem('selected_client_id') || '');
     const [libSaving, setLibSaving] = useState(false);
     const [libSaved, setLibSaved] = useState(null);
+    const [libPdfs, setLibPdfs] = useState({});      // "service|lang|format" -> size in bytes
+    const [pdfBusy, setPdfBusy] = useState(false);
     const [mapTaxonomy, setMapTaxonomy] = useState(null);   // mounted only while capturing
     const mapShotRef = useRef(null);      // set to the map's PNG exporter while mounted
     // Stable identity: the child registers through an effect, so a new function each render would
@@ -425,6 +427,7 @@ const Presentation = () => {
             .then(r => {
                 const svcs = r.data.services || [];
                 setLibrary(svcs);
+                setLibPdfs(r.data.pdfs || {});
                 if (svcs.length && !libService) setLibService(svcs[0].id);
             })
             .catch(() => toast.error('Could not load the proposal library'));
@@ -729,6 +732,39 @@ const Presentation = () => {
             setMapTaxonomy(null);
             mapShotRef.current = null;
         }
+    };
+
+    const libPdfKey = `${libService}|${libLang}|${libFmt}`;
+    const libPdfSize = libPdfs[libPdfKey] || 0;
+
+    /* Canva has no API we can export through, so the PDF is exported by hand once per deck and
+       stored here. Every proposal built from that deck then shows it inline. */
+    const uploadDeckPdf = async (file) => {
+        if (!file || !libFmt) return;
+        const fd = new FormData();
+        fd.append('service', libService); fd.append('language', libLang);
+        fd.append('format', libFmt); fd.append('file', file);
+        setPdfBusy(true);
+        try {
+            const { data } = await api.post('/api/presentation/proposal-library/pdf', fd);
+            setLibPdfs(p => ({ ...p, [libPdfKey]: data.size_bytes }));
+            toast.success('Deck PDF stored');
+        } catch (e) {
+            toast.error(e?.response?.data?.detail || 'Could not store that PDF.');
+        } finally { setPdfBusy(false); }
+    };
+
+    const removeDeckPdf = async () => {
+        setPdfBusy(true);
+        try {
+            await api.delete('/api/presentation/proposal-library/pdf', {
+                params: { service: libService, language: libLang, format: libFmt },
+            });
+            setLibPdfs(p => { const n = { ...p }; delete n[libPdfKey]; return n; });
+            toast.success('Deck PDF removed');
+        } catch (e) {
+            toast.error(e?.response?.data?.detail || 'Could not remove it.');
+        } finally { setPdfBusy(false); }
     };
 
     const saveFromLibrary = async () => {
@@ -1252,6 +1288,40 @@ const Presentation = () => {
                             <p className="text-xs text-red-600 mt-2 font-semibold">
                                 We have no deck for that service in this language yet.
                             </p>
+                        )}
+
+                        {/* The deck's own PDF export. Canva blocks framing, so without this the
+                            published page can only link out to it. */}
+                        {libFmt && (
+                            <div className="mt-4 rounded-xl border border-slate-200 px-4 py-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <div className="text-sm font-bold text-slate-700">Deck PDF</div>
+                                        <div className="text-xs text-slate-500 mt-0.5">
+                                            {libPdfSize
+                                                ? `Stored — ${(libPdfSize / (1024 * 1024)).toFixed(1)} MB. Shown inline in the proposal.`
+                                                : 'Not stored yet — the proposal will only link out to the deck.'}
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <label className={`px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs cursor-pointer hover:bg-[#26397A]/5 ${pdfBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            {pdfBusy ? 'Working…' : libPdfSize ? 'Replace' : 'Upload PDF'}
+                                            <input type="file" accept="application/pdf" className="hidden"
+                                                onChange={(e) => { uploadDeckPdf(e.target.files?.[0]); e.target.value = ''; }} />
+                                        </label>
+                                        {libPdfSize > 0 && (
+                                            <button type="button" onClick={removeDeckPdf} disabled={pdfBusy}
+                                                className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold text-xs hover:border-red-300 hover:text-red-600">
+                                                Remove
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <p className="text-xs text-slate-400 mt-2">
+                                    Export the deck from Canva as PDF and upload it once — every proposal using
+                                    this deck then shows it inline. Max 15 MB.
+                                </p>
+                            </div>
                         )}
 
                         {libSaved && (

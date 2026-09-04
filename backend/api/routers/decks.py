@@ -593,11 +593,104 @@ def _clean_map_png(value: str) -> str:
     return prefix + re.sub(r"\s+", "", body)
 
 
+# Cloudflare Pages accepts files up to 25MB. Cap well under that so the deck plus the page always
+# fit, and so an accidental 100MB export fails fast with a clear message instead of at deploy time.
+_MAX_DECK_PDF = 15 * 1024 * 1024
+
+
+def _deck_pdf_row(db: Session, service: str, language: str, fmt: str):
+    from database import ProposalDeckPdf
+    return (db.query(ProposalDeckPdf)
+            .filter(ProposalDeckPdf.service == service,
+                    ProposalDeckPdf.language == language,
+                    ProposalDeckPdf.format == fmt).first())
+
+
+def _render_with_deck_pdf(html: str, content: dict, db: Session, *, inline: bool):
+    """Fill in the deck-PDF placeholder. Returns (html, files_to_publish).
+
+    Preview inlines the bytes because it renders from a blob URL with no server to fetch a sibling
+    file from. Publishing writes a real deck.pdf instead — a 10MB PDF base64'd into the page would
+    triple the download and delay first paint.
+    """
+    from services.report_generator import DECK_PDF_TOKEN
+    if DECK_PDF_TOKEN not in html:
+        return html, {}
+    row = _deck_pdf_row(db, content.get("service") or "", content.get("language") or "",
+                        content.get("format") or "")
+    if not row:
+        # The PDF was deleted after this proposal was built. Fall back to the deck's own link
+        # rather than shipping a page with a broken frame.
+        logger.warning("deck PDF missing for %s/%s/%s", content.get("service"),
+                       content.get("language"), content.get("format"))
+        return html.replace(DECK_PDF_TOKEN, content.get("url") or "#"), {}
+    if inline:
+        import base64
+        data_url = "data:application/pdf;base64," + base64.b64encode(row.data).decode()
+        return html.replace(DECK_PDF_TOKEN, data_url), {}
+    return html.replace(DECK_PDF_TOKEN, "deck.pdf"), {"deck.pdf": row.data}
+
+
+@router.post("/api/presentation/proposal-library/pdf")
+async def upload_proposal_deck_pdf(service: str = Form(...), language: str = Form(...),
+                                   format: str = Form(...), file: UploadFile = File(...),
+                                   current_user: UserInfo = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
+    """Store a Canva/Slides PDF export for one library deck, so proposals can show it inline.
+
+    Agency-wide, like the link catalogue: one export per deck serves every proposal built from it.
+    """
+    from services import proposal_library as lib
+    from database import ProposalDeckPdf
+    import uuid as _uuid
+
+    if not lib.find(service, language, format):
+        raise HTTPException(status_code=404, detail="That deck is not in the library.")
+    blob = await file.read()
+    if not blob:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    if len(blob) > _MAX_DECK_PDF:
+        raise HTTPException(status_code=400,
+                            detail=f"That PDF is {len(blob) // (1024 * 1024)}MB — the limit is 15MB. "
+                                   "Re-export from Canva at a lower image quality.")
+    if not blob.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="That file is not a PDF.")
+
+    row = _deck_pdf_row(db, service, language, format)
+    if row:
+        row.filename, row.size_bytes, row.data = file.filename or "deck.pdf", len(blob), blob
+        row.uploaded_by, row.updated_at = current_user.email, datetime.utcnow()
+    else:
+        db.add(ProposalDeckPdf(id=str(_uuid.uuid4()), service=service, language=language,
+                               format=format, filename=file.filename or "deck.pdf",
+                               size_bytes=len(blob), data=blob, uploaded_by=current_user.email))
+    db.commit()
+    return {"ok": True, "size_bytes": len(blob), "filename": file.filename}
+
+
+@router.delete("/api/presentation/proposal-library/pdf")
+async def delete_proposal_deck_pdf(service: str, language: str, format: str,
+                                   current_user: UserInfo = Depends(get_current_user),
+                                   db: Session = Depends(get_db)):
+    """Remove a stored deck PDF. Proposals built from it fall back to the deck's link."""
+    row = _deck_pdf_row(db, service, language, format)
+    if not row:
+        raise HTTPException(status_code=404, detail="No PDF stored for that deck.")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/api/presentation/proposal-library")
-async def proposal_library(current_user: UserInfo = Depends(get_current_user)):
+async def proposal_library(current_user: UserInfo = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
     """The agency's ready-made proposal decks, for picking one instead of generating a new deck."""
     from services import proposal_library as lib
-    return {"services": lib.catalogue(), "languages": lib.LANGUAGES, "formats": lib.FORMATS}
+    from database import ProposalDeckPdf
+    have = {f"{r.service}|{r.language}|{r.format}": r.size_bytes
+            for r in db.query(ProposalDeckPdf).all()}
+    return {"services": lib.catalogue(), "languages": lib.LANGUAGES, "formats": lib.FORMATS,
+            "pdfs": have}
 
 
 @router.post("/api/presentation/proposal-library/attach")
@@ -650,7 +743,9 @@ async def attach_proposal_from_library(body: dict = Body(...),
             built = await generate_library_proposal(
                 analysis, entry, notes=note,
                 provider=(body.get('provider') or '').strip() or None,
-                map_png=_clean_map_png(body.get("map_png") or ""))
+                map_png=_clean_map_png(body.get("map_png") or ""),
+                has_pdf=bool(_deck_pdf_row(db, entry["service"], entry["language"],
+                                           entry["format"])))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -693,8 +788,9 @@ async def proposal_full_page(document_id: str,
     if not html:
         raise HTTPException(status_code=400, detail="That deck has no HTML yet.")
     brand = content.get("label") or doc.title or "client"
-    return Response(content=proposal_page_for_publish(brand, html, content.get("layout") or "deck"),
-                    media_type="text/html")
+    page = proposal_page_for_publish(brand, html, content.get("layout") or "deck")
+    page, _ = _render_with_deck_pdf(page, content, db, inline=True)
+    return Response(content=page, media_type="text/html")
 
 
 @router.post("/api/presentation/proposal/{document_id}/publish")
@@ -724,9 +820,9 @@ async def publish_proposal(document_id: str,
     # interactive viewer wrapped around them.
     from services.report_generator import proposal_page_for_publish
     try:
-        res = await pub.publish(proposal_page_for_publish(brand, html,
-                                                          content.get("layout") or "deck"),
-                                brand, content.get("domain") or "")
+        page = proposal_page_for_publish(brand, html, content.get("layout") or "deck")
+        page, files = _render_with_deck_pdf(page, content, db, inline=False)
+        res = await pub.publish(page, brand, content.get("domain") or "", extra_files=files)
     except Exception as e:
         logger.error("publish %s failed: %s", document_id, str(e)[:300])
         raise HTTPException(status_code=502, detail=str(e)[:300])
