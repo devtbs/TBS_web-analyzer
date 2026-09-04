@@ -604,17 +604,43 @@ async def attach_proposal_from_library(body: dict = Body(...),
             raise HTTPException(status_code=404, detail="Client not found.")
 
     note = (body.get("note") or "").strip()
+    analysis_id = (body.get("analysis_id") or "").strip()
+
+    # With an analysis, the deck is published under a summary written about THAT site — the page a
+    # prospect actually receives. Without one there is nothing truthful to summarise, so the record
+    # is just the link.
+    content = {**entry, "note": note}
+    title = f"Proposal — {entry['service_label']} ({entry['language_label']})"
+    if analysis_id:
+        # get_analysis does NOT scope by user — the ownership check has to be explicit, or any
+        # analysis id would build a proposal from someone else's data.
+        analysis = database_store.get_analysis(db, analysis_id)
+        if not analysis or analysis.get("user_email") != current_user.email:
+            raise HTTPException(status_code=404, detail="Analysis not found.")
+        from services.report_generator import generate_library_proposal
+        try:
+            built = await generate_library_proposal(analysis, entry, notes=note)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error("library proposal build failed: %s", str(e)[:300])
+            raise HTTPException(status_code=502, detail="Could not build the summary for that site.")
+        content.update({"html": built["html"], "label": built["brand"],
+                        "domain": built["domain"], "layout": "embed",
+                        "analysis_id": analysis_id, "status": "done"})
+        title = f"Proposal — {built['brand']} · {entry['service_label']} ({entry['language_label']})"
+
     doc_id = str(_uuid.uuid4())
     db.add(Document(
         id=doc_id,
         user_email=current_user.email,
         client_id=client_id,
-        title=f"Proposal — {entry['service_label']} ({entry['language_label']})",
+        title=title,
         content_type="Proposal Link",
-        content={**entry, "note": note},
+        content=content,
     ))
     db.commit()
-    return {"document_id": doc_id, **entry}
+    return {"document_id": doc_id, "has_page": bool(analysis_id), **entry}
 
 
 @router.post("/api/presentation/ai-deck-proposal")
@@ -688,7 +714,8 @@ async def proposal_full_page(document_id: str,
     if not html:
         raise HTTPException(status_code=400, detail="That deck has no HTML yet.")
     brand = content.get("label") or doc.title or "client"
-    return Response(content=proposal_page_for_publish(brand, html), media_type="text/html")
+    return Response(content=proposal_page_for_publish(brand, html, content.get("layout") or "deck"),
+                    media_type="text/html")
 
 
 @router.post("/api/presentation/proposal/{document_id}/publish")
@@ -718,8 +745,9 @@ async def publish_proposal(document_id: str,
     # interactive viewer wrapped around them.
     from services.report_generator import proposal_page_for_publish
     try:
-        res = await pub.publish(proposal_page_for_publish(brand, html), brand,
-                                content.get("domain") or "")
+        res = await pub.publish(proposal_page_for_publish(brand, html,
+                                                          content.get("layout") or "deck"),
+                                brand, content.get("domain") or "")
     except Exception as e:
         logger.error("publish %s failed: %s", document_id, str(e)[:300])
         raise HTTPException(status_code=502, detail=str(e)[:300])

@@ -696,9 +696,13 @@ const Presentation = () => {
             const { data } = await api.post('/api/presentation/proposal-library/attach', {
                 service: libService, language: libLang, format: fmt,
                 client_id: libClientId || null,
+                analysis_id: analysisId || null,
             });
             setLibSaved(data);
-            toast.success('Proposal saved to Documents');
+            // Hand the new document to the existing preview / publish actions.
+            setDeckDocId(data.document_id);
+            toast.success(data.has_page ? 'Proposal built and saved to Documents'
+                                        : 'Proposal saved to Documents');
         } catch (e) {
             toast.error(e?.response?.data?.detail || 'Could not save that proposal.');
         } finally { setLibSaving(false); }
@@ -1117,7 +1121,7 @@ const Presentation = () => {
                     <Section title="Proposal deck" open={openSec.proposal}
                         onToggle={() => setOpenSec(o => ({ ...o, proposal: !o.proposal }))}
                         summary={propSource === 'library'
-                            ? `${libEntry ? libEntry.label : 'Ready-made'} · ${libLang === 'th' ? 'ไทย' : 'English'}`
+                            ? `${libEntry ? libEntry.label : 'Ready-made'} · ${libLang === 'th' ? 'ไทย' : 'English'}${analysisId ? ' · with summary' : ''}`
                             : 'Generate a new deck'}>
                 {(
                     <div>
@@ -1183,6 +1187,25 @@ const Presentation = () => {
                             ))}
                         </select>
 
+                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">
+                            Summary above the deck
+                        </label>
+                        <select value={analysisId} className={fieldCls + ' text-sm'}
+                            onChange={(e) => { setAnalysisId(e.target.value); setLibSaved(null); }}>
+                            <option value="">No summary — save the deck link only</option>
+                            {analyses.map(a => (
+                                <option key={a.analysis_id} value={a.analysis_id}>
+                                    {(a.urls && a.urls[0]) || a.label || a.analysis_id}
+                                    {a.created_at ? ` — ${new Date(a.created_at).toLocaleDateString()}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-slate-500 mt-2">
+                            Pick the prospect's analysis and the published page opens with summary sections
+                            written about that site — their AI visibility, coverage gap and topical map —
+                            with this deck embedded underneath.
+                        </p>
+
                         <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                             {['canva', 'slides'].map(fmt => (
                                 <div key={fmt} className={`rounded-xl border px-4 py-3 ${
@@ -1210,10 +1233,24 @@ const Presentation = () => {
                         </div>
 
                         {libSaved && (
-                            <p className="text-xs text-emerald-700 mt-3 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                                Saved <strong>{libSaved.service_label} ({libSaved.language_label})</strong> — it is now in
-                                Documents{libClientId ? ' against this client' : ''}.
-                            </p>
+                            <div className="mt-3">
+                                <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                                    Saved <strong>{libSaved.service_label} ({libSaved.language_label})</strong> — it is now in
+                                    Documents{libClientId ? ' against this client' : ''}.
+                                </p>
+                                {libSaved.has_page && (
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        <button type="button" onClick={openFullPreview}
+                                            className="px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs hover:bg-[#26397A]/5">
+                                            Full preview
+                                        </button>
+                                        <button type="button" onClick={publishProposal} disabled={publishing}
+                                            className="px-3 py-1.5 rounded-lg bg-[#26397A] text-white font-bold text-xs hover:bg-[#1b2a5e] disabled:opacity-50">
+                                            {publishing ? 'Publishing…' : 'Publish link'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         )}
                         <p className="text-xs text-slate-500 mt-3">
                             These are the approved agency decks. Nothing is generated — saving records which

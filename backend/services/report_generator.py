@@ -1654,10 +1654,13 @@ def _proposal_css() -> str:
     return (_TEMPLATE_DIR / "proposal_deck.css").read_text(encoding="utf-8")
 
 
-def _proposal_page(brand: str, slides_html: str, viewer: bool = False, intro: str = "") -> str:
+def _proposal_page(brand: str, slides_html: str, viewer: bool = False, intro: str = "",
+                   embed: bool = False) -> str:
     """Assemble the proposal page.
 
-    Two outputs, deliberately different:
+    Three outputs, deliberately different (`embed` is the ready-made-deck case: a visible summary
+    with an embedded Canva/Slides deck under it, so it wants the intro styling but NOT the slide
+    viewer — that script relocates every `.slide` into a stage and would find none):
       viewer=False (default) — plain slides. This is what gets STORED and previewed: the preview
         renderer screenshots each `.slide`, and the viewer script relocates every slide into a
         single stage and hides the rest, which made the renderer find nothing and produce an
@@ -1678,14 +1681,14 @@ def _proposal_page(brand: str, slides_html: str, viewer: bool = False, intro: st
         f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
         f"<style>{_proposal_fonts()}</style>"
         f"<style>{_proposal_css()}</style>"
-        + (f"<style>{_tpl('proposal_intro.css')}</style>"
-           f"<style>{_tpl('proposal_viewer.css')}</style>" if viewer else "")
+        + (f"<style>{_tpl('proposal_intro.css')}</style>" if viewer or embed else "")
+        + (f"<style>{_tpl('proposal_viewer.css')}</style>" if viewer else "")
         + "</head><body>"
         # The summary sections and the viewer chrome only make sense on the published page; the
         # stored copy stays plain slides so the preview renderer can screenshot them.
         # On the stored copy the summary lives inside a <template>: browsers never render it and
         # the preview renderer never sees it, but publishing can lift it back out verbatim.
-        + ((intro if viewer
+        + ((intro if (viewer or embed)
             else f'<template id="proposal-intro">{intro}</template>') if intro else "")
         + (_tpl("proposal_viewer.html") if viewer else "")
         + slides_html
@@ -1693,17 +1696,22 @@ def _proposal_page(brand: str, slides_html: str, viewer: bool = False, intro: st
         + "</body></html>")
 
 
-def proposal_page_for_publish(brand: str, stored_html: str) -> str:
-    """Re-wrap a stored proposal with the slide viewer, for publishing.
+def proposal_page_for_publish(brand: str, stored_html: str, layout: str = "deck") -> str:
+    """Re-wrap a stored proposal for publishing.
 
     The stored deck is plain slides so the preview renderer can screenshot them; the published
     site wants the interactive deck. Pull the slides back out and re-assemble.
+
+    `layout="embed"` is a ready-made proposal — summary plus an embedded Canva/Slides deck. It has
+    no `.slide` elements, so it gets the summary made visible and no viewer.
     """
     m = re.search(r"<body[^>]*>(.*)</body>", stored_html, re.S)
     inner = m.group(1) if m else stored_html
     mi = re.search(r'<template id="proposal-intro">(.*?)</template>', inner, re.S)
     intro = mi.group(1) if mi else ""
     slides = inner.replace(mi.group(0), "") if mi else inner
+    if layout == "embed":
+        return _proposal_page(brand, slides, intro=intro, embed=True)
     return _proposal_page(brand, slides, viewer=True, intro=intro)
 
 
@@ -2056,6 +2064,90 @@ async def _rewrite_slide(slide: dict, brand: str, domain: str, brief: str, provi
             trail = node[len(node.rstrip()):]
             node.replace_with(f"{lead}{replacement.strip()}{trail}")
     return str(soup)
+
+
+def _deck_embed_url(entry: Dict) -> str:
+    """The iframe URL for a library deck, or "" when it cannot be embedded.
+
+    Google Slides publishes an /embed view derived from the /edit link, and serves it without a
+    framing restriction.
+
+    Canva is deliberately NOT embedded. Its design pages answer with
+    `X-Frame-Options: SAMEORIGIN`, so an iframe renders blank no matter which URL form is used —
+    a link-out card is the honest result, not a fallback.
+    """
+    url = entry.get("url") or ""
+    m = re.search(r"docs\.google\.com/presentation/d/([\w-]+)", url)
+    if m:
+        return (f"https://docs.google.com/presentation/d/{m.group(1)}"
+                "/embed?start=false&loop=false&delayms=60000")
+    return ""
+
+
+def _deck_embed_block(entry: Dict, embed_url: str, brand: str) -> str:
+    """The deck itself, under the summary — embedded where the host allows it, linked otherwise."""
+    label = f"{entry.get('service_label', 'Proposal')} · {entry.get('format_label', '')}".strip(" ·")
+    href = _esc(entry.get("url", ""))
+    if embed_url:
+        body = (f'<div class="deck-embed-frame"><iframe src="{_esc(embed_url)}" '
+                f'title="{_esc(brand)} — {_esc(label)}" allowfullscreen '
+                f'loading="lazy" frameborder="0"></iframe></div>'
+                f'<a class="deck-embed-open" href="{href}" target="_blank" rel="noopener">'
+                "Open the full deck →</a>")
+    else:
+        # The link IS the deck here, so it gets the weight of a primary action rather than the
+        # apologetic footnote a fallback usually gets.
+        body = (f'<a class="deck-embed-cta" href="{href}" target="_blank" rel="noopener">'
+                f"<span>Open the {_esc(label)} deck</span>"
+                "<span>Opens in Canva in a new tab</span></a>")
+    return ('<section class="deck-embed">'
+            f'<div class="deck-embed-head"><h2>The proposal</h2><span>{_esc(label)}</span></div>'
+            f'{body}</section>')
+
+
+async def generate_library_proposal(analysis: Dict, entry: Dict, *, provider: str = None,
+                                    notes: str = "", on_progress=None) -> Dict:
+    """A ready-made deck, published under a summary written about THIS prospect's site.
+
+    The deck is one of the agency's approved Canva/Slides proposals and is not touched. What gets
+    built here is the page around it: the same summary sections the generated proposal uses, worded
+    for this client from their own analysis, with the chosen deck embedded underneath. Picking a
+    different deck changes what is embedded; the summary follows the analysis, so it always
+    describes the site the proposal is for.
+    """
+    from services.highlights import to_brief_block
+    from config import settings
+
+    maps = analysis.get("topical_maps") or []
+    if not maps:
+        raise ValueError("This analysis has no topical map yet — let it finish before building a proposal.")
+    m = maps[0]
+    domain = _domain_from(m.get("url") or "")
+    brand = m.get("central_entity") or domain
+    prov = provider or settings.DEFAULT_AI_PROVIDER
+    brief = _proposal_brief(analysis) + to_brief_block(notes)
+    tmap_html = _render_topical_map(m)
+
+    intro = _reference_intro()
+    intro_out = ""
+    if intro:
+        if on_progress:
+            await on_progress(f"Writing the summary for {brand}…")
+        outs = await asyncio.gather(*[_rewrite_slide(sec, brand, domain, brief, prov)
+                                      for sec in intro])
+        intro_out = _fix_intro_images("\n".join(o for o in outs if o), tmap_html)
+        for old_ref, repl in (("panoramaresort.ch", domain),
+                              ("Panorama Resort &amp; Spa", _esc(brand)),
+                              ("Panorama Resort & Spa", brand), ("Panorama", brand)):
+            if repl and old_ref not in repl:
+                intro_out = intro_out.replace(old_ref, repl)
+
+    if on_progress:
+        await on_progress("Embedding the deck…")
+    body = _deck_embed_block(entry, _deck_embed_url(entry), brand)
+    html = _proposal_page(brand, body, intro=intro_out)
+    logger.info("library proposal for %s: %s (%s)", brand, entry.get("service"), entry.get("format"))
+    return {"domain": domain, "brand": brand, "html": html}
 
 
 async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = False,
