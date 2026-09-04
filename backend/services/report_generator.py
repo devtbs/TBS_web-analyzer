@@ -8,6 +8,7 @@ those integrations come online.
 from typing import Dict, List, Optional
 from pathlib import Path
 from datetime import datetime, timedelta
+import asyncio
 import json
 import logging
 import re
@@ -1764,22 +1765,61 @@ def _esc(v) -> str:
     return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _reference_slides() -> list:
+    import json
+    return json.loads((_TEMPLATE_DIR / "proposal_slides.json").read_text(encoding="utf-8"))
+
+
+_REWRITE_SYSTEM = (
+    "You localise an existing slide for a different client. You are NOT designing anything.\n"
+    "Return the SAME HTML back, byte-for-byte identical in structure, changing ONLY the "
+    "human-readable words.\n"
+    "Absolute rules:\n"
+    "- Keep every tag, every class, every style attribute, every inline colour, every emoji "
+    "position, every grid and every card exactly as given. Do not add or remove elements.\n"
+    "- Replace the old client's name, city, domain and sector wording with the new client's.\n"
+    "- Replace figures ONLY with the values supplied in DATA. If DATA has no equivalent figure, "
+    "keep the sentence but remove the specific number, or drop that one card — never invent a "
+    "statistic and never leave the previous client's numbers in place.\n"
+    "- Generic market facts about AI search that are not about the old client stay as they are.\n"
+    "- Output raw HTML only. No commentary, no markdown fences."
+)
+
+
+async def _rewrite_slide(slide: dict, brand: str, domain: str, brief: str, provider: str) -> str:
+    """Rewrite one reference slide for the new client, preserving its markup exactly."""
+    from services.ai_service import ai_service
+    user = (f"NEW CLIENT: {brand} ({domain})\n\nDATA (the only figures you may use):\n{brief}\n\n"
+            f"SLIDE TO LOCALISE (return it back with only the wording changed):\n{slide['html']}")
+    try:
+        out = await ai_service.analyze_with_provider(user, _REWRITE_SYSTEM, provider=provider)
+    except Exception as e:
+        logger.error("proposal slide %s (%s) failed: %s", slide["n"], slide["label"], str(e)[:160])
+        return ""
+    out = re.sub(r"^```(?:html)?|```$", "", out.strip(), flags=re.M).strip()
+    # A rewrite that lost the shell is worse than no slide — the deck would break mid-deck.
+    if 'class="slide-block"' not in out:
+        logger.warning("proposal slide %s came back malformed — skipping it", slide["n"])
+        return ""
+    return out
+
+
 async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = False,
                                     notes: str = "", on_progress=None, creativity: str = "balanced",
                                     pipeline: str = "single", models: Optional[dict] = None,
                                     theme_mode: str = "tbs", custom_color: Optional[str] = None,
                                     style: str = "tbs", prompt: Optional[str] = None) -> Dict:
-    """AIO/GEO/AEO proposal deck, rendered into the reference template's exact markup and CSS.
+    """AIO/GEO/AEO proposal: the approved reference deck, re-worded for a new prospect.
 
-    Unlike the reporting decks this does NOT let the model design the page. The stylesheet and the
-    slide vocabulary are fixed (templates/proposal_deck.css, extracted from the approved deck), and
-    the model only writes the content inside those classes — so every proposal looks identical to
-    the reference rather than being reinvented each run.
+    The model does not design slides and does not choose a structure. Each of the 25 reference
+    slides is handed back to it verbatim with the new client's data, and it returns the same markup
+    with only the wording swapped. That is the only way to guarantee the output looks exactly like
+    the approved deck — describing the design to a model produced flat, sparse slides no matter how
+    detailed the description got.
 
-    `images` is ignored: this deck's only visuals are the topical map and stats drawn from the
-    chosen analysis, not stock or generated photography.
+    Slides are rewritten CONCURRENTLY in small batches: 25 sequential calls would take minutes, and
+    one call for all 25 makes the model economise and produce thin content.
     """
-    from services.ai_service import ai_service
     from services.highlights import to_brief_block
     from config import settings
 
@@ -1790,79 +1830,75 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     domain = _domain_from(m.get("url") or "")
     brand = m.get("central_entity") or domain
     hero = _proposal_hero_image(analysis)
-
-    if on_progress:
-        await on_progress("Assembling proposal evidence…")
+    tmap_html = _render_topical_map(m)
+    prov = provider or settings.DEFAULT_AI_PROVIDER
     brief = _proposal_brief(analysis) + to_brief_block(notes)
 
-    hero_rule = (
-        f"\n\nHERO IMAGE: on the COVER slide and the CLOSING slide only, include exactly:\n"
-        f'  <img class="slide-hero" src="{hero}" alt="{brand}">\n'
-        "Place it after the title/subtitle block. Do not put it on any other slide and do not "
-        "invent any other image URL."
-    ) if hero else (
-        "\n\nHERO IMAGE: none available for this site — do not add any <img> tags at all."
-    )
-
-    tmap_html = _render_topical_map(m)
-    tmap_rule = (
-        f"\n\nTOPICAL MAP: on the coverage-gap slide (17), after the title and one short intro "
-        f"sentence, output the literal token {TOPICAL_MAP_TOKEN} on its own line and NOTHING else in "
-        "that slide's body. The real map is injected there from the analysis — do not list the core "
-        "or outer topics yourself, and do not describe them."
-    ) if tmap_html else ""
-
-    sequence = "\n".join(
-        f"{i}. [{num.replace('{brand}', brand)}] {desc.replace('{brand}', brand)}"
-        for i, (num, desc) in enumerate(PROPOSAL_SLIDES, 1))
-
-    system = (
-        "You write the CONTENT of a fixed slide template. You do NOT design it.\n"
-        "Rules, all mandatory:\n"
-        "- Output ONLY a sequence of <div class=\"slide-block\"><div class=\"slide\">…</div></div> "
-        "blocks. No <html>, <head>, <style>, <script>, and no markdown fences.\n"
-        "- The outer shell is fixed: slide-block / slide / slide-num / slide-title / slide-sub / "
-        "slide-body / slide-foot. Keep those class names exactly.\n"
-        "- INSIDE slide-body, build rich visual layouts with INLINE style attributes, exactly as the "
-        "EXAMPLES do — CSS grids (two columns), coloured panels, dark charcoal callout cards with "
-        "white text, accent left-borders, oversized stat numerals, rounded cards. Copy those "
-        "patterns. A slide that is only headings and paragraphs is WRONG.\n"
-        "- Use the palette variables var(--charcoal), var(--blue), var(--green), var(--yellow), "
-        "var(--gray), var(--blue-light), var(--green-light), var(--yellow-light) rather than "
-        "arbitrary colours.\n"
-        "- Every slide must FILL its 16:9 frame. Aim for 3-6 substantial visual elements per slide "
-        "(cards, stats, panels, tables) — never a few lines of text stranded at the top.\n"
-        "- Every slide starts with <div class=\"slide-num\">…</div> then <h2 class=\"slide-title\">…</h2>.\n"
-        "- Never state a statistic that is not in the DATA. If a slide's data is missing or marked "
-        "NOT MEASURED, omit that slide entirely rather than inventing figures.\n"
-        "- Report AI visibility as a fraction ('cited in 1 of 4 AI answers checked'), never as a "
-        "percentage of the market."
-    )
-    user = (f"BRAND: {brand}\n\nSLIDE SEQUENCE (produce these, in this order, omitting any whose "
-            f"data is missing):\n{sequence}\n\n"
-            f"EXAMPLES — copy this markup vocabulary exactly:\n{_proposal_examples()}"
-            f"{hero_rule}{tmap_rule}\n\n"
-            f"DATA:\n{brief}")
-
+    slides = _reference_slides()
     if on_progress:
-        await on_progress("Writing slides…")
-    body = await ai_service.analyze_with_provider(
-        user, system, provider=provider or settings.DEFAULT_AI_PROVIDER, on_progress=on_progress)
-    body = re.sub(r"^```(?:html)?|```$", "", body.strip(), flags=re.M).strip()
-    # Substitute the real map. If the model ignored the token, append the map to the gap slide
-    # anyway rather than silently shipping a proposal with no map in it.
+        await on_progress(f"Re-wording {len(slides)} slides for {brand}…")
+
+    done = 0
+    results: List[str] = [""] * len(slides)
+    BATCH = 5
+    for i in range(0, len(slides), BATCH):
+        chunk = slides[i:i + BATCH]
+        outs = await asyncio.gather(*[_rewrite_slide(sl, brand, domain, brief, prov) for sl in chunk])
+        for k, out in enumerate(outs):
+            results[i + k] = out
+        done += len(chunk)
+        if on_progress:
+            await on_progress(f"Slides {done}/{len(slides)}…")
+
+    body = "\n".join(r for r in results if r)
+    if not body:
+        raise ValueError("Every slide failed to generate — check the AI provider configuration.")
+
+    # ── Deterministic injections ─────────────────────────────────────────────────────────
+    # The reference cover carries a RELATIVE image (hero-lake.jpg) that 404s anywhere else, and its
+    # closing slide has none. Point the cover at this client's own photo and add one to the close.
+    if hero:
+        body = re.sub(r'<img([^>]*?)src="[^"]*"([^>]*)>',
+                      lambda mo: f'<img{mo.group(1)}src="{hero}"{mo.group(2)}>', body)
+        last = body.rfind("</div>\n</div>")
+        if last == -1:
+            last = body.rfind("</div></div>")
+        if last != -1 and "slide-hero" not in body[last - 400:last]:
+            img = f'<img class="slide-hero" src="{hero}" alt="{_esc(brand)}">'
+            body = body[:last] + img + body[last:]
+    else:
+        # No usable photo — strip the reference's broken relative image rather than ship a 404.
+        body = re.sub(r'<img[^>]*src="(?!https?:)[^"]*"[^>]*>', "", body)
+
+    # Safety net: the model is told to swap the old client's name and domain, but a proposal that
+    # still says "panoramaresort.ch" would be humiliating in front of a prospect. Sweep any survivor
+    # deterministically rather than trusting the rewrite to have caught every mention.
+    for old_ref, repl in (("panoramaresort.ch", domain), ("Panorama Resort &amp; Spa", _esc(brand)),
+                          ("Panorama Resort & Spa", brand), ("Panorama", brand)):
+        if repl:
+            body = body.replace(old_ref, repl)
+
+    # The reference has no topical-map slide, so add the client's real map as its own slide at the
+    # end of the audit section (immediately before the "Section 05" divider).
     if tmap_html:
-        if TOPICAL_MAP_TOKEN in body:
-            body = body.replace(TOPICAL_MAP_TOKEN, tmap_html)
-        else:
-            logger.warning("proposal deck: model omitted %s — appending the map to the last slide",
-                           TOPICAL_MAP_TOKEN)
-            body = body.replace("</div>\n</div>", f"{tmap_html}</div></div>", 1)
+        map_slide = (
+            '<div class="slide-block"><div class="slide">'
+            '<div class="slide-num">Topical map</div>'
+            f'<h2 class="slide-title">What complete coverage looks like for {_esc(brand)}</h2>'
+            '<div class="slide-sub">Core areas earn revenue. Outer areas build the authority that '
+            'makes the core credible to a retrieval system.</div>'
+            f'<div class="slide-body">{tmap_html}</div>'
+            '<div class="slide-foot">TBS MARKETING · 04 · AUDIT</div>'
+            "</div></div>")
+        mo = re.search(r'<div class="slide-block">(?:(?!</div>\n</div>).)*?Section 05', body, re.S)
+        body = (body[:mo.start()] + map_slide + body[mo.start():]) if mo else body + map_slide
 
     html = (f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-            f"<title>{brand} — AI Search Visibility Proposal</title>"
+            f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
             f"<link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800;900"
             f"&family=Kanit:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">"
             f"<style>{_proposal_css()}</style></head><body>{body}</body></html>")
+    kept = sum(1 for r in results if r)
+    logger.info("proposal deck for %s: %d/%d slides kept", brand, kept, len(slides))
     return {"domain": domain, "brand": brand, "html": html, "artifacts": {}}
