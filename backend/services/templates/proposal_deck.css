@@ -711,7 +711,8 @@ body.fs-locked { overflow: hidden; }
 .problem-image-map {
   padding: 0.75rem;
 }
-.problem-image-map svg {
+.problem-image-map svg,
+.problem-image-map img {
   display: block;
   width: 100%;
   height: auto;

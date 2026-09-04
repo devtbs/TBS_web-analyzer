@@ -1733,7 +1733,7 @@ def _proposal_fonts() -> str:
 TOPICAL_MAP_TOKEN = "<!--TOPICAL_MAP-->"
 
 
-def _fix_intro_images(intro_html: str, tmap_html: str) -> str:
+def _fix_intro_images(intro_html: str, tmap_html: str, map_png: str = "") -> str:
     """Resolve the reference intro's images, which all point at RELATIVE files.
 
     The reference page ships four screenshots (prompts-0pct.jpg, topic-map.jpg,
@@ -1741,9 +1741,11 @@ def _fix_intro_images(intro_html: str, tmap_html: str) -> str:
     deployment. Published anywhere else they 404 and the prospect sees broken-image alt text —
     which is what shipped.
 
-    Only one of them has a real equivalent for a new client: the topical map, which we already
-    render ourselves. That figure becomes the client's OWN map, inlined as SVG (vector, so it stays
-    sharp and needs no rasteriser on the server).
+    Only one of them has a real equivalent for a new client: the topical map. That figure becomes
+    the client's OWN map — preferably `map_png`, a PNG exported from the taxonomy visualisation the
+    app already shows on the Results page, so the proposal carries the same picture the user has
+    been looking at rather than a second, differently-drawn one. The server-rendered SVG is the
+    fallback for when the browser could not produce that export.
 
     Every other figure is REMOVED rather than back-filled with a site photo. Those figures are data
     screenshots — a decorative photo under a caption reading "list of benchmark AI prompts" reads as
@@ -1756,7 +1758,11 @@ def _fix_intro_images(intro_html: str, tmap_html: str) -> str:
     def _replace(mo):
         block = mo.group(0)
         if 'topic-map' in block or 'topical map' in block.lower():
-            return f'<div class="problem-image problem-image-map">{tmap_html}</div>' if tmap_html else ""
+            if map_png:
+                return ('<div class="problem-image problem-image-map">'
+                        f'<img src="{map_png}" alt="Topical map" loading="lazy"></div>')
+            if tmap_html:
+                return f'<div class="problem-image problem-image-map">{tmap_html}</div>'
         return ""
 
     # Figures are anchors wrapping an image — matched by shape, not by class, because the audit
@@ -1959,7 +1965,7 @@ def _deck_embed_block(entry: Dict, embed_url: str, brand: str) -> str:
 
 
 async def generate_library_proposal(analysis: Dict, entry: Dict, *, provider: str = None,
-                                    notes: str = "", on_progress=None) -> Dict:
+                                    notes: str = "", map_png: str = "", on_progress=None) -> Dict:
     """A ready-made deck, published under a summary written about THIS prospect's site.
 
     The deck is one of the agency's approved Canva/Slides proposals and is not touched. What gets
@@ -1988,7 +1994,7 @@ async def generate_library_proposal(analysis: Dict, entry: Dict, *, provider: st
             await on_progress(f"Writing the summary for {brand}…")
         outs = await asyncio.gather(*[_rewrite_slide(sec, brand, domain, brief, prov)
                                       for sec in intro])
-        intro_out = _fix_intro_images("\n".join(o for o in outs if o), tmap_html)
+        intro_out = _fix_intro_images("\n".join(o for o in outs if o), tmap_html, map_png)
         for old_ref, repl in (("panoramaresort.ch", domain),
                               ("Panorama Resort &amp; Spa", _esc(brand)),
                               ("Panorama Resort & Spa", brand), ("Panorama", brand)):

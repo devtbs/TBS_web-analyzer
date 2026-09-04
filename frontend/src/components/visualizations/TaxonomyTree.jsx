@@ -40,7 +40,10 @@ const pillWidth = (name, level) =>
     level === 0 ? 20 : Math.min(180, Math.max(58, name.length * (level === 1 ? 7.6 : 6.8) + 22));
 const truncate = (name) => (name.length > 24 ? name.slice(0, 23) + '…' : name);
 
-const TaxonomyTree = ({ taxonomy }) => {
+/* `onExporter` hands the parent a function returning the map as a PNG data URL. The proposal
+   builder uses it so the deck carries THIS picture — the same one on screen — rather than a
+   second drawing of the same data made somewhere else. */
+const TaxonomyTree = ({ taxonomy, onExporter }) => {
     const containerRef = useRef(null);
     const gRef = useRef(null);
     const svgRef = useRef(null);
@@ -172,8 +175,8 @@ const TaxonomyTree = ({ taxonomy }) => {
     }, [fullscreen]);
 
     // ── Full-tree PNG export (renders the whole current tree, not the zoomed view) ──
-    const downloadPng = useCallback(() => {
-        if (!layout) return;
+    const buildSvgString = useCallback(() => {
+        if (!layout) return '';
         const P = 44, LABEL_ROOM = 210;
         const offX = -layout.minY + P;
         const offY = -layout.minX + P;
@@ -201,8 +204,16 @@ const TaxonomyTree = ({ taxonomy }) => {
         const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`
             + `<rect width="${W}" height="${H}" fill="#ffffff"/><g transform="translate(${offX},${offY})">${linkStr}${nodeStr}</g></svg>`;
 
-        const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
+        return { svgStr, W, H };
+    }, [layout, linkGen]);
+
+    /* Rasterise the same SVG to a PNG data URL. Shared by the download button and by the proposal
+       builder, so both produce an identical picture. */
+    const toPngDataUrl = useCallback(() => new Promise((resolve) => {
+        const built = buildSvgString();
+        if (!built) return resolve('');
+        const { svgStr, W, H } = built;
+        const url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' }));
         const img = new Image();
         img.onload = () => {
             const scale = 2;
@@ -212,17 +223,25 @@ const TaxonomyTree = ({ taxonomy }) => {
             ctx.scale(scale, scale);
             ctx.drawImage(img, 0, 0);
             URL.revokeObjectURL(url);
-            canvas.toBlob((png) => {
-                if (!png) return;
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(png);
-                a.download = 'topical-map.png';
-                a.click();
-                setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-            }, 'image/png');
+            resolve(canvas.toDataURL('image/png'));
         };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
         img.src = url;
-    }, [layout, linkGen]);
+    }), [buildSvgString]);
+
+    // Publish the exporter to the parent once the layout exists.
+    useEffect(() => {
+        if (onExporter) onExporter(layout ? toPngDataUrl : null);
+    }, [onExporter, toPngDataUrl, layout]);
+
+    const downloadPng = useCallback(async () => {
+        const dataUrl = await toPngDataUrl();
+        if (!dataUrl) return;
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = 'topical-map.png';
+        a.click();
+    }, [toPngDataUrl]);
 
     if (!layout) {
         return <div className="p-10 text-center text-sm text-slate-400 bg-slate-50">Not enough taxonomy data to visualize.</div>;

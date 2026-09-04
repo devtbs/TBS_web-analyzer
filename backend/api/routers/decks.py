@@ -25,6 +25,7 @@ router = APIRouter()
 # rendered data-URLs per document so repeat opens are instant, and seed it at generation time
 # (the deck is already rendered then) so the first open is instant too. Single uvicorn process ⇒
 # in-memory is fine (same pattern as _DECK_JOBS); after a restart it lazily refills on first open.
+import re
 import time as _time
 import logging
 from datetime import datetime
@@ -567,6 +568,31 @@ async def presentation_ai_deck_combined(
                              media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
+_MAX_MAP_PNG = 6 * 1024 * 1024   # ~4.5MB of image; a taxonomy screenshot is far smaller
+
+
+def _clean_map_png(value: str) -> str:
+    """Accept a browser-exported topical-map PNG, or nothing.
+
+    The value is embedded verbatim in a page we publish, so it is validated rather than trusted:
+    exact data-URL prefix, base64 alphabet only, and a size ceiling. Anything else is dropped and
+    the server-rendered map is used instead — a bad export must not be able to inject markup or
+    bloat the page.
+    """
+    v = (value or "").strip()
+    if not v:
+        return ""
+    prefix = "data:image/png;base64,"
+    if not v.startswith(prefix) or len(v) > _MAX_MAP_PNG:
+        logger.warning("ignoring topical-map image: bad prefix or %d bytes", len(v))
+        return ""
+    body = v[len(prefix):]
+    if not re.fullmatch(r"[A-Za-z0-9+/=\s]+", body or ""):
+        logger.warning("ignoring topical-map image: not base64")
+        return ""
+    return prefix + re.sub(r"\s+", "", body)
+
+
 @router.get("/api/presentation/proposal-library")
 async def proposal_library(current_user: UserInfo = Depends(get_current_user)):
     """The agency's ready-made proposal decks, for picking one instead of generating a new deck."""
@@ -623,7 +649,8 @@ async def attach_proposal_from_library(body: dict = Body(...),
         try:
             built = await generate_library_proposal(
                 analysis, entry, notes=note,
-                provider=(body.get('provider') or '').strip() or None)
+                provider=(body.get('provider') or '').strip() or None,
+                map_png=_clean_map_png(body.get("map_png") or ""))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:

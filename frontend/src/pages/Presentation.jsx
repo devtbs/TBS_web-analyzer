@@ -1,9 +1,12 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { PresentationChartLineIcon, ArrowDownTrayIcon, MagnifyingGlassIcon, DocumentArrowUpIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, CheckIcon } from '@heroicons/react/24/outline';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+// The proposal's topical-map figure is a PNG of the SAME visualisation the Results page
+// shows, captured offscreen — so the prospect sees the map the user has been looking at.
+import TaxonomyTree from '../components/visualizations/TaxonomyTree';
 
 /* Friendly names for the visual-style presets (kept next to the <select> options). */
 const STYLE_LABELS = {
@@ -80,6 +83,11 @@ const Presentation = () => {
     const [libClientId, setLibClientId] = useState(localStorage.getItem('selected_client_id') || '');
     const [libSaving, setLibSaving] = useState(false);
     const [libSaved, setLibSaved] = useState(null);
+    const [mapTaxonomy, setMapTaxonomy] = useState(null);   // mounted only while capturing
+    const mapShotRef = useRef(null);      // set to the map's PNG exporter while mounted
+    // Stable identity: the child registers through an effect, so a new function each render would
+    // re-fire that effect on every render.
+    const registerMapExporter = useCallback((fn) => { mapShotRef.current = fn; }, []);
 
     /* ── Recurring schedules ─────────────────────────────────────────────
        A schedule reuses whatever is configured above (source, site, period, model, design) and
@@ -691,15 +699,49 @@ const Presentation = () => {
 
     // Saving records WHICH approved deck was sent to WHICH client — the deck itself already
     // exists in Canva/Slides, so nothing is generated or copied here.
+    /* Capture the taxonomy visualisation as a PNG, using the component's OWN exporter — the same
+       one behind its "Download PNG" button, so the proposal carries exactly the picture the app
+       shows rather than a second drawing of the same data.
+
+       Mounted offscreen because the user builds proposals from this page, not from Results.
+       Returns "" on any failure: the server falls back to its own drawing, so a capture problem
+       must never block the proposal. */
+    const captureTopicalMapPng = async () => {
+        if (!analysisId) return '';
+        try {
+            const { data } = await api.get(`/api/topical-map/${analysisId}`);
+            const taxonomy = (data.topical_maps || [])[0]?.taxonomy;
+            if (!taxonomy || !taxonomy.length) return '';
+            setMapTaxonomy(taxonomy);
+            // Wait for the component to mount and register its exporter (d3 lays the tree out on
+            // the first render, so the function only appears once there is something to export).
+            for (let i = 0; i < 40 && !mapShotRef.current; i++) {
+                await new Promise(r => setTimeout(r, 50));
+            }
+            if (!mapShotRef.current) return '';
+            return await mapShotRef.current();
+        } catch (e) {
+            console.warn('topical map capture failed, falling back to the server drawing', e);
+            return '';
+        } finally {
+            // Unmount the capture surface and drop the exporter with it — a stale function would
+            // otherwise be called against a component that no longer exists.
+            setMapTaxonomy(null);
+            mapShotRef.current = null;
+        }
+    };
+
     const saveFromLibrary = async () => {
         if (!libEntry || !libFmt) return;
         setLibSaving(true);
         try {
+            const mapPng = analysisId ? await captureTopicalMapPng() : '';
             const { data } = await api.post('/api/presentation/proposal-library/attach', {
                 service: libService, language: libLang, format: libFmt,
                 client_id: libClientId || null,
                 analysis_id: analysisId || null,
                 provider: provider || null,
+                map_png: mapPng || null,
             });
             setLibSaved(data);
             // Hand the new document to the existing preview / publish actions.
@@ -1566,6 +1608,19 @@ const Presentation = () => {
                     )}
                 </div>
             </motion.div>
+
+            {/* Offscreen capture surface for the topical-map PNG. Mounted only while a proposal is
+                being built: it must be laid out and painted for html-to-image to see it, so it is
+                positioned off-canvas rather than hidden — display:none would capture nothing.
+                Fixed width so the exported picture is a consistent size regardless of the window. */}
+            {mapTaxonomy && (
+                <div aria-hidden="true"
+                    style={{ position: 'fixed', left: '-10000px', top: 0, width: '1200px', background: '#fff' }}>
+                    <div style={{ width: '1200px', background: '#fff' }}>
+                        <TaxonomyTree taxonomy={mapTaxonomy} onExporter={registerMapExporter} />
+                    </div>
+                </div>
+            )}
 
             {/* Active-job tracker: one row per in-flight/finished deck */}
             {activeJobs.length > 0 && (
