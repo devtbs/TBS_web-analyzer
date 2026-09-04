@@ -649,6 +649,22 @@ const Presentation = () => {
 
     const dismissJob = (localId) => setActiveJobs(js => js.filter(j => j.localId !== localId));
 
+    // Publishing a proposal gives the prospect a client-facing link instead of a PDF attachment.
+    // Re-publishing the same client overwrites the same URL, so a link already sent keeps working.
+    const [publishing, setPublishing] = useState(false);
+    const [publishedUrl, setPublishedUrl] = useState('');
+    const publishProposal = async () => {
+        if (!deckDocId) return;
+        setPublishing(true);
+        try {
+            const { data } = await api.post(`/api/presentation/proposal/${deckDocId}/publish`);
+            setPublishedUrl(data.url);
+            toast.success('Published');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Could not publish');
+        } finally { setPublishing(false); }
+    };
+
     const downloadDeck = async (fmt) => {
         if (!deckDocId) return;
         setDownloading(fmt);
@@ -1387,8 +1403,24 @@ const Presentation = () => {
                                 className="px-4 py-2 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-sm flex items-center gap-2 hover:bg-[#26397A]/5 disabled:opacity-60">
                                 <ArrowDownTrayIcon className="w-4 h-4" /> {downloading === 'pptx' ? 'Rendering…' : 'PPTX'}
                             </button>
+                            {mode === 'proposal' && (
+                                <button onClick={publishProposal} disabled={publishing}
+                                    title="Publish to Cloudflare Pages as a shareable client link"
+                                    className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 disabled:opacity-60">
+                                    {publishing ? 'Publishing…' : 'Publish link'}
+                                </button>
+                            )}
                         </div>
                     </div>
+                    {publishedUrl && (
+                        <div className="mb-4 flex items-center gap-2 text-sm">
+                            <span className="text-slate-500">Live at</span>
+                            <a href={publishedUrl} target="_blank" rel="noreferrer"
+                               className="font-semibold text-emerald-700 hover:underline">{publishedUrl}</a>
+                            <button onClick={() => { navigator.clipboard.writeText(publishedUrl); toast.success('Copied'); }}
+                                className="text-xs font-semibold text-slate-500 hover:text-slate-700">Copy</button>
+                        </div>
+                    )}
                     <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 select-none">
                         <img src={deckSlides[slideIdx]} alt={`Slide ${slideIdx + 1}`} className="w-full block" draggable={false} />
                         <button onClick={prevSlide} disabled={slideIdx === 0}

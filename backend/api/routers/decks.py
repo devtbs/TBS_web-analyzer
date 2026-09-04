@@ -619,6 +619,46 @@ async def presentation_ai_deck_proposal(
 
 
 
+@router.post("/api/presentation/proposal/{document_id}/publish")
+async def publish_proposal(document_id: str,
+                           current_user: UserInfo = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    """Publish a generated proposal to Cloudflare Pages under this client's own project.
+
+    Re-publishing the same client overwrites the same URL, so a link already sent to a prospect
+    keeps working and simply shows the newer version."""
+    from services import proposal_publish as pub
+    if not pub.is_configured():
+        raise HTTPException(status_code=400,
+                            detail="Cloudflare is not configured — add CLOUDFLARE_API_TOKEN and "
+                                   "CLOUDFLARE_ACCOUNT_ID to backend/.env and restart.")
+    doc = (db.query(Document)
+           .filter(Document.id == document_id, Document.user_email == current_user.email).first())
+    if not doc:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    content = doc.content if isinstance(doc.content, dict) else {}
+    html = content.get("html") or ""
+    if not html:
+        raise HTTPException(status_code=400, detail="That deck has no HTML to publish yet.")
+
+    brand = content.get("label") or doc.title or "client"
+    try:
+        res = await pub.publish(html, brand, content.get("domain") or "")
+    except Exception as e:
+        logger.error("publish %s failed: %s", document_id, str(e)[:300])
+        raise HTTPException(status_code=502, detail=str(e)[:300])
+
+    # Remember where it went so the UI can show/reuse the link.
+    content["published_url"] = res["url"]
+    content["published_project"] = res["project"]
+    doc.content = content
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(doc, "content")
+    db.commit()
+    return res
+
+
+
 # ── Scheduled decks ─────────────────────────────────────────────────────────────────────────
 # A schedule reruns one of the generators above on chosen days of the month, unattended. The deck
 # it produces is an ordinary Document filed against the schedule's client, so it shows up in
