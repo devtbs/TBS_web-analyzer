@@ -388,31 +388,32 @@ class DeckSchedule(Base):
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
-class ProposalDeckPdf(Base):
-    """A Canva-exported PDF of one ready-made proposal deck.
+class ProposalDeckPage(Base):
+    """One rasterised page of a ready-made proposal deck.
 
     Canva cannot be embedded (its pages answer X-Frame-Options: SAMEORIGIN), so a published
-    proposal showed only a link out. A PDF export renders inline in every browser, which is what
-    makes the page read like the deck rather than a pointer to it.
+    proposal could only link out to the deck. The fix is to carry the deck itself — but the Canva
+    PDF exports run 19-87MB, past Cloudflare's 25MB per-file limit and far past what a prospect on
+    a phone would tolerate. Rasterising to page images at 1600px cuts that ~10x (an 87MB deck
+    becomes 4.9MB) AND renders as real slides rather than an embedded PDF viewer.
 
-    Deliberately AGENCY-WIDE, not per user: these are the same five approved decks for everyone,
-    exactly like the link catalogue in services/proposal_library.py. One row per
-    (service, language, format) — re-uploading replaces it, so every proposal built afterwards
-    picks up the new export without being rebuilt.
-
-    Canva has no API we can export through (that needs OAuth against the account owning the
-    designs), so the PDF is exported by hand once per deck and uploaded here.
+    So the PDF is a transport format, not what we store: it is converted on upload and only the
+    pages are kept. Deliberately AGENCY-WIDE, like the link catalogue in
+    services/proposal_library.py — the same decks serve everyone. Re-uploading replaces every page
+    for that deck, so proposals built earlier pick the new export up without being rebuilt.
     """
-    __tablename__ = "proposal_deck_pdfs"
-    __table_args__ = (UniqueConstraint("service", "language", "format", name="uq_proposal_deck_pdf"),)
+    __tablename__ = "proposal_deck_pages"
+    __table_args__ = (UniqueConstraint("service", "language", "format", "page_no",
+                                       name="uq_proposal_deck_page"),)
 
     id          = Column(String, primary_key=True, index=True)
     service     = Column(String, nullable=False, index=True)   # matches proposal_library ids
     language    = Column(String, nullable=False)               # en | th
     format      = Column(String, nullable=False)               # canva | slides
-    filename    = Column(String, nullable=False)
+    page_no     = Column(Integer, nullable=False)              # 1-based
+    mime        = Column(String, nullable=False, default="image/jpeg")
     size_bytes  = Column(Integer, nullable=False)
     data        = Column(LargeBinary, nullable=False)
+    source_file = Column(String, nullable=True)                # original PDF name, for reference
     uploaded_by = Column(String, nullable=False)
     created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow, nullable=False)

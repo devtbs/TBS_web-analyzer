@@ -735,7 +735,7 @@ const Presentation = () => {
     };
 
     const libPdfKey = `${libService}|${libLang}|${libFmt}`;
-    const libPdfSize = libPdfs[libPdfKey] || 0;
+    const libPdfInfo = libPdfs[libPdfKey] || null;
 
     /* Canva has no API we can export through, so the PDF is exported by hand once per deck and
        stored here. Every proposal built from that deck then shows it inline. */
@@ -747,8 +747,8 @@ const Presentation = () => {
         setPdfBusy(true);
         try {
             const { data } = await api.post('/api/presentation/proposal-library/pdf', fd);
-            setLibPdfs(p => ({ ...p, [libPdfKey]: data.size_bytes }));
-            toast.success('Deck PDF stored');
+            setLibPdfs(p => ({ ...p, [libPdfKey]: { pages: data.pages, size_bytes: data.size_bytes } }));
+            toast.success(`Deck stored — ${data.pages} slides`);
         } catch (e) {
             toast.error(e?.response?.data?.detail || 'Could not store that PDF.');
         } finally { setPdfBusy(false); }
@@ -761,7 +761,7 @@ const Presentation = () => {
                 params: { service: libService, language: libLang, format: libFmt },
             });
             setLibPdfs(p => { const n = { ...p }; delete n[libPdfKey]; return n; });
-            toast.success('Deck PDF removed');
+            toast.success('Deck removed');
         } catch (e) {
             toast.error(e?.response?.data?.detail || 'Could not remove it.');
         } finally { setPdfBusy(false); }
@@ -1298,18 +1298,18 @@ const Presentation = () => {
                                     <div>
                                         <div className="text-sm font-bold text-slate-700">Deck PDF</div>
                                         <div className="text-xs text-slate-500 mt-0.5">
-                                            {libPdfSize
-                                                ? `Stored — ${(libPdfSize / (1024 * 1024)).toFixed(1)} MB. Shown inline in the proposal.`
+                                            {libPdfInfo
+                                                ? `${libPdfInfo.pages} slides stored (${(libPdfInfo.size_bytes / (1024 * 1024)).toFixed(1)} MB) — shown in the proposal.`
                                                 : 'Not stored yet — the proposal will only link out to the deck.'}
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
                                         <label className={`px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs cursor-pointer hover:bg-[#26397A]/5 ${pdfBusy ? 'opacity-50 pointer-events-none' : ''}`}>
-                                            {pdfBusy ? 'Working…' : libPdfSize ? 'Replace' : 'Upload PDF'}
+                                            {pdfBusy ? 'Converting…' : libPdfInfo ? 'Replace' : 'Upload PDF'}
                                             <input type="file" accept="application/pdf" className="hidden"
                                                 onChange={(e) => { uploadDeckPdf(e.target.files?.[0]); e.target.value = ''; }} />
                                         </label>
-                                        {libPdfSize > 0 && (
+                                        {libPdfInfo && (
                                             <button type="button" onClick={removeDeckPdf} disabled={pdfBusy}
                                                 className="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-600 font-bold text-xs hover:border-red-300 hover:text-red-600">
                                                 Remove
@@ -1318,8 +1318,8 @@ const Presentation = () => {
                                     </div>
                                 </div>
                                 <p className="text-xs text-slate-400 mt-2">
-                                    Export the deck from Canva as PDF and upload it once — every proposal using
-                                    this deck then shows it inline. Max 15 MB.
+                                    Export the deck from Canva as PDF and upload it once — it is converted to
+                                    slide images and every proposal using this deck then shows them. Max 120 MB.
                                 </p>
                             </div>
                         )}

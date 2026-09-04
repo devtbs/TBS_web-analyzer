@@ -1943,25 +1943,25 @@ def _deck_embed_url(entry: Dict) -> str:
     return ""
 
 
-# Placeholder for the deck PDF's URL. The stored page cannot know it: previewing wants the bytes
-# inlined, while publishing wants a real file next to index.html so the page stays small. Whoever
-# renders the page substitutes the form it needs.
+# Placeholder for the deck's slides. The stored page cannot hold them: previewing wants the images
+# inlined as data URLs, while publishing wants real files next to index.html so the page stays
+# small. Whoever renders the page substitutes the form it needs.
 DECK_PDF_TOKEN = "__DECK_PDF__"
 
 
 def _deck_embed_block(entry: Dict, embed_url: str, brand: str, has_pdf: bool = False) -> str:
     """The deck itself, under the summary.
 
-    Preference order, best first: an uploaded PDF export (renders inline everywhere, and is the
-    only way a Canva deck can be shown at all), then a Google Slides embed, then a link card.
+    Preference order, best first: an uploaded deck's rasterised pages (real slides, and the only
+    way a Canva deck can be shown at all), then a Google Slides embed, then a link card.
     """
     label = f"{entry.get('service_label', 'Proposal')} · {entry.get('format_label', '')}".strip(" ·")
     href = _esc(entry.get("url", ""))
     if has_pdf:
-        body = (f'<div class="deck-embed-frame deck-embed-pdf"><iframe src="{DECK_PDF_TOKEN}" '
-                f'title="{_esc(brand)} — {_esc(label)}" loading="lazy"></iframe></div>'
-                f'<a class="deck-embed-open" href="{DECK_PDF_TOKEN}" target="_blank" '
-                'rel="noopener">Open the deck as a PDF →</a>')
+        # Page count is unknown here; the renderer that has DB access substitutes the real slides.
+        body = (f'<div class="deck-pages-slot">{DECK_PDF_TOKEN}</div>'
+                f'<a class="deck-embed-open" href="{href}" target="_blank" rel="noopener">'
+                'Open the deck in Canva →</a>')
     elif embed_url:
         body = (f'<div class="deck-embed-frame"><iframe src="{_esc(embed_url)}" '
                 f'title="{_esc(brand)} — {_esc(label)}" allowfullscreen '

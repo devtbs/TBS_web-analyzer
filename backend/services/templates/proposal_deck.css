@@ -961,11 +961,18 @@ html, body { background: var(--paper); }
   text-decoration: underline;
 }
 
-/* A PDF export is taller than 16:9 — it scrolls inside its own frame. */
-.deck-embed-pdf {
-  padding-top: 0;
-  height: min(85vh, 900px);
+/* The deck as slides: one image per page, stacked down the page. Rendering the export this way
+   rather than as an embedded PDF keeps it readable on a phone and lets the pages lazy-load. */
+.deck-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
-.deck-embed-pdf iframe {
-  position: static;
+.deck-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #eef0f2;
+  border-radius: 10px;
+  background: #fff;
 }

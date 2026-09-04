@@ -28,3 +28,4 @@ gunicorn==26.0.0
 python-pptx==1.0.2
 playwright==1.60.0  # AI-deck HTML->PDF/PPTX rendering; run `playwright install chromium` after pip install
 pdfplumber==0.11.10  # extract data text from uploaded Looker Studio report PDFs
+pymupdf==1.28.2      # rasterise proposal-deck PDFs to page images (services/deck_pages.py)
