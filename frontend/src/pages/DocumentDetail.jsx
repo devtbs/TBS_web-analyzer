@@ -237,6 +237,28 @@ ${briefData.internal_linking_suggestions?.map(link => `- ${link}`).join('\n')}
     const briefData = documentData.content;
     const isFullArticle = documentData.content_type === "Full Article" || briefData.article_markdown;
 
+    // A library proposal is a link to an approved Canva/Slides deck, not generated content —
+    // show the link and what was sent, rather than falling through to the brief renderer.
+    if (documentData.content_type === "Proposal Link") {
+        return (
+            <div className="p-6 md:p-8 max-w-3xl mx-auto min-h-screen">
+                <button onClick={() => navigate('/documents')}
+                    className="mb-6 flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+                    <ArrowLeftIcon className="w-4 h-4 mr-1" /> Back to Documents
+                </button>
+                <h1 className="text-xl font-black text-slate-900 mb-1">{documentData.title}</h1>
+                <p className="text-sm text-slate-500 mb-6">
+                    {briefData.service_label} · {briefData.language_label} · {briefData.format_label}
+                </p>
+                <a href={briefData.url} target="_blank" rel="noopener noreferrer"
+                    className="inline-block px-5 py-3 rounded-xl bg-[#26397A] text-white font-bold text-sm hover:bg-[#1b2a5e]">
+                    Open the proposal
+                </a>
+                {briefData.note && <p className="mt-6 text-sm text-slate-600 whitespace-pre-wrap">{briefData.note}</p>}
+            </div>
+        );
+    }
+
     if (documentData.content_type === "AI Deck") {
         const dl = async (fmt) => {
             try {

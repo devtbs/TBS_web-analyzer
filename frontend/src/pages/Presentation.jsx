@@ -69,6 +69,18 @@ const Presentation = () => {
     const [analyses, setAnalyses] = useState([]);
     const [analysisId, setAnalysisId] = useState('');
 
+    /* Ready-made proposals. Most pitches are sent from the agency's approved Canva/Slides decks,
+       not from a generated one — this mode picks one of those and records it against the client
+       instead of running the deck pipeline at all. */
+    const [propSource, setPropSource] = useState('generate');   // 'generate' | 'library'
+    const [library, setLibrary] = useState([]);
+    const [libService, setLibService] = useState('');
+    const [libLang, setLibLang] = useState('en');
+    const [libClients, setLibClients] = useState([]);
+    const [libClientId, setLibClientId] = useState(localStorage.getItem('selected_client_id') || '');
+    const [libSaving, setLibSaving] = useState(false);
+    const [libSaved, setLibSaved] = useState(null);
+
     /* ── Recurring schedules ─────────────────────────────────────────────
        A schedule reuses whatever is configured above (source, site, period, model, design) and
        reruns it unattended on chosen days of the month. The deck lands in Documents against the
@@ -344,7 +356,9 @@ const Presentation = () => {
     const combinedReady = (combined.gsc && !!propUrl)
         || (combined.ga4 && (!!ga4PropId || (combinedGa4Auto && combined.gsc && !!propUrl)))
         || (combined.ads && !!adsCustId);
-    const canGenerate = mode === 'proposal' ? !!analysisId
+    // Picking a ready-made proposal runs no pipeline, so none of the generation options apply.
+    const libraryMode = mode === 'proposal' && propSource === 'library';
+    const canGenerate = mode === 'proposal' ? (propSource === 'generate' && !!analysisId)
         : mode === 'combined' ? combinedReady
         : mode === 'gsc' ? !!propUrl
         : mode === 'ga4' ? !!ga4PropId
@@ -391,6 +405,22 @@ const Presentation = () => {
         api.get('/api/history')
             .then(r => setAnalyses((r.data.analyses || r.data || []).filter(a => a.status === 'completed')))
             .catch(() => toast.error('Could not load analyses'));
+    }, [mode]);
+
+    // The library and the client list are both small and static-ish — fetch once, when the
+    // Proposal tab is first opened.
+    useEffect(() => {
+        if (mode !== 'proposal' || library.length) return;
+        api.get('/api/presentation/proposal-library')
+            .then(r => {
+                const svcs = r.data.services || [];
+                setLibrary(svcs);
+                if (svcs.length && !libService) setLibService(svcs[0].id);
+            })
+            .catch(() => toast.error('Could not load the proposal library'));
+        api.get('/api/clients')
+            .then(r => setLibClients(r.data.clients || r.data || []))
+            .catch(() => { /* non-fatal — a proposal can be saved without a client */ });
     }, [mode]);
 
     const loadSchedules = async () => {
@@ -653,6 +683,27 @@ const Presentation = () => {
     // Re-publishing the same client overwrites the same URL, so a link already sent keeps working.
     const [publishing, setPublishing] = useState(false);
     const [publishedUrl, setPublishedUrl] = useState('');
+    const libEntry = library.find(x => x.id === libService) || null;
+    const libLangs = libEntry ? Object.keys(libEntry.languages) : [];
+    const libLinks = (libEntry && libEntry.languages[libLang]) || {};
+
+    // Saving records WHICH approved deck was sent to WHICH client — the deck itself already
+    // exists in Canva/Slides, so nothing is generated or copied here.
+    const saveFromLibrary = async (fmt) => {
+        if (!libEntry) return;
+        setLibSaving(true);
+        try {
+            const { data } = await api.post('/api/presentation/proposal-library/attach', {
+                service: libService, language: libLang, format: fmt,
+                client_id: libClientId || null,
+            });
+            setLibSaved(data);
+            toast.success('Proposal saved to Documents');
+        } catch (e) {
+            toast.error(e?.response?.data?.detail || 'Could not save that proposal.');
+        } finally { setLibSaving(false); }
+    };
+
     const publishProposal = async () => {
         if (!deckDocId) return;
         setPublishing(true);
@@ -735,6 +786,109 @@ const Presentation = () => {
                 </div>
 
                 {mode === 'proposal' && (
+                    <div className="mb-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Where the proposal comes from</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+                            {[['library', 'Use a ready-made proposal', 'Pick one of our approved Canva / Slides decks'],
+                              ['generate', 'Generate a new deck', 'Build an AIO/GEO/AEO pitch from an analysis']].map(([k, label, sub]) => (
+                                <button key={k} type="button" disabled={generating}
+                                    onClick={() => setPropSource(k)}
+                                    className={`text-left px-4 py-3 rounded-xl border transition-colors ${
+                                        propSource === k ? 'bg-[#26397A]/5 border-[#26397A] text-[#26397A]'
+                                                         : 'bg-white border-slate-300 text-slate-600 hover:border-[#26397A]/50'}`}>
+                                    <span className="block font-bold text-sm">{label}</span>
+                                    <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {mode === 'proposal' && propSource === 'library' && (
+                    <div className="mb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Service</label>
+                                <select value={libService} className={fieldCls + ' text-sm'}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setLibService(id); setLibSaved(null);
+                                        // Not every deck exists in both languages — fall back rather
+                                        // than leaving the picker on a language with no links.
+                                        const svc = library.find(x => x.id === id);
+                                        if (svc && !svc.languages[libLang])
+                                            setLibLang(Object.keys(svc.languages)[0] || 'en');
+                                    }}>
+                                    {library.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Language</label>
+                                <div className="flex gap-2">
+                                    {[['en', 'English'], ['th', 'ไทย']].map(([code, label]) => (
+                                        <button key={code} type="button"
+                                            disabled={!libLangs.includes(code)}
+                                            onClick={() => { setLibLang(code); setLibSaved(null); }}
+                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-colors ${
+                                                libLang === code ? 'bg-[#26397A] text-white border-[#26397A]'
+                                                : libLangs.includes(code) ? 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'
+                                                : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'}`}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Save to client</label>
+                        <select value={libClientId} className={fieldCls + ' text-sm'}
+                            onChange={(e) => { setLibClientId(e.target.value); setLibSaved(null); }}>
+                            <option value="">No client — just save it to Documents</option>
+                            {libClients.map(c => (
+                                <option key={c.id} value={c.id}>{c.name || c.domain || c.id}</option>
+                            ))}
+                        </select>
+
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {['canva', 'slides'].map(fmt => (
+                                <div key={fmt} className={`rounded-xl border px-4 py-3 ${
+                                    libLinks[fmt] ? 'border-slate-300' : 'border-slate-200 bg-slate-50'}`}>
+                                    <div className="font-bold text-sm text-slate-700">
+                                        {fmt === 'canva' ? 'Canva' : 'Google Slides'}
+                                    </div>
+                                    {libLinks[fmt] ? (
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            <a href={libLinks[fmt]} target="_blank" rel="noopener noreferrer"
+                                                className="px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs hover:bg-[#26397A]/5">
+                                                Open
+                                            </a>
+                                            <button type="button" disabled={libSaving}
+                                                onClick={() => saveFromLibrary(fmt)}
+                                                className="px-3 py-1.5 rounded-lg bg-[#26397A] text-white font-bold text-xs hover:bg-[#1b2a5e] disabled:opacity-50">
+                                                {libSaving ? 'Saving…' : 'Save to client'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 mt-2">Not available for this language yet.</p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {libSaved && (
+                            <p className="text-xs text-emerald-700 mt-3 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                                Saved <strong>{libSaved.service_label} ({libSaved.language_label})</strong> — it is now in
+                                Documents{libClientId ? ' against this client' : ''}.
+                            </p>
+                        )}
+                        <p className="text-xs text-slate-500 mt-3">
+                            These are the approved agency decks. Nothing is generated — saving records which
+                            proposal went to which client so it sits in Documents with the rest of their work.
+                        </p>
+                    </div>
+                )}
+
+                {mode === 'proposal' && propSource === 'generate' && (
                     <div className="mb-6">
                         <label className="block text-sm font-bold text-slate-700 mb-2">Prospect analysis</label>
                         <select value={analysisId} onChange={(e) => setAnalysisId(e.target.value)}
@@ -1080,6 +1234,7 @@ const Presentation = () => {
                 )}
 
 
+                {!libraryMode && <>
                 {/* ── AI ── model, compare, pipeline ── */}
                 <Section title="AI model & pipeline" open={openSec.ai}
                     onToggle={() => setOpenSec(o => ({ ...o, ai: !o.ai }))}
@@ -1364,8 +1519,10 @@ const Presentation = () => {
                         </div>
                     )}
                 </Section>
+                </>}
 
 
+                {!libraryMode && <>
                 {/* Sticky CTA — stays reachable without scrolling past every option */}
                 <div className="sticky bottom-0 -mx-6 md:-mx-8 -mb-6 md:-mb-8 mt-6 px-6 md:px-8 py-4 bg-white/95 backdrop-blur border-t border-slate-200 rounded-b-2xl">
                     <button onClick={generate} disabled={generating || !canGenerate}
@@ -1376,6 +1533,7 @@ const Presentation = () => {
                     <p className="text-xs text-slate-400 mt-2 text-center">
                         Decks generate in the background — you can start more, leave, or reload this page; each appears in Documents.</p>
                 </div>
+                </>}
             </motion.div>
 
             {/* Active-job tracker: one row per in-flight/finished deck */}

@@ -567,6 +567,56 @@ async def presentation_ai_deck_combined(
                              media_type="text/event-stream", headers=_SSE_HEADERS)
 
 
+@router.get("/api/presentation/proposal-library")
+async def proposal_library(current_user: UserInfo = Depends(get_current_user)):
+    """The agency's ready-made proposal decks, for picking one instead of generating a new deck."""
+    from services import proposal_library as lib
+    return {"services": lib.catalogue(), "languages": lib.LANGUAGES, "formats": lib.FORMATS}
+
+
+@router.post("/api/presentation/proposal-library/attach")
+async def attach_proposal_from_library(body: dict = Body(...),
+                                       current_user: UserInfo = Depends(get_current_user),
+                                       db: Session = Depends(get_db)):
+    """Save a ready-made proposal against a client so it lives in Documents with everything else.
+
+    Nothing is generated here — this records which existing deck was sent to which client, which is
+    the part that was previously kept out of the tool entirely.
+    """
+    from services import proposal_library as lib
+    from database import Document
+    import uuid as _uuid
+
+    entry = lib.find((body.get("service") or "").strip(),
+                     (body.get("language") or "en").strip(),
+                     (body.get("format") or "canva").strip())
+    if not entry:
+        raise HTTPException(status_code=404,
+                            detail="That proposal is not in the library for the chosen language/format.")
+
+    client_id = (body.get("client_id") or "").strip() or None
+    if client_id:
+        # Never attach to a client belonging to someone else.
+        from database import Client
+        owned = db.query(Client).filter(Client.id == client_id,
+                                        Client.user_email == current_user.email).first()
+        if not owned:
+            raise HTTPException(status_code=404, detail="Client not found.")
+
+    note = (body.get("note") or "").strip()
+    doc_id = str(_uuid.uuid4())
+    db.add(Document(
+        id=doc_id,
+        user_email=current_user.email,
+        client_id=client_id,
+        title=f"Proposal — {entry['service_label']} ({entry['language_label']})",
+        content_type="Proposal Link",
+        content={**entry, "note": note},
+    ))
+    db.commit()
+    return {"document_id": doc_id, **entry}
+
+
 @router.post("/api/presentation/ai-deck-proposal")
 async def presentation_ai_deck_proposal(
     analysis_id: str,
