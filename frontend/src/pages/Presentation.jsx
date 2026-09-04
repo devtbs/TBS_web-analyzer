@@ -72,7 +72,6 @@ const Presentation = () => {
     /* Ready-made proposals. Most pitches are sent from the agency's approved Canva/Slides decks,
        not from a generated one — this mode picks one of those and records it against the client
        instead of running the deck pipeline at all. */
-    const [propSource, setPropSource] = useState('generate');   // 'generate' | 'library'
     const [library, setLibrary] = useState([]);
     const [libService, setLibService] = useState('');
     const [libLang, setLibLang] = useState('en');
@@ -358,8 +357,10 @@ const Presentation = () => {
         || (combined.ga4 && (!!ga4PropId || (combinedGa4Auto && combined.gsc && !!propUrl)))
         || (combined.ads && !!adsCustId);
     // Picking a ready-made proposal runs no pipeline, so none of the generation options apply.
-    const libraryMode = mode === 'proposal' && propSource === 'library';
-    const canGenerate = mode === 'proposal' ? (propSource === 'generate' && !!analysisId)
+    // Proposals are always a ready-made deck now — the 25-slide generator was retired in favour of
+    // the agency's approved decks, so this tab never drives the streaming deck pipeline.
+    const libraryMode = mode === 'proposal';
+    const canGenerate = mode === 'proposal' ? false
         : mode === 'combined' ? combinedReady
         : mode === 'gsc' ? !!propUrl
         : mode === 'ga4' ? !!ga4PropId
@@ -601,10 +602,6 @@ const Presentation = () => {
                 if (combined.ads && adsCustId) { qs.set('ads_customer_id', adsCustId); qs.set('ads_label', adsLabel || ''); }
                 response = await fetch(`/api/presentation/ai-deck-combined?${qs.toString()}`,
                     { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
-            } else if (mode === 'proposal') {
-                response = await fetch(
-                    `/api/presentation/ai-deck-proposal?analysis_id=${encodeURIComponent(analysisId)}&images=${useImages}${prov ? `&provider=${prov}` : ''}`,
-                    { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
             } else if (mode === 'gsc') {
                 response = await fetch(
                     `/api/presentation/ai-deck-gsc?property=${encodeURIComponent(propUrl)}&days=${days}&provider=${prov}&images=${useImages}`,
@@ -702,6 +699,7 @@ const Presentation = () => {
                 service: libService, language: libLang, format: libFmt,
                 client_id: libClientId || null,
                 analysis_id: analysisId || null,
+                provider: provider || null,
             });
             setLibSaved(data);
             // Hand the new document to the existing preview / publish actions.
@@ -1125,30 +1123,8 @@ const Presentation = () => {
                 {mode === 'proposal' && (
                     <Section title="Proposal deck" open={openSec.proposal}
                         onToggle={() => setOpenSec(o => ({ ...o, proposal: !o.proposal }))}
-                        summary={propSource === 'library'
-                            ? `${libEntry ? libEntry.label : 'Ready-made'} · ${libLang === 'th' ? 'ไทย' : 'English'}${analysisId ? ' · with summary' : ''}`
-                            : 'Generate a new deck'}>
-                {(
+                        summary={`${libEntry ? libEntry.label : 'Ready-made'} · ${libLang === 'th' ? 'ไทย' : 'English'}${analysisId ? ' · with summary' : ''}`}>
                     <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Where the proposal comes from</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
-                            {[['library', 'Use a ready-made proposal', 'Pick one of our approved Canva / Slides decks'],
-                              ['generate', 'Generate a new deck', 'Build an AIO/GEO/AEO pitch from an analysis']].map(([k, label, sub]) => (
-                                <button key={k} type="button" disabled={generating}
-                                    onClick={() => setPropSource(k)}
-                                    className={`text-left px-4 py-3 rounded-xl border transition-colors ${
-                                        propSource === k ? 'bg-[#26397A]/5 border-[#26397A] text-[#26397A]'
-                                                         : 'bg-white border-slate-300 text-slate-600 hover:border-[#26397A]/50'}`}>
-                                    <span className="block font-bold text-sm">{label}</span>
-                                    <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {propSource === 'library' && (
-                    <div className="mt-5">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-2">Service</label>
@@ -1262,44 +1238,23 @@ const Presentation = () => {
                             just records which proposal went to which client.
                         </p>
                     </div>
-                )}
-
-                {propSource === 'generate' && (
-                    <div className="mt-5">
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Prospect analysis</label>
-                        <select value={analysisId} onChange={(e) => setAnalysisId(e.target.value)}
-                            disabled={generating} className={fieldCls + ' text-sm'}>
-                            <option value="">Choose a completed analysis…</option>
-                            {analyses.map(a => (
-                                <option key={a.analysis_id} value={a.analysis_id}>
-                                    {(a.urls && a.urls[0]) || a.label || a.analysis_id}
-                                    {a.created_at ? ` — ${new Date(a.created_at).toLocaleDateString()}` : ''}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-slate-500 mt-2">
-                            Builds an AIO/GEO/AEO pitch from a Quick Analysis: measured AI-answer visibility,
-                            who is cited instead, the coverage gap, a sample content plan and your rate card.
-                            Uses no Search Console data — it works for sites you have no access to.
-                        </p>
-                    </div>
-                )}
-
                     </Section>
                 )}
 
-                {!libraryMode && <>
                 {/* ── AI ── model, compare, pipeline ── */}
-                <Section title="AI model & pipeline" open={openSec.ai}
+                <Section title={libraryMode ? "AI model" : "AI model & pipeline"} open={openSec.ai}
                     onToggle={() => setOpenSec(o => ({ ...o, ai: !o.ai }))}
-                    summary={`${providerLabel(provider)}${compareModels.length ? ` +${compareModels.length}` : ''} · ${pipeline === 'layered' ? '3-layer' : 'Single-pass'}`}>
+                    summary={libraryMode ? providerLabel(provider)
+                        : `${providerLabel(provider)}${compareModels.length ? ` +${compareModels.length}` : ''} · ${pipeline === 'layered' ? '3-layer' : 'Single-pass'}`}>
                     <label className="block text-sm font-bold text-slate-700 mb-2">AI model</label>
                     <select value={provider} onChange={(e) => setProvider(e.target.value)} className={fieldCls + ' mb-3'}>
                         {providers.length === 0 && <option value="deepseek">DeepSeek</option>}
                         {providers.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
+                    {/* Compare models and the pipeline shape a GENERATED deck. A ready-made proposal
+                        only uses the model to write its summary, so neither applies there. */}
                     {/* Compare models: run the SAME deck across extra models at once */}
-                    {providers.length > 1 && (
+                    {!libraryMode && providers.length > 1 && (
                         <div className="mb-6">
                             <label className="block text-xs font-bold text-slate-500 mb-2">Also generate with (compare) <span className="font-normal text-slate-400">— runs the same deck on each, in parallel</span></label>
                             <div className="flex flex-wrap gap-2">
@@ -1316,6 +1271,7 @@ const Presentation = () => {
                             </div>
                         </div>
                     )}
+                    {!libraryMode && <>
                     {/* Generation pipeline: single-pass vs 3-layer (per-layer model choice) */}
                     <label className="block text-sm font-bold text-slate-700 mb-2">Pipeline</label>
                     <select value={pipeline} onChange={(e) => setPipeline(e.target.value)} className={fieldCls + ' mb-2'}>
@@ -1337,8 +1293,12 @@ const Presentation = () => {
                             ))}
                         </div>
                     ) : <div className="mb-6" />}
+                    </>}
                 </Section>
 
+                {/* Design applies to a generated deck's own slides. A ready-made proposal keeps the
+                    approved deck exactly as it is, so none of it has anything to act on. */}
+                {!libraryMode && <>
                 {/* ── Design ── colours, style, freedom, photos ── */}
                 <Section title="Design" open={openSec.design}
                     onToggle={() => setOpenSec(o => ({ ...o, design: !o.design }))}

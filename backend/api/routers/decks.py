@@ -612,6 +612,8 @@ async def attach_proposal_from_library(body: dict = Body(...),
     content = {**entry, "note": note}
     title = f"Proposal — {entry['service_label']} ({entry['language_label']})"
     if analysis_id:
+        # Writing the summary needs a model; fail with the same clear message the deck routes give.
+        _require_llm_key()
         # get_analysis does NOT scope by user — the ownership check has to be explicit, or any
         # analysis id would build a proposal from someone else's data.
         analysis = database_store.get_analysis(db, analysis_id)
@@ -619,7 +621,9 @@ async def attach_proposal_from_library(body: dict = Body(...),
             raise HTTPException(status_code=404, detail="Analysis not found.")
         from services.report_generator import generate_library_proposal
         try:
-            built = await generate_library_proposal(analysis, entry, notes=note)
+            built = await generate_library_proposal(
+                analysis, entry, notes=note,
+                provider=(body.get('provider') or '').strip() or None)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
@@ -641,58 +645,6 @@ async def attach_proposal_from_library(body: dict = Body(...),
     ))
     db.commit()
     return {"document_id": doc_id, "has_page": bool(analysis_id), **entry}
-
-
-@router.post("/api/presentation/ai-deck-proposal")
-async def presentation_ai_deck_proposal(
-    analysis_id: str,
-    provider: str = None,
-    images: bool = True,
-    body: dict = Body(default={}),
-    current_user: UserInfo = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """AIO/GEO/AEO PROPOSAL deck for a prospect, built from a completed Quick Analysis.
-
-    Unlike the client-reporting decks this takes no Google service: a prospect is a site we have no
-    access to, so the evidence is whatever the prospect analysis measured (SERP competitors, real
-    keyword volume, and AI Overview citations). Query: ?analysis_id=<id>."""
-    from services.report_generator import generate_ai_proposal_deck
-    from services.image_service import images_enabled
-    _require_llm_key()
-
-    # get_analysis does NOT scope by user, so the ownership check has to be explicit — otherwise
-    # any analysis id would build a proposal from someone else's data.
-    analysis = database_store.get_analysis(db, analysis_id)
-    if not analysis or analysis.get("user_email") != current_user.email:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    maps = analysis.get("topical_maps") or []
-    if not maps:
-        raise HTTPException(status_code=400,
-                            detail="That analysis has no topical map yet — wait for it to finish.")
-    label = _domain_of(maps[0].get("url") or "") or "Proposal"
-    client_id = _resolve_deck_client(db, current_user.email, body)
-
-    async def run(on_progress, set_doc_id):
-        doc_id = _create_deck_placeholder(current_user.email, source="proposal", label=label,
-                                          provider=provider or "auto", client_id=client_id)
-        set_doc_id(doc_id)
-        result = await generate_ai_proposal_deck(
-            analysis, provider=provider, images=images and images_enabled(),
-            notes=(body or {}).get("notes", ""),
-            creativity=(body or {}).get("creativity", "balanced"),
-            pipeline=(body or {}).get("pipeline", "single"),
-            models=_parse_models((body or {}).get("models")),
-            theme_mode=(body or {}).get("theme_mode", "tbs"),
-            custom_color=(body or {}).get("custom_color"),
-            style=(body or {}).get("style", "tbs"), on_progress=on_progress)
-        slides = await _finalize_and_preview(doc_id, result["html"], on_progress,
-                                             artifacts=result.get("artifacts"))
-        return {"document_id": doc_id, "slides": slides, "label": result["brand"]}
-
-    return StreamingResponse(_stream_deck_generation(run, current_user.email),
-                             media_type="text/event-stream", headers=_SSE_HEADERS)
-
 
 
 @router.get("/api/presentation/proposal/{document_id}/full")
