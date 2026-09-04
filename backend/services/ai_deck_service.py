@@ -1067,7 +1067,9 @@ whose title only describes one of them.
 ## Layout Principles
 Top-anchor sparse content with consistent gaps; centre only on cover/hero slides. VARY the layout every
 slide — no two consecutive slides share a structure. Every non-cover slide carries a visual (chart, table,
-diagram or image). Do NOT add a per-slide footer.
+diagram or image). Do NOT add a per-slide footer. NEVER add a "Presented by" credit, a person's
+name, a phone number or a personal email anywhere in the deck — you are not given who is presenting,
+so anything you write there is invented, and it goes out to a client as if it were fact.
 
 ## Recurring Motif
 Pick ONE motif / emotional anchor from the REAL data — the single headline number that defines this
@@ -2445,6 +2447,38 @@ _LEAK_CLEANUP_JS = (
 )
 
 
+def _strip_invented_people(html: str) -> str:
+    """Remove fabricated presenter names and phone numbers from a generated deck.
+
+    Nothing in any prompt asks for a presenter, yet decks came back with a "PRESENTED BY" block on
+    the cover carrying an invented person's name and mobile number. That is worse than clutter: it
+    is fabricated contact detail on a document that goes to a client. There is no source of truth
+    for who is presenting, so the only correct output is nothing at all.
+
+    Deterministic rather than prompt-only, because a prompt rule is a request and this is a
+    guarantee — the same reason the leaked-spec guard exists. Parsed rather than regexed: the
+    label, the name and the number are separate sibling elements, and a non-greedy tag match closes
+    on the wrong tag and leaves the name behind.
+    """
+    if "presented by" not in html.lower():
+        return html
+    try:
+        from bs4 import BeautifulSoup
+    except Exception:                       # pragma: no cover - bs4 is a hard dep in practice
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+    for el in soup.find_all(string=re.compile(r"^\s*presented\s+by\s*:?\s*$", re.I)):
+        label = el.parent
+        block = label.parent if label else None
+        # The credit block is the small wrapper holding label + name + number. Anything long is a
+        # real content slide that merely contains the phrase, so only the label itself goes.
+        if block is not None and len(block.get_text(" ", strip=True)) <= 200:
+            block.decompose()
+        elif label is not None:
+            label.decompose()
+    return str(soup)
+
+
 def _inject_leak_cleanup(html: str) -> str:
     """Inject the DOM leak-cleanup script before </body> so it runs on every deck (independent
     of whether charts are present)."""
@@ -2677,6 +2711,8 @@ def _prepare_html_for_render(html: str) -> str:
     html = _enforce_fill(html)
     # Authoritative leaked-spec guard — runs on every deck, including the chart-less path.
     html = _inject_leak_cleanup(html)
+    # No invented people: strip any "presented by" block and stray phone numbers the model added.
+    html = _strip_invented_people(html)
     # Scale-to-fit overflowing slides. Injected before </body> so it runs after the inline
     # Plotly.newPlot calls, and re-runs on a rAF chain to catch charts that resize after paint.
     # Drop table rows that don't fit and declare the count — before autofit, so it
