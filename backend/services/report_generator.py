@@ -1654,7 +1654,7 @@ def _proposal_css() -> str:
     return (_TEMPLATE_DIR / "proposal_deck.css").read_text(encoding="utf-8")
 
 
-def _proposal_page(brand: str, slides_html: str, viewer: bool = False) -> str:
+def _proposal_page(brand: str, slides_html: str, viewer: bool = False, intro: str = "") -> str:
     """Assemble the proposal page.
 
     Two outputs, deliberately different:
@@ -1678,8 +1678,15 @@ def _proposal_page(brand: str, slides_html: str, viewer: bool = False) -> str:
         f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
         f"<style>{_proposal_fonts()}</style>"
         f"<style>{_proposal_css()}</style>"
-        + (f"<style>{_tpl('proposal_viewer.css')}</style>" if viewer else "")
+        + (f"<style>{_tpl('proposal_intro.css')}</style>"
+           f"<style>{_tpl('proposal_viewer.css')}</style>" if viewer else "")
         + "</head><body>"
+        # The summary sections and the viewer chrome only make sense on the published page; the
+        # stored copy stays plain slides so the preview renderer can screenshot them.
+        # On the stored copy the summary lives inside a <template>: browsers never render it and
+        # the preview renderer never sees it, but publishing can lift it back out verbatim.
+        + ((intro if viewer
+            else f'<template id="proposal-intro">{intro}</template>') if intro else "")
         + (_tpl("proposal_viewer.html") if viewer else "")
         + slides_html
         + (f"<script>{_tpl('proposal_viewer.js')}</script>" if viewer else "")
@@ -1693,8 +1700,11 @@ def proposal_page_for_publish(brand: str, stored_html: str) -> str:
     site wants the interactive deck. Pull the slides back out and re-assemble.
     """
     m = re.search(r"<body[^>]*>(.*)</body>", stored_html, re.S)
-    slides = m.group(1) if m else stored_html
-    return _proposal_page(brand, slides, viewer=True)
+    inner = m.group(1) if m else stored_html
+    mi = re.search(r'<template id="proposal-intro">(.*?)</template>', inner, re.S)
+    intro = mi.group(1) if mi else ""
+    slides = inner.replace(mi.group(0), "") if mi else inner
+    return _proposal_page(brand, slides, viewer=True, intro=intro)
 
 
 def _proposal_fonts() -> str:
@@ -1919,6 +1929,17 @@ def _esc(v) -> str:
     return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _reference_intro() -> list:
+    """The seven summary sections that sit ABOVE the slide viewer on the reference page —
+    hero, stats, problem, thesis, pillars, audit, roadmap. Localised exactly like the slides."""
+    import json
+    try:
+        return json.loads((_TEMPLATE_DIR / "proposal_intro.json").read_text(encoding="utf-8"))
+    except Exception:
+        logger.warning("proposal intro sections missing")
+        return []
+
+
 def _reference_slides() -> list:
     import json
     return json.loads((_TEMPLATE_DIR / "proposal_slides.json").read_text(encoding="utf-8"))
@@ -2054,6 +2075,16 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     if not body:
         raise ValueError("Every slide failed to generate — check the AI provider configuration.")
 
+    # The page above the deck is part of the proposal, not decoration — localise it the same way.
+    intro = _reference_intro()
+    intro_out = ""
+    if intro:
+        if on_progress:
+            await on_progress(f"Re-wording the {len(intro)} summary sections…")
+        outs = await asyncio.gather(*[_rewrite_slide(sec, brand, domain, brief, prov)
+                                      for sec in intro])
+        intro_out = "\n".join(o for o in outs if o)
+
     # ── Deterministic injections ─────────────────────────────────────────────────────────
     # The reference cover carries a RELATIVE image (hero-lake.jpg) that 404s anywhere else, and its
     # closing slide has none. Point the cover at this client's own photo and add one to the close.
@@ -2109,7 +2140,7 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
         mo = re.search(r'<div class="slide-block">(?:(?!</div>\n</div>).)*?Section 05', body, re.S)
         body = (body[:mo.start()] + map_slide + body[mo.start():]) if mo else body + map_slide
 
-    html = _proposal_page(brand, body)
+    html = _proposal_page(brand, body, intro=intro_out)
     kept = sum(1 for r in results if r)
     logger.info("proposal deck for %s: %d/%d slides kept", brand, kept, len(slides))
     return {"domain": domain, "brand": brand, "html": html, "artifacts": {}}
