@@ -1654,6 +1654,21 @@ def _proposal_css() -> str:
     return (_TEMPLATE_DIR / "proposal_deck.css").read_text(encoding="utf-8")
 
 
+def _proposal_fonts() -> str:
+    """Kanit + Outfit as base64 @font-face rules.
+
+    The PDF pipeline does not fetch the Google Fonts stylesheet, so a remote <link> silently falls
+    back and the deck renders in the browser default — which is why every export so far came out in
+    the wrong typeface. Embedding removes the network dependency entirely. Latin subsets only:
+    the full family set (thai/cyrillic/vietnamese) would triple the file for no benefit here.
+    """
+    try:
+        return (_TEMPLATE_DIR / "proposal_fonts.css").read_text(encoding="utf-8")
+    except Exception:
+        logger.warning("embedded proposal fonts missing — falling back to the remote stylesheet")
+        return ""
+
+
 def _proposal_examples() -> str:
     return (_TEMPLATE_DIR / "proposal_examples.html").read_text(encoding="utf-8")
 
@@ -1867,37 +1882,82 @@ def _reference_slides() -> list:
 
 
 _REWRITE_SYSTEM = (
-    "You localise an existing slide for a different client. You are NOT designing anything.\n"
-    "Return the SAME HTML back, byte-for-byte identical in structure, changing ONLY the "
-    "human-readable words.\n"
-    "Absolute rules:\n"
-    "- Keep every tag, every class, every style attribute, every inline colour, every emoji "
-    "position, every grid and every card exactly as given. Do not add or remove elements.\n"
-    "- Replace the old client's name, city, domain and sector wording with the new client's.\n"
-    "- Replace figures ONLY with the values supplied in DATA. If DATA has no equivalent figure, "
-    "keep the sentence but remove the specific number, or drop that one card — never invent a "
-    "statistic and never leave the previous client's numbers in place.\n"
-    "- Generic market facts about AI search that are not about the old client stay as they are.\n"
-    "- Output raw HTML only. No commentary, no markdown fences."
+    "You translate slide copy from one client to another. You never see or write HTML.\n"
+    "You are given a numbered list of text fragments taken from an approved slide, and the new "
+    "client's data. Return a JSON array of exactly the same length, in the same order, where each "
+    "entry is the rewritten version of that fragment.\n"
+    "Rules:\n"
+    "- Keep each fragment's role, tone and approximate LENGTH. A three-word label stays a "
+    "three-word label; a one-line stat caption stays one line.\n"
+    "- Swap the old client's name, city, domain and sector wording for the new client's.\n"
+    "- Numbers: keep generic market statistics about AI search exactly as they are. Replace "
+    "client-specific figures ONLY with values from DATA. If DATA has no equivalent, rewrite the "
+    "fragment so it carries no number — never invent one, never keep the old client's.\n"
+    "- If a fragment needs no change, return it unchanged.\n"
+    "- Output the JSON array only. No prose, no code fences."
 )
+
+# Tags whose text is markup, not copy — rewriting these would break the slide.
+_SKIP_TAGS = {"script", "style"}
+
+
+def _slide_text_nodes(soup):
+    """Every human-readable text node in a slide, in document order."""
+    out = []
+    for node in soup.find_all(string=True):
+        if node.parent.name in _SKIP_TAGS:
+            continue
+        if node.strip():
+            out.append(node)
+    return out
 
 
 async def _rewrite_slide(slide: dict, brand: str, domain: str, brief: str, provider: str) -> str:
-    """Rewrite one reference slide for the new client, preserving its markup exactly."""
+    """Localise one reference slide by replacing ONLY its text nodes.
+
+    The model is never given HTML and never emits HTML — it receives a list of strings and returns
+    a list of strings, which we substitute back into the parsed document. Asking a model to "return
+    this markup unchanged" does not work: given an 8,000-character slide it rewrites the layout into
+    something simpler every time. This removes the possibility.
+    """
+    from bs4 import BeautifulSoup
     from services.ai_service import ai_service
-    user = (f"NEW CLIENT: {brand} ({domain})\n\nDATA (the only figures you may use):\n{brief}\n\n"
-            f"SLIDE TO LOCALISE (return it back with only the wording changed):\n{slide['html']}")
+
+    soup = BeautifulSoup(slide["html"], "html.parser")
+    nodes = _slide_text_nodes(soup)
+    if not nodes:
+        return slide["html"]
+
+    numbered = "\n".join(f"{i}. {n.strip()}" for i, n in enumerate(nodes))
+    user = (f"NEW CLIENT: {brand} ({domain})\n\nDATA (the only client figures you may use):\n{brief}\n\n"
+            f"FRAGMENTS ({len(nodes)} of them — return exactly {len(nodes)} strings):\n{numbered}")
     try:
-        out = await ai_service.analyze_with_provider(user, _REWRITE_SYSTEM, provider=provider)
+        raw = await ai_service.analyze_with_provider(user, _REWRITE_SYSTEM, provider=provider)
     except Exception as e:
         logger.error("proposal slide %s (%s) failed: %s", slide["n"], slide["label"], str(e)[:160])
-        return ""
-    out = re.sub(r"^```(?:html)?|```$", "", out.strip(), flags=re.M).strip()
-    # A rewrite that lost the shell is worse than no slide — the deck would break mid-deck.
-    if 'class="slide-block"' not in out:
-        logger.warning("proposal slide %s came back malformed — skipping it", slide["n"])
-        return ""
-    return out
+        return slide["html"]          # ship the reference wording rather than nothing
+
+    raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip()
+    try:
+        new_texts = json.loads(raw)
+        assert isinstance(new_texts, list)
+    except Exception:
+        logger.warning("proposal slide %s: reply was not a JSON array — keeping reference wording",
+                       slide["n"])
+        return slide["html"]
+
+    if len(new_texts) != len(nodes):
+        logger.warning("proposal slide %s: got %d fragments, expected %d — keeping reference wording",
+                       slide["n"], len(new_texts), len(nodes))
+        return slide["html"]
+
+    for node, replacement in zip(nodes, new_texts):
+        if isinstance(replacement, str) and replacement.strip():
+            # Preserve the original leading/trailing whitespace so inline spacing survives.
+            lead = node[:len(node) - len(node.lstrip())]
+            trail = node[len(node.rstrip()):]
+            node.replace_with(f"{lead}{replacement.strip()}{trail}")
+    return str(soup)
 
 
 async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, images: bool = False,
@@ -2006,8 +2066,7 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     html = (f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
             f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
-            f"<link href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800;900"
-            f"&family=Kanit:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">"
+            f"<style>{_proposal_fonts()}</style>"
             f"<style>{_proposal_css()}</style></head><body>{body}</body></html>")
     kept = sum(1 for r in results if r)
     logger.info("proposal deck for %s: %d/%d slides kept", brand, kept, len(slides))
