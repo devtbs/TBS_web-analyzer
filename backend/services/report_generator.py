@@ -1780,40 +1780,81 @@ TOPICAL_MAP_TOKEN = "<!--TOPICAL_MAP-->"
 
 
 def _render_topical_map(m: Dict) -> str:
-    """Draw the topical map in markup from the analysis.
+    """Draw the client's topical map as an SVG cluster diagram.
 
-    Rendered deterministically rather than described to the model, because this is the one slide
-    that must be FACTUALLY the client's map — a model paraphrasing it would drift. Also stays sharp
-    in print and needs no image hosting.
+    SVG rather than a PNG: the deck is assembled server-side where there is no browser to rasterise
+    with (the frontend's PNG export uses html-to-image in the page). Inline SVG also stays sharp at
+    any print size and needs no hosting — strictly better than a bitmap here.
+
+    Layout is a hub-and-spoke: the central entity at the middle, Core areas on the inner ring
+    (revenue), Outer areas on the outer ring (authority), spokes showing they feed the core.
     """
+    import math
     cs = m.get("content_strategy") or {}
     core = [t for t in (cs.get("core_topics") or []) if t][:8]
     outer = [t for t in (cs.get("outer_topics") or []) if t][:10]
     gaps = [t for t in (cs.get("content_gaps") or []) if t][:6]
-    nodes = len(m.get("content_articles") or [])
-    clusters = len(m.get("keyword_clusters") or [])
+    centre = (m.get("central_entity") or "").strip() or "The brand"
     if not (core or outer):
         return ""
 
-    chips = lambda xs: "".join(f'<span class="tmap-chip">{_esc(x)}</span>' for x in xs)
-    parts = ['<div class="tmap">']
-    if core:
-        parts.append('<div class="tmap-col core"><div class="tmap-head">Core — revenue-driving</div>'
-                     f'<div class="tmap-list">{chips(core)}</div></div>')
-    if outer:
-        parts.append('<div class="tmap-col outer"><div class="tmap-head">Outer — authority-building</div>'
-                     f'<div class="tmap-list">{chips(outer)}</div></div>')
-    parts.append("</div>")
-    if gaps:
-        parts.append('<div class="tmap-gaps"><div class="tmap-head">Gaps to close</div>'
-                     f'<div class="tmap-list">{chips(gaps)}</div></div>')
+    # Rings must clear each other once label boxes are counted, not just their centres — at the
+    # first spacing the outer ring's boxes landed on top of the inner ring's.
+    W, H, CX, CY = 1160, 660, 580, 310
+    R1, R2 = 175, 315
+    parts = [f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" '
+             f'font-family="Kanit, system-ui, sans-serif" role="img" '
+             f'aria-label="Topical map for {_esc(centre)}">']
+
+    def ring(items, radius, fill, stroke, rx, offset=0.0):
+        out = []
+        n = max(len(items), 1)
+        for i, label in enumerate(items):
+            ang = (2 * math.pi * i / n) - math.pi / 2 + offset
+            x, y = CX + radius * math.cos(ang), CY + radius * math.sin(ang) * 0.84
+            txt = label if len(label) <= 21 else label[:19] + "…"
+            w = max(92, min(172, 7.2 * len(txt) + 20))
+            out.append(f'<line x1="{CX}" y1="{CY}" x2="{x:.0f}" y2="{y:.0f}" '
+                       f'stroke="#d9dde3" stroke-width="1"/>')
+            out.append(
+                f'<g><rect x="{x - w/2:.0f}" y="{y - 15:.0f}" width="{w:.0f}" height="30" rx="{rx}" '
+                f'fill="{fill}" stroke="{stroke}" stroke-width="1"/>'
+                f'<text x="{x:.0f}" y="{y + 5:.0f}" text-anchor="middle" font-size="12" '
+                f'fill="#333333">{_esc(txt)}</text></g>')
+        return out
+
+    # Outer ring first so the spokes sit behind the inner nodes.
+    parts += ring(outer, R2, "#D8F8E4", "#7fd7a5", 15, offset=math.pi / max(len(outer) or 1, 1))
+    parts += ring(core, R1, "#D8EBFA", "#6fb6ea", 15)
+
+    cw = max(180, min(300, 9 * len(centre) + 40))
+    parts.append(
+        f'<rect x="{CX - cw/2:.0f}" y="{CY - 26}" width="{cw:.0f}" height="52" rx="10" '
+        f'fill="#333333"/>'
+        f'<text x="{CX}" y="{CY + 5}" text-anchor="middle" font-size="15" font-weight="600" '
+        f'fill="#ffffff">{_esc(centre if len(centre) <= 30 else centre[:28] + "…")}</text>')
+
+    # Legend
+    for i, (lbl, col) in enumerate((("Core — revenue", "#D8EBFA"), ("Outer — authority", "#D8F8E4"))):
+        x = 40 + i * 190
+        parts.append(f'<rect x="{x}" y="{H - 34}" width="14" height="14" rx="4" fill="{col}" '
+                     f'stroke="#b9c4d0"/>'
+                     f'<text x="{x + 22}" y="{H - 22}" font-size="12" fill="#6A6B6B">{lbl}</text>')
+    parts.append("</svg>")
+    svg = "".join(parts)
+
+    nodes, clusters = len(m.get("content_articles") or []), len(m.get("keyword_clusters") or [])
     bits = [f"{len(core)} core areas", f"{len(outer)} supporting areas"]
     if nodes:
         bits.append(f"{nodes} planned pages")
     if clusters:
         bits.append(f"{clusters} SERP-verified clusters")
-    parts.append(f'<p class="tmap-foot">{" · ".join(bits)}</p>')
-    return "".join(parts)
+    gap_html = ""
+    if gaps:
+        chips = "".join(f'<span class="tmap-chip">{_esc(g)}</span>' for g in gaps)
+        gap_html = (f'<div class="tmap-gaps"><div class="tmap-head">Gaps to close</div>'
+                    f'<div class="tmap-list">{chips}</div></div>')
+    return f'{svg}{gap_html}<p class="tmap-foot">{" · ".join(bits)}</p>'
 
 
 def _esc(v) -> str:
