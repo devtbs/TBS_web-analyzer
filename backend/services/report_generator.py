@@ -2045,7 +2045,10 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     # deterministically rather than trusting the rewrite to have caught every mention.
     for old_ref, repl in (("panoramaresort.ch", domain), ("Panorama Resort &amp; Spa", _esc(brand)),
                           ("Panorama Resort & Spa", brand), ("Panorama", brand)):
-        if repl:
+        # Skip a swap whose replacement CONTAINS the thing being replaced — for a client actually
+        # called "Panorama Resort & Spa" this turned correct copy into
+        # "Panorama Resort & Spa Resort & Spa".
+        if repl and old_ref not in repl:
             body = body.replace(old_ref, repl)
 
     # The reference has no topical-map slide, so add the client's real map as its own slide at the
