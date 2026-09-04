@@ -159,7 +159,7 @@ const Presentation = () => {
     const [customColor, setCustomColor] = useState('#3C8DD9');
     const [style, setStyle] = useState('tbs');                // 'tbs' | 'auto' | preset letter A-L
     // Options groups start collapsed — the defaults are shown as a summary on each header.
-    const [openSec, setOpenSec] = useState({ ai: false, design: false, notes: false, schedule: false });
+    const [openSec, setOpenSec] = useState({ proposal: true, ai: false, design: false, notes: false, schedule: false });
     const [useImages, setUseImages] = useState(true);
     const [notes, setNotes] = useState('');
     const [brandTerms, setBrandTerms] = useState('');   // extra brand names to keep out of the deck
@@ -785,130 +785,6 @@ const Presentation = () => {
                     ))}
                 </div>
 
-                {mode === 'proposal' && (
-                    <div className="mb-6">
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Where the proposal comes from</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
-                            {[['library', 'Use a ready-made proposal', 'Pick one of our approved Canva / Slides decks'],
-                              ['generate', 'Generate a new deck', 'Build an AIO/GEO/AEO pitch from an analysis']].map(([k, label, sub]) => (
-                                <button key={k} type="button" disabled={generating}
-                                    onClick={() => setPropSource(k)}
-                                    className={`text-left px-4 py-3 rounded-xl border transition-colors ${
-                                        propSource === k ? 'bg-[#26397A]/5 border-[#26397A] text-[#26397A]'
-                                                         : 'bg-white border-slate-300 text-slate-600 hover:border-[#26397A]/50'}`}>
-                                    <span className="block font-bold text-sm">{label}</span>
-                                    <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {mode === 'proposal' && propSource === 'library' && (
-                    <div className="mb-6">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Service</label>
-                                <select value={libService} className={fieldCls + ' text-sm'}
-                                    onChange={(e) => {
-                                        const id = e.target.value;
-                                        setLibService(id); setLibSaved(null);
-                                        // Not every deck exists in both languages — fall back rather
-                                        // than leaving the picker on a language with no links.
-                                        const svc = library.find(x => x.id === id);
-                                        if (svc && !svc.languages[libLang])
-                                            setLibLang(Object.keys(svc.languages)[0] || 'en');
-                                    }}>
-                                    {library.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Language</label>
-                                <div className="flex gap-2">
-                                    {[['en', 'English'], ['th', 'ไทย']].map(([code, label]) => (
-                                        <button key={code} type="button"
-                                            disabled={!libLangs.includes(code)}
-                                            onClick={() => { setLibLang(code); setLibSaved(null); }}
-                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-colors ${
-                                                libLang === code ? 'bg-[#26397A] text-white border-[#26397A]'
-                                                : libLangs.includes(code) ? 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'
-                                                : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'}`}>
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Save to client</label>
-                        <select value={libClientId} className={fieldCls + ' text-sm'}
-                            onChange={(e) => { setLibClientId(e.target.value); setLibSaved(null); }}>
-                            <option value="">No client — just save it to Documents</option>
-                            {libClients.map(c => (
-                                <option key={c.id} value={c.id}>{c.name || c.domain || c.id}</option>
-                            ))}
-                        </select>
-
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {['canva', 'slides'].map(fmt => (
-                                <div key={fmt} className={`rounded-xl border px-4 py-3 ${
-                                    libLinks[fmt] ? 'border-slate-300' : 'border-slate-200 bg-slate-50'}`}>
-                                    <div className="font-bold text-sm text-slate-700">
-                                        {fmt === 'canva' ? 'Canva' : 'Google Slides'}
-                                    </div>
-                                    {libLinks[fmt] ? (
-                                        <div className="flex flex-wrap gap-2 mt-2">
-                                            <a href={libLinks[fmt]} target="_blank" rel="noopener noreferrer"
-                                                className="px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs hover:bg-[#26397A]/5">
-                                                Open
-                                            </a>
-                                            <button type="button" disabled={libSaving}
-                                                onClick={() => saveFromLibrary(fmt)}
-                                                className="px-3 py-1.5 rounded-lg bg-[#26397A] text-white font-bold text-xs hover:bg-[#1b2a5e] disabled:opacity-50">
-                                                {libSaving ? 'Saving…' : 'Save to client'}
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <p className="text-xs text-slate-400 mt-2">Not available for this language yet.</p>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-
-                        {libSaved && (
-                            <p className="text-xs text-emerald-700 mt-3 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                                Saved <strong>{libSaved.service_label} ({libSaved.language_label})</strong> — it is now in
-                                Documents{libClientId ? ' against this client' : ''}.
-                            </p>
-                        )}
-                        <p className="text-xs text-slate-500 mt-3">
-                            These are the approved agency decks. Nothing is generated — saving records which
-                            proposal went to which client so it sits in Documents with the rest of their work.
-                        </p>
-                    </div>
-                )}
-
-                {mode === 'proposal' && propSource === 'generate' && (
-                    <div className="mb-6">
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Prospect analysis</label>
-                        <select value={analysisId} onChange={(e) => setAnalysisId(e.target.value)}
-                            disabled={generating} className={fieldCls + ' text-sm'}>
-                            <option value="">Choose a completed analysis…</option>
-                            {analyses.map(a => (
-                                <option key={a.analysis_id} value={a.analysis_id}>
-                                    {(a.urls && a.urls[0]) || a.label || a.analysis_id}
-                                    {a.created_at ? ` — ${new Date(a.created_at).toLocaleDateString()}` : ''}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-xs text-slate-500 mt-2">
-                            Builds an AIO/GEO/AEO pitch from a Quick Analysis: measured AI-answer visibility,
-                            who is cited instead, the coverage gap, a sample content plan and your rate card.
-                            Uses no Search Console data — it works for sites you have no access to.
-                        </p>
-                    </div>
-                )}
-
                 {mode === 'combined' && (
                     <div className="mb-6">
                         <label className="block text-sm font-bold text-slate-700 mb-2">Platforms in this deck</label>
@@ -1222,7 +1098,10 @@ const Presentation = () => {
                     </>
                 )}
 
-                {mode !== 'pdf' && (
+                {/* Proposals carry no date range — they are built from a stored analysis, and the
+                    proposal endpoint never receives `days`. Showing the picker there implied it
+                    changed something. */}
+                {mode !== 'pdf' && mode !== 'proposal' && (
                     <>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Period</label>
                         <select value={days} onChange={(e) => setDays(Number(e.target.value))} disabled={generating} className={fieldCls + ' mb-6'}>
@@ -1233,6 +1112,139 @@ const Presentation = () => {
                     </>
                 )}
 
+
+                {mode === 'proposal' && (
+                    <Section title="Proposal deck" open={openSec.proposal}
+                        onToggle={() => setOpenSec(o => ({ ...o, proposal: !o.proposal }))}
+                        summary={propSource === 'library'
+                            ? `${libEntry ? libEntry.label : 'Ready-made'} · ${libLang === 'th' ? 'ไทย' : 'English'}`
+                            : 'Generate a new deck'}>
+                {(
+                    <div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Where the proposal comes from</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+                            {[['library', 'Use a ready-made proposal', 'Pick one of our approved Canva / Slides decks'],
+                              ['generate', 'Generate a new deck', 'Build an AIO/GEO/AEO pitch from an analysis']].map(([k, label, sub]) => (
+                                <button key={k} type="button" disabled={generating}
+                                    onClick={() => setPropSource(k)}
+                                    className={`text-left px-4 py-3 rounded-xl border transition-colors ${
+                                        propSource === k ? 'bg-[#26397A]/5 border-[#26397A] text-[#26397A]'
+                                                         : 'bg-white border-slate-300 text-slate-600 hover:border-[#26397A]/50'}`}>
+                                    <span className="block font-bold text-sm">{label}</span>
+                                    <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {propSource === 'library' && (
+                    <div className="mt-5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Service</label>
+                                <select value={libService} className={fieldCls + ' text-sm'}
+                                    onChange={(e) => {
+                                        const id = e.target.value;
+                                        setLibService(id); setLibSaved(null);
+                                        // Not every deck exists in both languages — fall back rather
+                                        // than leaving the picker on a language with no links.
+                                        const svc = library.find(x => x.id === id);
+                                        if (svc && !svc.languages[libLang])
+                                            setLibLang(Object.keys(svc.languages)[0] || 'en');
+                                    }}>
+                                    {library.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Language</label>
+                                <div className="flex gap-2">
+                                    {[['en', 'English'], ['th', 'ไทย']].map(([code, label]) => (
+                                        <button key={code} type="button"
+                                            disabled={!libLangs.includes(code)}
+                                            onClick={() => { setLibLang(code); setLibSaved(null); }}
+                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm border transition-colors ${
+                                                libLang === code ? 'bg-[#26397A] text-white border-[#26397A]'
+                                                : libLangs.includes(code) ? 'bg-white text-slate-600 border-slate-300 hover:border-[#26397A]/50'
+                                                : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'}`}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Save to client</label>
+                        <select value={libClientId} className={fieldCls + ' text-sm'}
+                            onChange={(e) => { setLibClientId(e.target.value); setLibSaved(null); }}>
+                            <option value="">No client — just save it to Documents</option>
+                            {libClients.map(c => (
+                                <option key={c.id} value={c.id}>{c.name || c.domain || c.id}</option>
+                            ))}
+                        </select>
+
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {['canva', 'slides'].map(fmt => (
+                                <div key={fmt} className={`rounded-xl border px-4 py-3 ${
+                                    libLinks[fmt] ? 'border-slate-300' : 'border-slate-200 bg-slate-50'}`}>
+                                    <div className="font-bold text-sm text-slate-700">
+                                        {fmt === 'canva' ? 'Canva' : 'Google Slides'}
+                                    </div>
+                                    {libLinks[fmt] ? (
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            <a href={libLinks[fmt]} target="_blank" rel="noopener noreferrer"
+                                                className="px-3 py-1.5 rounded-lg border border-[#26397A] text-[#26397A] font-bold text-xs hover:bg-[#26397A]/5">
+                                                Open
+                                            </a>
+                                            <button type="button" disabled={libSaving}
+                                                onClick={() => saveFromLibrary(fmt)}
+                                                className="px-3 py-1.5 rounded-lg bg-[#26397A] text-white font-bold text-xs hover:bg-[#1b2a5e] disabled:opacity-50">
+                                                {libSaving ? 'Saving…' : 'Save to client'}
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 mt-2">Not available for this language yet.</p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {libSaved && (
+                            <p className="text-xs text-emerald-700 mt-3 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                                Saved <strong>{libSaved.service_label} ({libSaved.language_label})</strong> — it is now in
+                                Documents{libClientId ? ' against this client' : ''}.
+                            </p>
+                        )}
+                        <p className="text-xs text-slate-500 mt-3">
+                            These are the approved agency decks. Nothing is generated — saving records which
+                            proposal went to which client so it sits in Documents with the rest of their work.
+                        </p>
+                    </div>
+                )}
+
+                {propSource === 'generate' && (
+                    <div className="mt-5">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Prospect analysis</label>
+                        <select value={analysisId} onChange={(e) => setAnalysisId(e.target.value)}
+                            disabled={generating} className={fieldCls + ' text-sm'}>
+                            <option value="">Choose a completed analysis…</option>
+                            {analyses.map(a => (
+                                <option key={a.analysis_id} value={a.analysis_id}>
+                                    {(a.urls && a.urls[0]) || a.label || a.analysis_id}
+                                    {a.created_at ? ` — ${new Date(a.created_at).toLocaleDateString()}` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs text-slate-500 mt-2">
+                            Builds an AIO/GEO/AEO pitch from a Quick Analysis: measured AI-answer visibility,
+                            who is cited instead, the coverage gap, a sample content plan and your rate card.
+                            Uses no Search Console data — it works for sites you have no access to.
+                        </p>
+                    </div>
+                )}
+
+                    </Section>
+                )}
 
                 {!libraryMode && <>
                 {/* ── AI ── model, compare, pipeline ── */}
