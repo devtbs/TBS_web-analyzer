@@ -1690,6 +1690,61 @@ PROPOSAL_SLIDES = [
 ]
 
 
+_PHOTO_BAD = ("logo", "icon", "sprite", "favicon", "avatar", "badge", "placeholder",
+              "award", "banner", ".svg", ".gif")
+_PHOTO_EXT = (".jpg", ".jpeg", ".png", ".webp", ".avif")
+
+
+def _site_photos(analysis: Dict) -> list:
+    """Every usable photograph from the analysed site, with the words in its path.
+
+    Image paths are how we match a picture to a topic — a hotel files its photos under
+    /Wellness/, /Zimmer/, /Restaurant/, which is exactly the vocabulary the topical map uses.
+    """
+    import urllib.parse
+    seen, out = set(), []
+    for page in (analysis.get("scraped_data") or []):
+        urls = [(i.get("src") or i.get("url") or "") for i in (page.get("images") or [])]
+        urls += re.findall(r"!\[[^\]]*\]\((https?://[^\s\)]+)\)", page.get("markdown") or "")
+        for u in urls:
+            u = u.strip()
+            low = u.lower()
+            if (not u.startswith("http") or u in seen
+                    or any(b in low for b in _PHOTO_BAD)
+                    or not any(low.split("?")[0].endswith(e) for e in _PHOTO_EXT)):
+                continue
+            seen.add(u)
+            words = {w.lower() for w in re.findall(r"[A-Za-zÀ-ÿ]{4,}",
+                                                   urllib.parse.unquote(u))}
+            out.append({"url": u, "words": words})
+    return out
+
+
+def _photo_for(text: str, photos: list, used: set) -> str:
+    """Best unused photo for this slide, matched on shared words with its path.
+
+    Prefix matching (4+ chars) rather than equality, so an English topic still finds a
+    German folder — "Suites" matches "Suiten", "Wellness" matches "Wellness".
+    """
+    if not photos:
+        return ""
+    want = {w.lower() for w in re.findall(r"[A-Za-zÀ-ÿ]{4,}", text or "")}
+    best, best_score = None, 0
+    for ph in photos:
+        if ph["url"] in used:
+            continue
+        score = sum(1 for a in want for b in ph["words"]
+                    if a == b or a[:5] == b[:5])
+        if score > best_score:
+            best, best_score = ph, score
+    if best is None:                       # nothing matched — take the next unused photo
+        best = next((p for p in photos if p["url"] not in used), None)
+    if not best:
+        return ""
+    used.add(best["url"])
+    return best["url"]
+
+
 def _proposal_hero_image(analysis: Dict) -> str:
     """Pick a hero photo for the cover/close from the ANALYSED SITE's own scraped images.
 
@@ -1830,6 +1885,7 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     domain = _domain_from(m.get("url") or "")
     brand = m.get("central_entity") or domain
     hero = _proposal_hero_image(analysis)
+    photos = _site_photos(analysis)
     tmap_html = _render_topical_map(m)
     prov = provider or settings.DEFAULT_AI_PROVIDER
     brief = _proposal_brief(analysis) + to_brief_block(notes)
@@ -1857,15 +1913,28 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
     # ── Deterministic injections ─────────────────────────────────────────────────────────
     # The reference cover carries a RELATIVE image (hero-lake.jpg) that 404s anywhere else, and its
     # closing slide has none. Point the cover at this client's own photo and add one to the close.
-    if hero:
-        body = re.sub(r'<img([^>]*?)src="[^"]*"([^>]*)>',
-                      lambda mo: f'<img{mo.group(1)}src="{hero}"{mo.group(2)}>', body)
-        last = body.rfind("</div>\n</div>")
-        if last == -1:
-            last = body.rfind("</div></div>")
-        if last != -1 and "slide-hero" not in body[last - 400:last]:
-            img = f'<img class="slide-hero" src="{hero}" alt="{_esc(brand)}">'
-            body = body[:last] + img + body[last:]
+    if photos:
+        # Give the cover, every section divider, the map slide and the close a photo chosen to match
+        # that slide's own subject, so the imagery tracks the client's topics instead of repeating
+        # one hero. Matched on the words in the image path — how sites actually file their photos.
+        used: set = set()
+        def _place(mo):
+            slide = mo.group(0)
+            wants_photo = ('slide-cover' in slide or 'slide-divider' in slide
+                           or '<img' in slide or 'CLOSE' in slide.upper())
+            if not wants_photo:
+                return slide
+            plain = re.sub(r"<[^>]+>", " ", slide)
+            url = _photo_for(plain, photos, used)
+            if not url:
+                return slide
+            if '<img' in slide:            # repoint the reference's own (relative, 404ing) image
+                return re.sub(r'<img([^>]*?)src="[^"]*"([^>]*)>',
+                              lambda m2: f'<img{m2.group(1)}src="{url}"{m2.group(2)}>', slide)
+            img = f'<img class="slide-hero" src="{url}" alt="{_esc(brand)}">'
+            return slide.replace('<div class="slide-foot"', img + '<div class="slide-foot"', 1) \
+                if '<div class="slide-foot"' in slide else slide[:-12] + img + slide[-12:]
+        body = re.sub(r'<div class="slide-block">.*?</div>\s*</div>', _place, body, flags=re.S)
     else:
         # No usable photo — strip the reference's broken relative image rather than ship a 404.
         body = re.sub(r'<img[^>]*src="(?!https?:)[^"]*"[^>]*>', "", body)
