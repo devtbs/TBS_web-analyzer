@@ -1654,6 +1654,32 @@ def _proposal_css() -> str:
     return (_TEMPLATE_DIR / "proposal_deck.css").read_text(encoding="utf-8")
 
 
+def _proposal_page(brand: str, slides_html: str) -> str:
+    """Wrap the slides in the reference's own standalone page: viewer stage, keyboard navigation,
+    fullscreen and a PDF download — the same chrome as the approved deck, so a prospect gets a
+    proper presentation rather than a long scroll of cards.
+    """
+    def _tpl(name, default=""):
+        try:
+            return (_TEMPLATE_DIR / name).read_text(encoding="utf-8")
+        except Exception:
+            logger.warning("proposal template %s missing", name)
+            return default
+
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
+        f"<style>{_proposal_fonts()}</style>"
+        f"<style>{_proposal_css()}</style>"
+        f"<style>{_tpl('proposal_viewer.css')}</style>"
+        "</head><body>"
+        f"{_tpl('proposal_viewer.html')}"
+        f"{slides_html}"
+        f"<script>{_tpl('proposal_viewer.js')}</script>"
+        "</body></html>")
+
+
 def _proposal_fonts() -> str:
     """Kanit + Outfit as base64 @font-face rules.
 
@@ -2066,11 +2092,7 @@ async def generate_ai_proposal_deck(analysis: Dict, *, provider: str = None, ima
         mo = re.search(r'<div class="slide-block">(?:(?!</div>\n</div>).)*?Section 05', body, re.S)
         body = (body[:mo.start()] + map_slide + body[mo.start():]) if mo else body + map_slide
 
-    html = (f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-            f"<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-            f"<title>{_esc(brand)} — AI Search Visibility Proposal</title>"
-            f"<style>{_proposal_fonts()}</style>"
-            f"<style>{_proposal_css()}</style></head><body>{body}</body></html>")
+    html = _proposal_page(brand, body)
     kept = sum(1 for r in results if r)
     logger.info("proposal deck for %s: %d/%d slides kept", brand, kept, len(slides))
     return {"domain": domain, "brand": brand, "html": html, "artifacts": {}}

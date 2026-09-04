@@ -1,0 +1,35 @@
+<section class="viewer" id="deck">
+  <div class="slide-viewer-header">
+    <h2>The full deck</h2>
+    <p>One slide at a time. Use the controls below or your keyboard arrows (← →).</p>
+  </div>
+
+  <div class="slide-stage" id="slideStage"></div>
+
+  <div class="slide-nav">
+    <button class="nav-btn" id="btnPrev" type="button">
+      <span>&larr;</span><span>Back</span>
+    </button>
+    <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="slide-counter">
+      <span class="num" id="counterNow">1</span> <span>/</span> <span class="num" id="counterTotal">23</span>
+    </div>
+    <button class="nav-btn" id="btnFullscreen" type="button" title="Toggle fullscreen (press F)">
+      <span>⛶</span><span id="fsLabel">Fullscreen</span>
+    </button>
+    <button class="nav-btn download" id="btnDownload" type="button" title="Download all slides as a single PDF">
+      <span>⤓</span><span>Download PDF</span>
+    </button>
+    <button class="nav-btn primary" id="btnNext" type="button">
+      <span>Next</span><span>&rarr;</span>
+    </button>
+  </div>
+
+  <div class="toc-toggle-row">
+    <button class="toc-toggle" id="tocToggle" type="button">⌃ Show table of contents</button>
+  </div>
+  <div id="slide-toc-panel">
+    <div class="slide-toc" id="slideToc"></div>
+  </div>
+
+  <!-- ============== SLIDE 1: COVER ============== -->
