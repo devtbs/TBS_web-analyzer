@@ -32,15 +32,14 @@ const dedupeNear = (list) => {
 const STEPS = ['Site', 'Queries', 'Competitors', 'Keywords', 'Clusters'];
 
 const Stepper = ({ step }) => (
-    <div className="flex items-center gap-2 mb-6 flex-wrap">
+    <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-4">
         {STEPS.map((label, i) => {
             const n = i + 1, active = n === step, done = n < step;
             return (
-                <div key={label} className="flex items-center gap-2">
+                <div key={label} aria-current={active ? "step" : undefined} className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                     <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[12px] font-bold ${
-                        active ? 'bg-[#26397A] text-white' : done ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{n}</span>
+                        active ? 'bg-emerald-700 text-white' : done ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{n}</span>
                     <span className={`text-[13px] font-semibold ${active ? 'text-slate-800' : 'text-slate-400'}`}>{label}</span>
-                    {n < STEPS.length && <span className="w-5 h-px bg-slate-200" />}
                 </div>
             );
         })}
@@ -317,8 +316,8 @@ export default function ResearchWizard({ clientId = null }) {
     return (
         <div className="max-w-[900px] mx-auto">
             <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-                <div className="flex-1"><Stepper step={step} /></div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="w-full"><Stepper step={step} /></div>
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
                     <label className="flex items-center gap-2 text-[13px] text-slate-500">
                         <GlobeAltIcon className="w-4 h-4 text-slate-400" /> Market
                         <select value={countryGl} onChange={e => setCountryGl(e.target.value)}
@@ -401,7 +400,7 @@ export default function ResearchWizard({ clientId = null }) {
                                 className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-xl text-[15px] outline-none focus:ring-2 focus:ring-emerald-500/30" />
                         </div>
                         <button onClick={analyzeSite} disabled={busy || !site}
-                            className="px-6 bg-[#26397A] text-white rounded-xl font-bold text-[15px] disabled:opacity-50">
+                            className="px-6 bg-emerald-700 text-white rounded-xl font-bold text-[15px] disabled:opacity-50">
                             {busy ? 'Analyzing…' : 'Analyze site'}
                         </button>
                     </div>
@@ -437,7 +436,7 @@ export default function ResearchWizard({ clientId = null }) {
                     <div className="flex items-center justify-between">
                         <BackBtn to={1} />
                         <button onClick={findCompetitors} disabled={busy}
-                            className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
+                            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                             {busy ? 'Searching…' : <>Find competitors ({selectedQueries.size}) <ArrowRightIcon className="w-4 h-4" /></>}
                         </button>
                     </div>
@@ -476,7 +475,7 @@ export default function ResearchWizard({ clientId = null }) {
                     )}
                     <div className="flex items-center justify-between">
                         <BackBtn to={2} />
-                        <button onClick={() => fetchKeywords(false)} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
+                        <button onClick={() => fetchKeywords(false)} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                             {busy ? 'Fetching…' : <>Get keywords ({allDomains().length}) <ArrowRightIcon className="w-4 h-4" /></>}
                         </button>
                     </div>
@@ -552,7 +551,7 @@ export default function ResearchWizard({ clientId = null }) {
                                 className="flex items-center gap-2 px-4 py-2.5 border border-emerald-300 text-emerald-700 rounded-lg text-[14px] font-bold hover:bg-emerald-50 disabled:opacity-60">
                                 <SparklesIcon className="w-4 h-4" /> {busy ? 'Finding…' : 'Find more'}
                             </button>
-                            <button onClick={runCluster} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-[#26397A] text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
+                            <button onClick={runCluster} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                                 {busy ? 'Clustering…' : <>Cluster ({selectedKw.size}) <ArrowRightIcon className="w-4 h-4" /></>}
                             </button>
                         </div>

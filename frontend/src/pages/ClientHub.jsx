@@ -276,7 +276,7 @@ export default function ClientHub() {
                         <p className="font-bold text-slate-800 text-[15px]">Keyword research &amp; topical maps</p>
                         <p className="text-[13px] text-slate-500">Saved research sessions for this client — reopen to continue or rebuild the map.</p>
                     </div>
-                    <button onClick={() => navigate(`/new-analysis?client=${id}`)}
+                    <button onClick={() => navigate(`/topical-map?client=${id}`)}
                         className="flex items-center gap-2 border border-slate-300 text-slate-700 rounded-lg px-4 py-2.5 font-bold text-[14px] hover:bg-slate-50">
                         <SparklesIcon className="w-4 h-4" /> New research
                     </button>
@@ -293,7 +293,7 @@ export default function ClientHub() {
                                     <button onClick={() => navigate(`/results/${r.analysis_id}`)}
                                         className="text-[13px] font-semibold text-emerald-700 hover:underline shrink-0">View map</button>
                                 )}
-                                <button onClick={() => navigate(`/new-analysis?client=${id}`)}
+                                <button onClick={() => navigate(`/topical-map?client=${id}`)}
                                     className="text-[13px] font-semibold text-slate-500 hover:text-slate-700 shrink-0">Open</button>
                             </div>
                         ))}

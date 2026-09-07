@@ -204,6 +204,19 @@ async def list_documents(
     return out
 
 
+@router.get("/api/document-folders", response_model=List[str])
+def list_document_folders(
+    current_user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fetch only folder names for navigation, without loading document bodies."""
+    rows = (db.query(Document.folder)
+            .filter(Document.user_email == current_user.email,
+                    Document.folder.isnot(None), Document.folder != "")
+            .distinct().order_by(Document.folder).all())
+    return [folder for (folder,) in rows]
+
+
 @router.get("/api/documents/{document_id}", response_model=DocumentDetailResponse)
 async def get_document(
     document_id: str,

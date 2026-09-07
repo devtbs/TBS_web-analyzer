@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { AreaChart, Area, ResponsiveContainer } from 'recharts';
+import Sparkline from '../components/ui/Sparkline';
 import { MagnifyingGlassIcon, ArrowPathIcon, ExclamationTriangleIcon,
          ChartPieIcon, MegaphoneIcon, ArrowUpRightIcon, Squares2X2Icon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
@@ -11,7 +11,7 @@ import { sseStream } from '../utils/sseFetch';
 import { Delta, fmt, needsAttention, EditDrawer } from '../components/clients/clientUI';
 
 function ClientCard({ c, onEdit }) {
-    const spark = (c.sparkline || []).map((v, i) => ({ i, v }));
+    const spark = c.sparkline || [];
     const flag = needsAttention(c);
     const meta = propertyMeta(c.gsc_property);
     return (
@@ -78,18 +78,7 @@ function ClientCard({ c, onEdit }) {
                         </div>
                         <div className="h-[64px] px-2 pb-3">
                             {spark.length > 1 ? (
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={spark} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
-                                        <defs>
-                                            <linearGradient id={`g-${c.client_id}`} x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                                                <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <Area type="monotone" dataKey="v" stroke="#10b981" strokeWidth={2}
-                                              fill={`url(#g-${c.client_id})`} />
-                                    </AreaChart>
-                                </ResponsiveContainer>
+                                <Sparkline values={spark} label={`${c.name} click trend`} />
                             ) : <div className="h-full flex items-center justify-center text-xs text-slate-400">Trend data unavailable</div>}
                         </div>
                     </>

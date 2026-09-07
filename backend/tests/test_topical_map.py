@@ -285,3 +285,16 @@ def test_full_generation_preserves_foundations_and_recovery_evidence(monkeypatch
     assert '{MAP_RULES}' not in extract.call_args.args[1]
     assert generate.call_args.kwargs['source_context'] == 'Actual customer offering'
     assert bool(result.content_articles) is not nodes_fail
+
+
+def test_folder_navigation_is_distinct_and_user_scoped(sessions):
+    with sessions() as db:
+        for i, (owner, folder) in enumerate([
+            (USER.email, 'Research'), (USER.email, 'Research'),
+            (USER.email, 'Briefs'), (USER.email, ''), (USER.email, None),
+            ('other@example.com', 'Private'),
+        ]):
+            db.add(Document(id=f'folder-{i}', user_email=owner, title='Doc',
+                            folder=folder, content={'body': 'large article'}))
+        db.commit()
+        assert content.list_document_folders(USER, db) == ['Briefs', 'Research']

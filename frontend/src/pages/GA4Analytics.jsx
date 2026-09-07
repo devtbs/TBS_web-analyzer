@@ -364,11 +364,11 @@ const GA4Analytics = () => {
                 <h1 className="text-2xl font-bold text-slate-800 mb-2">Google Analytics Not Connected</h1>
                 <p className="text-slate-500 mb-7 max-w-md text-center leading-relaxed">
                     {permissionError
-                        ? (permissionDetail || 'Reconnect from New Analysis to grant Analytics permission.')
+                        ? (permissionDetail || 'Reconnect from Topical Map to grant Analytics permission.')
                         : 'Connect your Google account with Analytics access to view this dashboard.'}
                 </p>
                 <button
-                    onClick={() => navigate('/new-analysis')}
+                    onClick={() => navigate('/topical-map')}
                     className="flex items-center gap-2 px-6 py-2.5 bg-emerald-50 text-emerald-600 rounded-lg font-semibold hover:bg-emerald-100 transition-colors border border-emerald-100"
                 >
                     <PlusIcon className="w-4 h-4" />

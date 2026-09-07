@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import GSCPropertySelector from '../components/gsc/GSCPropertySelector';
 import ResearchWizard from '../components/research/ResearchWizard';
 import {
@@ -40,32 +40,21 @@ const Favicon = ({ url, size = 20 }) => {
 const NewAnalysis = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    // When opened from a client hub (/new-analysis?client=<id>), tie saved research to that client.
+    // When opened from a client hub (/topical-map?client=<id>), tie saved research to that client.
     const researchClientId = new URLSearchParams(location.search).get('client');
     const [urls, setUrls] = useState(['']);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [mode, setMode] = useState('research');   // 'research' wizard | 'quick' (site analysis)
     const [useGSC, setUseGSC] = useState(true);
     const [marketGl, setMarketGl] = useState('th');   // target market for keyword volumes (Quick path)
-    const [tabLoading, setTabLoading] = useState(false);
-    const tabTimerRef = useRef(null);
-
-    const switchTab = useCallback((toGSC) => {
-        if (toGSC === useGSC) return;
-        setTabLoading(true);
-        clearTimeout(tabTimerRef.current);
-        tabTimerRef.current = setTimeout(() => {
-            setUseGSC(toGSC);
-            setTabLoading(false);
-        }, 150);
-    }, [useGSC]);
-
-    useEffect(() => () => clearTimeout(tabTimerRef.current), []);
+    const switchTab = setUseGSC;
     const [selectedProperties, setSelectedProperties] = useState([]);
 
     const [selectedPages, setSelectedPages] = useState(() => {
-        const saved = sessionStorage.getItem('selectedPages');
-        return saved ? JSON.parse(saved) : [];
+        try {
+            const saved = JSON.parse(sessionStorage.getItem('selectedPages') || '[]');
+            return Array.isArray(saved) ? saved : [];
+        } catch { return []; }
     });
 
     const processedStateRef = useRef(false);
@@ -84,7 +73,7 @@ const NewAnalysis = () => {
         } else if (!location.state?.urls) {
             processedStateRef.current = false;
         }
-    }, [location.state, navigate]);
+    }, [location.state, location.pathname, navigate]);
 
     const addUrlField = () => { if (urls.length + selectedPages.length < 5) setUrls([...urls, '']); };
     const removeUrlField = (index) => { if (urls.length > 1) setUrls(urls.filter((_, i) => i !== index)); };
@@ -135,10 +124,9 @@ const NewAnalysis = () => {
         }
         setIsAnalyzing(true);
         try {
-            const token = localStorage.getItem('access_token');
             const _mk = QUICK_MARKETS.find(m => m.gl === marketGl) || QUICK_MARKETS[0];
             const response = await api.post('/api/analyze',
-                // Quick Analysis is always a PROSPECT run: it profiles a site we have no access to,
+                // Quick site map is always a PROSPECT run: it profiles a site we have no access to,
                 // for a pitch. prospect:true stops the backend attaching Search Console even if a
                 // client happens to share the domain — grounding stays on SERP + Mangools.
                 { urls: validUrls, market: { gl: _mk.gl, location_id: _mk.locId }, prospect: true }
@@ -173,9 +161,14 @@ const NewAnalysis = () => {
         : `${totalUrls} ${totalUrls === 1 ? 'URL' : 'URLs'}`;
 
     return (
-        <div className="flex flex-col items-center justify-center flex-1 min-h-full w-full py-12 bg-slate-50">
+        <div className="flex flex-col items-center flex-1 min-h-full w-full py-8 sm:py-10 bg-slate-50">
             <div className="relative w-full flex justify-center px-4 sm:px-6">
-                <div className="w-full max-w-[1024px]">
+                <div className="w-full max-w-[1200px]">
+                    <header className="mb-8">
+                        <p className="text-xs font-semibold tracking-[.18em] uppercase text-emerald-700 mb-3">Content strategy</p>
+                        <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-slate-900">Topical Map</h1>
+                        <p className="mt-3 text-sm sm:text-base text-slate-500 max-w-2xl">Turn your website, search evidence, and business context into a connected content plan. Research topics, build your map, then create briefs.</p>
+                    </header>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.98, y: 10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -183,14 +176,14 @@ const NewAnalysis = () => {
                         className="bg-white rounded-[24px] shadow-sm border border-slate-200/60 p-6 sm:p-8 relative"
                     >
                         {/* ── Top-level mode: guided research wizard vs quick site analysis ── */}
-                        <div className="flex justify-center gap-2 mb-6">
-                            <button onClick={() => setMode('research')}
-                                className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'research' ? 'bg-[#26397A] text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
-                                Guided Research
+                        <div className="flex flex-wrap gap-2 mb-8 pb-5 border-b border-slate-200">
+                            <button aria-pressed={mode === 'research'} onClick={() => setMode('research')}
+                                className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'research' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
+                                Guided research
                             </button>
-                            <button onClick={() => setMode('quick')}
-                                className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'quick' ? 'bg-[#26397A] text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
-                                Quick Analysis
+                            <button aria-pressed={mode === 'quick'} onClick={() => setMode('quick')}
+                                className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'quick' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
+                                Quick site map
                             </button>
                         </div>
 
@@ -206,16 +199,16 @@ const NewAnalysis = () => {
                                     style={{ left: useGSC ? '8px' : 'calc(50%)' }}
                                 />
                                 <button
+                                    aria-pressed={useGSC}
                                     onClick={() => switchTab(true)}
-                                    disabled={tabLoading}
                                     className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-[15px] font-bold relative z-10 transition-colors duration-200 
                                         ${useGSC ? 'text-white' : 'text-[#64748b] hover:text-slate-800'}`}
                                 >
                                     Search Console
                                 </button>
                                 <button
+                                    aria-pressed={!useGSC}
                                     onClick={() => switchTab(false)}
-                                    disabled={tabLoading}
                                     className={`flex-1 flex justify-center items-center py-3.5 rounded-full text-[15px] font-bold relative z-10 transition-colors duration-200 
                                         ${!useGSC ? 'text-white' : 'text-[#64748b] hover:text-slate-800'}`}
                                 >
@@ -226,21 +219,6 @@ const NewAnalysis = () => {
 
                         {/* ── Content ── */}
                         <div className="min-h-[140px] relative">
-                            {/* ── Tab Loading Overlay ── */}
-                            {tabLoading && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[2px] rounded-2xl"
-                                >
-                                    <div className="flex flex-col items-center gap-3">
-                                        <div className="w-8 h-8 rounded-full border-[3px] border-emerald-200 border-t-emerald-600 animate-spin" />
-                                        <span className="text-sm font-semibold text-slate-400 tracking-wide">Switching...</span>
-                                    </div>
-                                </motion.div>
-                            )}
-
                             {useGSC ? (
                                 <GSCPropertySelector
                                     selectedProperties={selectedProperties}
@@ -344,7 +322,7 @@ const NewAnalysis = () => {
                         </div>
 
                         {/* ── Target market (drives keyword volumes) ── */}
-                        <div className="flex items-center justify-center gap-2 mt-6 text-[13px] text-slate-500">
+                        <div className="flex flex-wrap items-center justify-center gap-2 mt-6 text-[13px] text-slate-500">
                             <GlobeAltIcon className="w-4 h-4 text-slate-400" />
                             <span>Target market</span>
                             <select value={marketGl} onChange={e => setMarketGl(e.target.value)}
@@ -381,7 +359,7 @@ const NewAnalysis = () => {
                                     </>
                                 ) : (
                                     <>
-                                        Start AI Analysis
+                                        Build topical map
                                         {totalUrls > 0 && (
                                             <div className="inline-flex items-center justify-center bg-white/25 rounded-full px-2.5 py-0.5 text-[14px] font-bold ml-1 ring-1 ring-white/30 backdrop-blur-sm">
                                                 {badgeLabel}

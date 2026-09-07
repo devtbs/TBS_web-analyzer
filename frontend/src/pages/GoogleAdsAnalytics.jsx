@@ -347,7 +347,7 @@ const GoogleAdsAnalytics = () => {
                         : 'Connect your Google account (with Ads access) to view campaign performance data.'}
                 </p>
                 <button
-                    onClick={() => navigate('/new-analysis')}
+                    onClick={() => navigate('/topical-map')}
                     className="flex items-center gap-2 px-6 py-2.5 bg-blue-50 text-blue-600 rounded-md font-medium hover:bg-blue-100 transition-colors border border-blue-100/50"
                 >
                     <PlusIcon className="w-5 h-5" />

@@ -21,7 +21,7 @@ const PageSelector = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedPages, setSelectedPages] = useState(new Set());
-    // Pages staged from a previous visit (persisted in sessionStorage by New Analysis). Tracked in
+    // Pages staged from a previous visit (persisted in sessionStorage by Topical Map). Tracked in
     // state so the "Clear" button can wipe it and re-render.
     const [existingPages, setExistingPages] = useState(() => JSON.parse(sessionStorage.getItem('selectedPages') || '[]'));
     const clearStaged = () => { sessionStorage.removeItem('selectedPages'); setExistingPages([]); setSelectedPages(new Set()); };
@@ -94,13 +94,13 @@ const PageSelector = () => {
     };
 
     // Analyze the selected pages DIRECTLY from here — build the topical map and go straight to
-    // results, instead of bouncing back to New Analysis (which dropped the selection).
+    // results, instead of bouncing back to Topical Map (which dropped the selection).
     const analyzeSelected = async () => {
         if (selectedPages.size === 0) { toast.error('Please select at least one page'); return; }
         let urls = Array.from(selectedPages);
         // From the Guided Research wizard → hand the picked pages back to seed the query suggestions.
         if (returnTo === 'wizard') {
-            navigate('/new-analysis', { state: { wizardPages: urls } });
+            navigate('/topical-map', { state: { wizardPages: urls } });
             return;
         }
         // From Keyword Clustering → hand back the QUERIES those pages already rank for (already

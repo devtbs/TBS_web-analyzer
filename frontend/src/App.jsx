@@ -1,7 +1,6 @@
 import { lazy, Suspense, useState, useRef, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Bars3Icon } from '@heroicons/react/24/outline';
 
@@ -10,7 +9,7 @@ import Sidebar from './components/layout/Sidebar';
 import Footer from './components/layout/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import NotificationBell from './components/NotificationBell';
-import AssistantWidget from './components/assistant/AssistantWidget';
+import AssistantLauncher from './components/assistant/AssistantLauncher';
 
 // Home is the public landing page (first paint when logged out) — keep it eager.
 import Home from './pages/Home';
@@ -21,7 +20,7 @@ const MySites = lazy(() => import('./pages/MySites'));
 const Clients = lazy(() => import('./pages/Clients'));
 const ClientHub = lazy(() => import('./pages/ClientHub'));
 const Connections = lazy(() => import('./pages/Connections'));
-const NewAnalysis = lazy(() => import('./pages/NewAnalysis'));
+const TopicalMapPage = lazy(() => import('./pages/NewAnalysis'));
 const History = lazy(() => import('./pages/History'));
 const Results = lazy(() => import('./pages/Results'));
 const PageSelector = lazy(() => import('./pages/PageSelector'));
@@ -50,6 +49,19 @@ const AIResultsTracker = lazy(() => import('./pages/AIResultsTracker'));
 const KeywordClustering = lazy(() => import('./pages/KeywordClustering'));
 const KeywordDiscovery = lazy(() => import('./pages/KeywordDiscovery'));
 
+const workspaceTitle = (pathname) => {
+    const section = pathname.split('/').filter(Boolean)[0];
+    const titles = {
+        'topical-map': 'Topical Map', 'new-analysis': 'Topical Map',
+        'seo-analytics': 'Search Console', 'ga4-analytics': 'GA4 Analytics',
+        'google-ads': 'Google Ads', 'bing-analytics': 'Bing Search',
+        'ai-results': 'AI Results', 'presentation': 'AI Presentation',
+        'results': 'Research results', 'documents': 'Documents',
+        'clients': pathname === '/clients' ? 'Clients' : 'Client overview',
+    };
+    return titles[section] || section?.replaceAll('-', ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Workspace';
+};
+
 /* Lightweight fallback shown while a lazily-loaded page chunk downloads. */
 const PageSpinner = () => (
     <div className="flex items-center justify-center py-32">
@@ -64,6 +76,10 @@ const ProtectedLayout = () => {
     const location = useLocation();
     const [mobileOpen, setMobileOpen] = useState(false);
     const mainRef = useRef(null);
+
+    useEffect(() => {
+        mainRef.current?.scrollTo({ top: 0 });
+    }, [location.pathname]);
 
     // iOS Safari ignores overflow:hidden on nested elements — must block touchmove directly
     useEffect(() => {
@@ -122,39 +138,36 @@ const ProtectedLayout = () => {
     if (!user) return <Navigate to="/" replace />;
 
     return (
-        <div className="flex h-screen overflow-hidden bg-slate-50">
+        <div className="workspace flex h-dvh overflow-hidden bg-slate-50">
             <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
             <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Mobile top bar — only shown on small screens */}
-                <div className="md:hidden flex items-center justify-between px-4 h-14 bg-[#1e293b] flex-shrink-0 z-30 sticky top-0">
+                {/* Persistent workspace toolbar */}
+                <div className="workspace-toolbar flex items-center justify-between gap-4 px-4 sm:px-8 h-16 bg-white border-b border-slate-200 flex-shrink-0 z-30">
                     <button
                         onClick={() => setMobileOpen(true)}
                         aria-label="Open navigation menu"
-                        className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 text-slate-300 hover:bg-white/20 transition-colors"
+                        className="md:hidden w-9 h-9 flex items-center justify-center rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
                     >
                         <Bars3Icon className="w-5 h-5" aria-hidden="true" />
                     </button>
-                    <img src="/TBS-Logo.webp" alt="TBS Marketing home" className="h-8 w-auto object-contain" />
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[10px] uppercase tracking-[.18em] text-slate-400 font-semibold">TBS Workspace</p>
+                        <p className="truncate text-sm font-semibold text-slate-800">{workspaceTitle(location.pathname)}</p>
+                    </div>
                     <NotificationBell />
                 </div>
                 <main ref={mainRef} className={`flex-1 ${mobileOpen ? 'overflow-y-hidden' : 'overflow-y-auto'}`}>
-                    <motion.div
-                        key={location.pathname}
-                        initial={{ opacity: 0, y: 15 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3, ease: 'easeOut' }}
-                        className="min-h-full"
-                    >
+                    <div className="workspace-content min-h-full">
                         <ErrorBoundary resetKey={location.pathname}>
                             <Suspense fallback={<PageSpinner />}>
                                 <Outlet />
                             </Suspense>
                         </ErrorBoundary>
-                    </motion.div>
+                    </div>
                 </main>
             </div>
             {/* In-app AI assistant — only in the authed layout */}
-            <AssistantWidget />
+            <AssistantLauncher />
         </div>
     );
 };
@@ -163,7 +176,7 @@ const ProtectedLayout = () => {
 const PublicLayout = ({ children }) => {
     const { user, loading } = useAuth();
     
-    if (loading) return null;
+    if (loading) return <PageSpinner />;
     if (user) return <Navigate to="/clients" replace />;
     
     return (
@@ -176,6 +189,11 @@ const PublicLayout = ({ children }) => {
         </div>
     );
 };
+
+function LegacyTopicalMap() {
+    const location = useLocation();
+    return <Navigate to={`/topical-map${location.search}${location.hash}`} state={location.state} replace />;
+}
 
 /* ── App routing ─────────────────────────────────────────── */
 function AppContent() {
@@ -208,7 +226,8 @@ function AppContent() {
                     <Route path="/seo-analytics/query-decay" element={<QueryDecayPage />} />
                     <Route path="/seo-analytics/cannibalization" element={<CannibalizationPage />} />
                     <Route path="/seo-analytics/topic-clusters" element={<TopicClustersPage />} />
-                    <Route path="/new-analysis" element={<NewAnalysis />} />
+                    <Route path="/new-analysis" element={<LegacyTopicalMap />} />
+                    <Route path="/topical-map" element={<TopicalMapPage />} />
                     <Route path="/rank-tracker" element={<RankTracker />} />
                     <Route path="/ai-results" element={<AIResultsTracker />} />
                     <Route path="/keyword-discovery" element={<KeywordDiscovery />} />

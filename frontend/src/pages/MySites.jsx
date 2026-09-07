@@ -488,7 +488,7 @@ export default function MySites() {
                     Connect your Google Search Console account to view all your properties here.
                 </p>
                 <button
-                    onClick={() => navigate('/new-analysis')}
+                    onClick={() => navigate('/topical-map')}
                     className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors shadow-lg shadow-emerald-600/20"
                 >
                     <PlusIcon className="w-4 h-4" />

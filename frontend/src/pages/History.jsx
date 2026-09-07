@@ -96,13 +96,13 @@ const History = () => {
                         )}
                     </div>
 
-                    {/* New Analysis */}
+                    {/* Topical Map */}
                     <button
-                        onClick={() => navigate('/new-analysis')}
+                        onClick={() => navigate('/topical-map')}
                         className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm whitespace-nowrap flex-shrink-0"
                     >
                         <RocketLaunchIcon className="w-4 h-4" />
-                        <span className="hidden sm:inline">New Analysis</span>
+                        <span className="hidden sm:inline">Topical Map</span>
                         <span className="sm:hidden">New</span>
                     </button>
                 </div>
@@ -170,7 +170,7 @@ const History = () => {
                             Start your first AI-powered website analysis to see results here.
                         </p>
                         <button
-                            onClick={() => navigate('/new-analysis')}
+                            onClick={() => navigate('/topical-map')}
                             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm"
                         >
                             <RocketLaunchIcon className="w-4 h-4" />

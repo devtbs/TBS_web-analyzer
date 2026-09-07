@@ -9,7 +9,7 @@ import {
 import useAssistantChat, { fetchSessions } from '../../hooks/useAssistantChat';
 
 const AssistantWidget = () => {
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(true);
     const [input, setInput] = useState('');
     const scrollRef = useRef(null);
     const [showHistory, setShowHistory] = useState(false);

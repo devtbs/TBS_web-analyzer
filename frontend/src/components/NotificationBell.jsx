@@ -34,6 +34,7 @@ export default function NotificationBell() {
     const ref = useRef(null);
 
     const load = useCallback(async () => {
+        if (document.visibilityState === 'hidden') return;
         try {
             const { data } = await api.get('/api/alerts', { params: { limit: 8 } });
             setAlerts(data.alerts || []);

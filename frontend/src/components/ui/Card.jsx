@@ -8,7 +8,7 @@ const Card = ({
     ...props
 }) => {
     const variants = {
-        default: 'bg-white shadow-sm border border-slate-200',
+        default: 'bg-white shadow-[0_2px_8px_rgba(15,23,42,0.025)] border border-slate-200/80',
         glass: 'glass shadow-xl border border-white/20',
         bordered: 'bg-white border-2 border-slate-300 shadow-md',
         elevated: 'bg-white shadow-2xl border border-slate-100',
@@ -19,7 +19,7 @@ const Card = ({
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
             className={`rounded-2xl p-6 ${variants[variant]} ${hoverClass} ${className}`}

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import ConfirmDialog from '../ui/ConfirmDialog';
-import NotificationBell from '../NotificationBell';
  
 import { useAuth } from '../../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -118,7 +117,7 @@ const NAV_GROUPS = [
     {
         section: 'Create',
         items: [
-            { label: 'New Analysis',    path: '/new-analysis', icon: RocketLaunchIcon },
+            { label: 'Topical Map',    path: '/topical-map', icon: RocketLaunchIcon },
             { label: 'AI Presentation', path: '/presentation', icon: PresentationChartLineIcon },
             { label: 'Documents',       path: '/documents',    icon: DocumentTextIcon },
         ],
@@ -173,8 +172,8 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
 
     const fetchFolders = async () => {
         try {
-            const response = await api.get('/api/documents');
-            const documentFolders = response.data.map(doc => doc.folder).filter(Boolean);
+            const response = await api.get('/api/document-folders');
+            const documentFolders = response.data;
             
             // Get already saved folders from localStorage
             const savedFolders = JSON.parse(localStorage.getItem('persistent_folders') || '[]');
@@ -332,7 +331,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
             animate={{ width: collapsed ? 76 : 260 }}
             transition={{ type: 'spring', stiffness: 300, damping: 35 }}
             className="hidden md:flex relative flex-col h-screen sticky top-0 flex-shrink-0 z-40 overflow-hidden border-r border-slate-700/30"
-            style={{ background: '#1e293b' }}
+            style={{ background: '#122b2b' }}
         >
             <div className="relative flex flex-col h-full">
 
@@ -344,7 +343,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                         <div className="flex items-center w-full">
                             <img src="/TBS-Logo.webp" alt="TBS Logo" className="h-[52px] w-auto object-contain flex-shrink-0" />
                             <div className="ml-auto">
-                                <NotificationBell />
+                                <span className="text-[10px] font-semibold tracking-widest text-emerald-300 border border-emerald-400/20 rounded-md px-2 py-1">SEO</span>
                             </div>
                         </div>
                     )}
@@ -843,7 +842,7 @@ const Sidebar = ({ mobileOpen, onMobileClose }) => {
                     exit={{ x: '-100%' }}
                     transition={{ type: 'spring', stiffness: 300, damping: 35 }}
                     className="fixed top-0 left-0 w-72 flex flex-col z-50 md:hidden overflow-hidden border-r border-slate-700/30"
-                    style={{ background: '#1e293b', height: '100dvh' }}
+                    style={{ background: '#122b2b', height: '100dvh' }}
                 >
                     <div className="relative flex flex-col h-full">
                         {/* Mobile top bar */}

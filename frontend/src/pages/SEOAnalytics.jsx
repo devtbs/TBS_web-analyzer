@@ -1051,7 +1051,7 @@ const SEOAnalytics = () => {
                     Connect your Google Search Console account to view real-time traffic analytics, keyword performance, and search visibility trends.
                 </p>
                 <button 
-                    onClick={() => navigate('/new-analysis')}
+                    onClick={() => navigate('/topical-map')}
                     className="flex items-center gap-2 px-6 py-2.5 bg-emerald-50 text-emerald-600 rounded-md font-medium hover:bg-emerald-100 transition-colors border border-emerald-100/50"
                 >
                     <PlusIcon className="w-5 h-5" />

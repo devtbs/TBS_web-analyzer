@@ -29,7 +29,7 @@ export const AuthProvider = ({ children }) => {
 
     const fetchAccounts = useCallback(async () => {
         try {
-            const res = await api.get('/auth/accounts');
+            const res = await api.get('/auth/accounts', { timeout: 15000 });
             const accounts = res.data.accounts || [];
             setConnectedAccounts(accounts);
             // Guard against a stale selection: if the saved account no longer exists
@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }) => {
         }, 15000);
 
         if (token) {
-            api.get('/auth/me')
+            api.get('/auth/me', { timeout: 15000 })
                 .then(response => {
                     const userData = response.data;
                     setUser(userData);
@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }) => {
             storage.set('access_token', access_token);
             storage.setJSON('user_data', userData);
             setUser(userData);
-            await fetchAccounts();
+            void fetchAccounts();
             // needs_consent rides along so the sign-in button can run a consent round only when
             // the account actually lacks a Google refresh token.
             return { ...userData, needs_consent: !!needs_consent };
@@ -112,7 +112,7 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try {
-            await api.post('/auth/logout', {});
+            await api.post('/auth/logout', {}, { timeout: 10000 });
         } catch (error) {
             console.error('Logout error:', error);
         } finally {

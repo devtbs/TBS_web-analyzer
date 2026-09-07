@@ -27,7 +27,7 @@ const Home = () => {
                 initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="w-full max-w-[420px] bg-white border border-slate-200/80 rounded-[32px] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] p-10 text-center flex flex-col items-center relative z-10"
+                className="w-full max-w-[560px] bg-white border border-slate-200/80 rounded-2xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] p-8 sm:p-12 text-center flex flex-col items-center relative z-10"
             >
                 {/* Badge */}
                 <div className="mb-6 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-100">
@@ -48,11 +48,11 @@ const Home = () => {
                 </div>
                 
                 <h1 className="text-[28px] font-black text-slate-900 mb-3 tracking-tight">
-                    SEO Analytics
+                    Your search workspace
                 </h1>
                 
                 <p className="text-[14px] font-medium text-slate-500 mb-8 leading-relaxed px-2">
-                    Sign in with your Google account to securely connect your Search Console and unlock actionable insights.
+                    Connect your data, find growth opportunities, and build topical maps that turn research into a clear content plan.
                 </p>
 
                 <div className="w-full flex justify-center pb-2">
