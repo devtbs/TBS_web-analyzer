@@ -39,11 +39,11 @@ const Input = forwardRef(({
                     aria-invalid={error ? true : undefined}
                     aria-describedby={describedById}
                     className={`
-            block w-full rounded-lg border-2 
+            block w-full rounded-xl border
             ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-slate-200 focus:border-primary-500 focus:ring-primary-500'}
             ${leftIcon ? 'pl-10' : 'pl-4'}
             ${rightIcon ? 'pr-10' : 'pr-4'}
-            py-2.5 text-slate-900 placeholder-slate-400
+            py-2.5 text-sm text-slate-900 placeholder-slate-400
             focus:outline-none focus:ring-2 focus:ring-offset-0
             transition-colors duration-200
             disabled:bg-slate-50 disabled:cursor-not-allowed

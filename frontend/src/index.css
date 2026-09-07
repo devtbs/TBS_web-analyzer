@@ -7,7 +7,7 @@
 
 @layer base {
     body {
-        @apply bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 text-slate-900;
+        @apply bg-slate-50 text-slate-900 antialiased;
     }
 }
 
@@ -34,7 +34,7 @@
 
     /* Card hover effect */
     .card-hover {
-        @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-1;
+        @apply transition-all duration-300 hover:shadow-md;
     }
 
     /* Article Typography Enhancements */
@@ -44,5 +44,20 @@
     
     .prose h2, .tiptap h2 {
         @apply font-bold tracking-tight text-slate-800 mt-12 mb-6 text-2xl !important;
+    }
+}
+@layer base {
+    :focus-visible {
+        outline: 2px solid #059669;
+        outline-offset: 3px;
+    }
+    ::selection { background: #d1fae5; color: #064e3b; }
+}
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
     }
 }
