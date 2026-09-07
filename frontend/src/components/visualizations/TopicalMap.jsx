@@ -7,7 +7,6 @@ import TaxonomyTree from './TaxonomyTree';
 import {
     ChevronDownIcon,
     ChevronUpIcon,
-    ChevronUpDownIcon,
     GlobeAltIcon,
     UserGroupIcon,
     LightBulbIcon,
@@ -113,6 +112,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         setGeneratingArticle(article.title);
         try {
             const response = await api.post(`/api/article/${analysisId}`, {
+                node_id: article.node_id,
+                map_index: article._mapIndex,
                 topic: article.title,
                 category: article.category_l1 || 'General',
                 article_type: article.article_type || 'informative',
@@ -125,7 +126,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             navigate(`/documents/${response.data.document_id}`);
         } catch (error) {
             console.error('Failed to generate article:', error);
-            toast.error('Failed to generate article. Please try again.');
+            toast.error(error.response?.data?.detail || 'Failed to generate article. Please try again.');
         } finally {
             setGeneratingArticle(null);
         }
@@ -141,7 +142,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             toast.success('Topical nodes regenerated');
         } catch (error) {
             console.error('Failed to regenerate nodes:', error);
-            toast.error('Failed to regenerate nodes. Please try again.');
+            toast.error(error.response?.data?.detail || 'Failed to regenerate nodes. Please try again.');
         } finally {
             setRegenerating(false);
         }
@@ -152,11 +153,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         setBriefLoading(primaryIndex);
         try {
             const res = await api.post(`/api/topical-map/${analysisId}/nodes/${primaryIndex}/brief`,
-                { force });
+                { force, node_id: primaryMap.content_articles[primaryIndex]?.node_id });
             setBriefOverrides(prev => ({ ...prev, [primaryIndex]: res.data.brief }));
         } catch (error) {
             console.error('Failed to generate brief:', error);
-            toast.error('Failed to generate brief. Please try again.');
+            toast.error(error.response?.data?.detail || 'Failed to generate brief. Please try again.');
         } finally {
             setBriefLoading(null);
         }
@@ -225,13 +226,13 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     });
 
     // Merged content articles: primary tagged, then competitor-unique articles
-    const primaryArticles = (primaryMap.content_articles || []).map((a, i) => ({ ...a, _isPrimary: true, _domain: getDomain(primaryMap.url), _primaryIndex: i }));
+    const primaryArticles = (primaryMap.content_articles || []).map((a, i) => ({ ...a, _isPrimary: true, _mapIndex: 0, _domain: getDomain(primaryMap.url), _primaryIndex: i }));
     const primaryTitleSet = new Set(primaryArticles.map(a => a.title.toLowerCase().slice(0, 30)));
     const competitorArticles = [];
     competitorMaps.forEach((cm, ci) => {
         (cm.content_articles || []).forEach(a => {
             if (!primaryTitleSet.has(a.title.toLowerCase().slice(0, 30))) {
-                competitorArticles.push({ ...a, _isPrimary: false, _domain: compDomain(cm), _colorIdx: ci });
+                competitorArticles.push({ ...a, _isPrimary: false, _mapIndex: ci + 1, _domain: compDomain(cm), _colorIdx: ci });
             }
         });
     });
@@ -462,6 +463,8 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         const L = [];
         L.push(`# Topical Map — ${activeMap.central_entity || getDomain(activeMap.url)}`);
         L.push(`\n_Site: ${activeMap.url || ''}_\n`);
+        if (activeMap.source_context) L.push(`**Source context:** ${activeMap.source_context}\n`);
+        if (activeMap.central_search_intent) L.push(`**Central search intent:** ${activeMap.central_search_intent}\n`);
         if (activeMap.key_topics?.length) {
             L.push(`## Key topics\n`);
             activeMap.key_topics.forEach(t => L.push(`- ${t}`));
@@ -489,18 +492,29 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
             mergedArticles.forEach(a => L.push(
                 `| ${cl(a.main_entity)} | ${cl(a.context)} | ${cl(a.title)} | ${cl(a.suggested_url)} | ${a.search_volume ?? ''} | ${cl((a.internal_links || []).join('; '))} |`));
             L.push('');
+            mergedArticles.forEach(a => {
+                L.push(`### ${a.title}\n`);
+                L.push(`**Action:** ${a.page_action || 'create'}${a.existing_url ? ` — ${a.existing_url}` : ''}\n`);
+                if (a.page_rationale) L.push(`**Page rationale:** ${a.page_rationale}\n`);
+                if (a.macro_context) L.push(`**Main focus:** ${a.macro_context}\n`);
+                if (a.micro_context) L.push(`**Supporting context:** ${a.micro_context}\n`);
+                if (a.evidence?.length) L.push(`**Evidence / assumptions:** ${a.evidence.join('; ')}\n`);
+                if (a.brief) L.push(`${a.brief}\n`);
+            });
         }
         _dl(L.join('\n'), `${_slug}-content-plan.md`, 'text/markdown');
     };
 
     const exportMapCsv = () => {
         const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-        const rows = [['Main Entity', 'Context', 'Title', 'Suggested URL', 'Volume', 'Internal Links', 'Section', 'Type', 'Source'].join(',')];
+        const rows = [['Main Entity', 'Context', 'Title', 'Suggested URL', 'Volume', 'Internal Links', 'Section', 'Type', 'Source', 'Action', 'Existing URL', 'Main Focus', 'Supporting Context', 'Page Rationale', 'Evidence', 'Brief'].join(',')];
         mergedArticles.forEach(a => rows.push([
             esc(a.main_entity), esc(a.context), esc(a.title), esc(a.suggested_url),
             a.search_volume ?? '', esc((a.internal_links || []).join('; ')),
             esc(a.section), esc(a.article_type),
             esc(a._isPrimary ? 'Primary' : (a._domain || 'Competitor')),
+            esc(a.page_action || 'create'), esc(a.existing_url), esc(a.macro_context), esc(a.micro_context),
+            esc(a.page_rationale), esc((a.evidence || []).join('; ')), esc(a.brief),
         ].join(',')));
         _dl(rows.join('\n'), `${_slug}-content-plan.csv`, 'text/csv');
     };
@@ -528,10 +542,11 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
     const csvSections = [
         {
             title: 'Content Plan', suffix: 'content-plan',
-            header: ['Main Entity', 'Context', 'Title', 'Suggested URL', 'Volume', 'Internal Links', 'Section', 'Type', 'Source'],
+            header: ['Main Entity', 'Context', 'Title', 'Suggested URL', 'Volume', 'Internal Links', 'Section', 'Type', 'Source', 'Action', 'Existing URL', 'Main Focus', 'Supporting Context', 'Page Rationale', 'Evidence', 'Brief'],
             rows: mergedArticles.map(a => [a.main_entity, a.context, a.title, a.suggested_url,
                 a.search_volume ?? '', (a.internal_links || []).join('; '), a.section, a.article_type,
-                a._isPrimary ? 'Primary' : (a._domain || 'Competitor')]),
+                a._isPrimary ? 'Primary' : (a._domain || 'Competitor'), a.page_action || 'create', a.existing_url,
+                a.macro_context, a.micro_context, a.page_rationale, (a.evidence || []).join('; '), a.brief]),
         },
         {
             title: 'New Keyword Opportunities', suffix: 'keyword-opportunities',
@@ -874,6 +889,16 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
         </AnimatePresence>
 
         <div className="space-y-6" id="export-full-topical-map">
+            {(activeMap.source_context || activeMap.central_search_intent) && (
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5">
+                    <h2 className="font-semibold text-slate-900 mb-3">Map foundations</h2>
+                    <dl className="grid gap-4 md:grid-cols-3 text-sm">
+                        {[['Central entity', activeMap.central_entity], ['Source context', activeMap.source_context], ['Central search intent', activeMap.central_search_intent]].map(([label, value]) => (
+                            <div key={label}><dt className="font-medium text-emerald-800">{label}</dt><dd className="mt-1 text-slate-600">{value || 'Not specified'}</dd></div>
+                        ))}
+                    </dl>
+                </section>
+            )}
             {/* Primary + Competitors indicator bar */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between w-full gap-3 mb-2" data-html2canvas-ignore="true">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1655,7 +1680,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                             {/* Regenerate just the node list — fast/cheap, reuses persisted grounding */}
                             <button
                                 onClick={(e) => { e.stopPropagation(); regenerateNodes(); }}
-                                disabled={regenerating}
+                                disabled={regenerating || briefLoading !== null || !!generatingArticle}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 text-white rounded-lg font-bold text-xs transition-all disabled:opacity-50"
                                 title="Re-run just the topical node list (fast — no re-scrape)"
                             >
@@ -1839,7 +1864,7 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                     </button>
                                                                     <button
                                                                         onClick={() => handleGenerateArticle(article)}
-                                                                        disabled={!!generatingArticle}
+                                                                        disabled={!!generatingArticle || regenerating || briefLoading !== null}
                                                                         className={`inline-flex items-center gap-x-1.5 rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition-all
                                                                             ${generatingArticle === article.title
                                                                                 ? 'bg-emerald-100 text-emerald-600 cursor-wait'
@@ -1855,14 +1880,14 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                                         <button
                                                                             onClick={() => {
                                                                                 if (!infoOpen) setExpandedArticleInfo(prev => new Set(prev).add(infoKey));
-                                                                                getBrief(article._primaryIndex, !!article.brief);
+                                                                                if (!article.brief) getBrief(article._primaryIndex);
                                                                             }}
-                                                                            disabled={briefLoading === article._primaryIndex}
+                                                                            disabled={briefLoading !== null || regenerating || !!generatingArticle}
                                                                             className="inline-flex items-center gap-x-1 rounded-lg px-2.5 py-1.5 text-xs font-bold border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all disabled:opacity-50"
-                                                                            title={article.brief ? 'Regenerate brief' : 'Generate a writer-ready brief'}
+                                                                            title={article.brief ? 'Show saved brief' : 'Generate a writer-ready brief'}
                                                                         >
                                                                             <DocumentTextIcon className={`h-3.5 w-3.5 ${briefLoading === article._primaryIndex ? 'animate-pulse' : ''}`} />
-                                                                            {briefLoading === article._primaryIndex ? 'Loading…' : (article.brief ? 'Brief ✓' : 'Brief')}
+                                                                            {briefLoading === article._primaryIndex ? 'Loading…' : (article.brief ? 'View brief' : 'Brief')}
                                                                         </button>
                                                                     )}
                                                                 </div>
@@ -1872,6 +1897,12 @@ const TopicalMap = ({ topicalMaps, analysisId }) => {
                                                             <tr key={`${idx}-info`} className="border-b border-slate-100 bg-amber-50/40">
                                                                 <td colSpan={6} className="px-6 py-3 text-xs text-slate-600">
                                                                     <span className="italic">{article.source_context || 'No context available.'}</span>
+                                                                    {article.page_rationale && <p className="mt-2"><strong>{article.page_action === 'update' ? 'Update existing page' : 'Proposed page'}:</strong> {article.page_rationale}</p>}
+                                                                    {article.existing_url && <p className="mt-1 break-all">Existing URL: {article.existing_url}</p>}
+                                                                    {article.macro_context && <p className="mt-2"><strong>Main focus:</strong> {article.macro_context}</p>}
+                                                                    {article.micro_context && <p className="mt-1"><strong>Supporting context:</strong> {article.micro_context}</p>}
+                                                                    {article.evidence?.length > 0 && <p className="mt-2"><strong>Evidence / assumptions:</strong> {article.evidence.join(' · ')}</p>}
+                                                                    {article._isPrimary && article.brief && <button onClick={() => getBrief(article._primaryIndex, true)} disabled={briefLoading !== null || regenerating || !!generatingArticle} className="mt-2 text-indigo-700 font-semibold disabled:opacity-50">Regenerate brief</button>}
                                                                     {article.internal_links?.length > 0 && (
                                                                         <div className="mt-2 flex flex-wrap items-center gap-1.5 not-italic">
                                                                             <span className="font-semibold text-slate-500">Internal links →</span>

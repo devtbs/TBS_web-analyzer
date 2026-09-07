@@ -43,6 +43,20 @@ class DatabaseStore:
             db.commit()
             db.refresh(analysis)
     
+    def mutate_topical_maps(self, db: Session, analysis_id: str, email: str, transform):
+        from copy import deepcopy
+        try:
+            analysis = (db.query(Analysis)
+                        .filter(Analysis.analysis_id == analysis_id, Analysis.user_email == email)
+                        .populate_existing().with_for_update().first())
+            if analysis is None:
+                raise ValueError("Analysis no longer available")
+            analysis.topical_maps = transform(deepcopy(analysis.topical_maps or []))
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+
     def get_analysis(self, db: Session, analysis_id: str) -> Optional[Dict]:
         """Get analysis by ID"""
         analysis = db.query(Analysis).filter(Analysis.analysis_id == analysis_id).first()

@@ -1,5 +1,6 @@
 from services.ai_service import ai_service
 from typing import Dict, Any, Optional
+from services.topical_methodology import BRIEF_RULES
 
 # ── Tone definitions ─────────────────────────────────────────────────────────
 
@@ -139,6 +140,9 @@ async def generate_full_article(
             language=language or "en",
         )
 
+    if brief_data.get('node_brief') and not system_prompt:
+        effective_system_prompt += "\nFor this topical node, the TBS brief method takes precedence over generic hooks, FAQ quotas and summarizing conclusions."
+
     outline_str = "\n".join([
         f"{'#' * item['level']} {item['heading']}\n" + "\n".join([f"- {pt}" for pt in item.get('talking_points', [])])
         for item in brief_data.get('outline', [])
@@ -154,6 +158,13 @@ Here is the structured content brief you MUST follow and expand upon:
 
 **Outline to follow:**
 {outline_str}
+
+{BRIEF_RULES if brief_data.get('node_brief') else ''}
+**Saved topical node brief (follow its scope and outline):**
+{brief_data.get('node_brief', '')}
+**Source context:** {brief_data.get('source_context', '')}
+**Internal-link plan (use only verified URLs, otherwise plain text):**
+{brief_data.get('internal_linking_suggestions', [])}
 
 **Competitor insights to address:**
 {chr(10).join(brief_data.get('competitor_insights', []))}

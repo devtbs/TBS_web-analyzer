@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from uuid import uuid4
+from typing import Literal
 
 
 class URLAnalysisRequest(BaseModel):
@@ -122,6 +124,13 @@ class ContentArticle(BaseModel):
     """A topical node in the content plan (Bridge-Topic-Suggester model): a distinct entity+context
     page, not a keyword variant. The classic fields stay for back-compat; the *_entity/context/url/
     internal_links/volume fields carry the new node structure."""
+    node_id: str = Field(default_factory=lambda: str(uuid4()))
+    page_action: Literal["create", "update"] = "create"
+    existing_url: Optional[str] = None
+    macro_context: Optional[str] = None
+    micro_context: Optional[str] = None
+    page_rationale: Optional[str] = None
+    evidence: Optional[List[str]] = None
     title: str
     section: str  # "Core" or "Outer"
     article_type: str  # "informative", "service_page", "listicle", "tool_page"
@@ -234,6 +243,9 @@ class TopicalMapData(BaseModel):
     # Trimmed grounding data (real queries/competitor subtopics/own URL patterns) kept so the node
     # list can be regenerated later without re-scraping the site or re-running the full analysis.
     grounding_snapshot: Optional[Dict] = None
+    source_context: Optional[str] = None
+    central_search_intent: Optional[str] = None
+    market: Optional[Dict] = None
     # Measured AI Overview visibility: how many checked queries showed an AI Overview, whether this
     # site was cited, and which domains were cited instead. The headline evidence in a proposal.
     ai_visibility: Optional[Dict] = None
@@ -289,6 +301,8 @@ class FullAnalysisResult(BaseModel):
     comparison: Optional[ComparisonData] = None
 
 class BriefRequest(BaseModel):
+    node_id: Optional[str] = None
+    map_index: int = Field(default=0, ge=0)
     topic: str
     category: str
     article_type: str

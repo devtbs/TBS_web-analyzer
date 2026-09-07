@@ -180,7 +180,7 @@ const Results = () => {
         {
             label: 'Topical Map',
             icon: <GlobeAltIcon className="w-5 h-5" />,
-            content: <TopicalMap topicalMaps={results.topicalMaps} analysisId={analysisId} />,
+            content: <TopicalMap key={analysisId} topicalMaps={results.topicalMaps} analysisId={analysisId} />,
         },
     ];
 

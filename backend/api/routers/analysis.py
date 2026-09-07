@@ -13,6 +13,7 @@ from models.schemas import URLAnalysisRequest, AnalysisResponse, UserInfo
 from auth.auth import get_current_user
 from services import scraper, kg_generator, topical_generator, comparator
 from utils.storage import database_store
+from utils.topical_nodes import identified_maps, fingerprint, merge_brief, replace_nodes, brief_grounding
 from utils.progress_tracker import progress_tracker
 from database import get_db
 
@@ -352,7 +353,7 @@ async def get_topical_map(
             "message": "Topical maps not yet available"
         }
 
-    return {"topical_maps": analysis['topical_maps']}
+    return {"topical_maps": identified_maps(analysis['topical_maps'])}
 
 
 def _load_primary_map(db: Session, analysis_id: str, email: str):
@@ -363,7 +364,7 @@ def _load_primary_map(db: Session, analysis_id: str, email: str):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Analysis not found")
     if analysis['user_email'] != email:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-    maps = analysis.get('topical_maps') or []
+    maps = identified_maps(analysis.get('topical_maps'))
     if not maps:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No topical map found")
     return analysis, maps, maps[0]
@@ -383,6 +384,7 @@ async def regenerate_topical_nodes(
     from urllib.parse import urlparse
 
     _analysis, maps, primary = _load_primary_map(db, analysis_id, current_user.email)
+    expected = fingerprint(primary)
     domain = urlparse(primary.get('url', '')).netloc.replace('www.', '')
     content_strategy = primary.get('content_strategy') or {}
     snapshot = primary.get('grounding_snapshot') or {}
@@ -393,6 +395,9 @@ async def regenerate_topical_nodes(
         for m in maps[1:]
     ]
 
+    market = body.get('market') or primary.get('market') or snapshot.get('market')
+    source_context = body.get('source_context') or primary.get('source_context') or snapshot.get('source_context')
+    db.rollback()  # Release the read transaction while waiting for AI.
     content_articles, bridge_topics = await topical_generator.generate_content_nodes(
         domain=domain, business_model=primary.get('business_model', 'business'),
         key_topics=primary.get('key_topics') or [],
@@ -401,21 +406,31 @@ async def regenerate_topical_nodes(
         own_paths=snapshot.get('own_paths') or [],
         competitor_context=competitor_context or None,
         real_q=snapshot.get('real_q') or [], comp_subtopics=snapshot.get('comp_subtopics') or [],
-        market=body.get('market'),
+        market=market,
         # The SERP-verified clusters persisted on the map — regenerating nodes must stay anchored to
         # the same evidence the original run used, not drift back to invented topics.
         keyword_clusters=primary.get('keyword_clusters') or [],
         covered=snapshot.get('already_ranked') or [], own_pages=snapshot.get('own_pages') or [],
         # Let the caller re-state the money angle (e.g. it was wrong first time); fall back to the
         # one the original run used.
-        source_context=body.get('source_context') or snapshot.get('source_context'),
+        source_context=source_context,
+        central_entity=primary.get('central_entity'),
+        central_search_intent=primary.get('central_search_intent'),
     )
 
-    primary['content_articles'] = [a.model_dump() for a in content_articles]
-    primary['bridge_topics'] = bridge_topics
-    maps[0] = primary
-    database_store.update_analysis(db, analysis_id, {'topical_maps': maps})
-    return {"content_articles": primary['content_articles'], "bridge_topics": bridge_topics}
+    if not content_articles:
+        raise HTTPException(status_code=502, detail="No valid nodes generated. Your existing plan was kept.")
+    articles = [a.model_dump() for a in content_articles]
+    snapshot = {**snapshot, "market": market, "source_context": source_context}
+    def apply(latest):
+        latest = replace_nodes(latest, expected, articles, bridge_topics, snapshot)
+        latest[0].update(market=market, source_context=source_context)
+        return latest
+    try:
+        database_store.mutate_topical_maps(db, analysis_id, current_user.email, apply)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"content_articles": articles, "bridge_topics": bridge_topics}
 
 
 @router.post("/api/topical-map/{analysis_id}/nodes/{node_index}/brief")
@@ -435,21 +450,28 @@ async def generate_node_brief(
     if node_index < 0 or node_index >= len(articles):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found")
     node = articles[node_index]
+    if body.get("node_id") and body["node_id"] != node["node_id"]:
+        raise HTTPException(status_code=409, detail="The node list changed. Reload the map.")
 
     if node.get('brief') and not body.get('force'):
         return {"brief": node['brief'], "cached": True}
 
     domain = urlparse(primary.get('url', '')).netloc.replace('www.', '')
+    previous_brief = node.get('brief')
+    db.rollback()
     brief = await topical_generator.generate_node_brief(
         domain=domain, business_model=primary.get('business_model', 'business'),
-        node=node, market=body.get('market'),
+        node=node, market=body.get('market') or primary.get('market') or (primary.get('grounding_snapshot') or {}).get('market'),
+        source_context=primary.get('source_context') or (primary.get('grounding_snapshot') or {}).get('source_context'),
+        central_entity=primary.get('central_entity'), central_search_intent=primary.get('central_search_intent'),
+        grounding=brief_grounding(primary, node),
     )
 
-    node['brief'] = brief
-    articles[node_index] = node
-    primary['content_articles'] = articles
-    maps[0] = primary
-    database_store.update_analysis(db, analysis_id, {'topical_maps': maps})
+    try:
+        database_store.mutate_topical_maps(db, analysis_id, current_user.email,
+            lambda latest: merge_brief(latest, node["node_id"], brief, previous_brief))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"brief": brief, "cached": False}
 
 

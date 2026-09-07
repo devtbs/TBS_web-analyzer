@@ -4,6 +4,7 @@ from config import settings
 from .ai_service import ai_service
 import json
 import asyncio
+from .topical_methodology import MAP_RULES, BRIEF_RULES
 
 
 # Cluster-vs-cluster dominance thresholds (see _dedupe_nodes_by_serp). A cluster is folded into
@@ -76,8 +77,9 @@ class TopicalMapGenerator:
                                      real_q: List[str] = None, comp_subtopics: List[str] = None,
                                      market: Dict = None, keyword_clusters: List[Dict] = None,
                                      covered: List[Dict] = None, own_pages: List[Dict] = None,
-                                     source_context: str = None):
-        """Bridge Topic Suggester — propose 20 distinct topical nodes (entity+context pages, not
+                                     source_context: str = None, central_entity: str = None,
+                                     central_search_intent: str = None):
+        """Bridge Topic Suggester — propose evidence-led topical nodes (entity+context pages, not
         keyword variants) + bridge topics connecting clusters. Standalone (no scraping, no
         comprehensive-analysis call) so it can be re-run on its own — see the `regenerate-nodes`
         endpoint — much faster/cheaper than a full re-analysis. Returns
@@ -117,8 +119,8 @@ class TopicalMapGenerator:
                 "\n\nALREADY COVERED (REAL Search Console data — this is what the site genuinely has):\n"
                 + "\n".join(parts)
                 + "\n\n  COVERAGE RULE: do NOT propose a node that duplicates any of the above. If a\n"
-                  "  node deliberately strengthens an existing page's topic from a NEW angle, say so in\n"
-                  "  source_context and make sure the angle is genuinely different, not a rewrite."
+                  "  node strengthens an existing page, set page_action=update and existing_url to that URL.\n"
+                  "  A new page needs a genuinely distinct intent, not a rewrite of an existing page."
             )
 
         # SERP-VERIFIED CLUSTERS — the strongest grounding we have. Each cluster is a set of keywords
@@ -135,16 +137,16 @@ class TopicalMapGenerator:
                 c_lines.append(f"  - \"{c['label']}\" ({c.get('total_volume') or 0}/mo): {', '.join(kws)}")
             cluster_block = (
                 "\n\nSERP-VERIFIED CLUSTERS (Google returns the SAME ranking URLs for the keywords "
-                "inside each cluster — so each cluster IS one page, proven by data, not opinion):\n"
+                "inside each cluster — evidence for a shared page intent, subject to source relevance):\n"
                 + "\n".join(c_lines)
-                + "\n\nCLUSTER RULE (highest priority — overrides your own topic ideas):\n"
-                  "  1. Create ONE node for EACH cluster above, before proposing anything else. Set that "
+                + "\n\nCLUSTER RULE (apply only within the source context and coverage rules):\n"
+                  "  1. Create at most ONE node per relevant cluster, reusing an existing page when appropriate. Set that "
                   "node's cluster_label to the cluster label EXACTLY as written.\n"
                   "  2. Never split one cluster across two nodes, and never merge two clusters into one "
                   "node — the SERP evidence already settled those boundaries.\n"
                   "  3. The cluster label is raw keyword text: turn it into a proper entity + context "
                   "with a natural title, do not reuse it verbatim as the title.\n"
-                  "  4. AFTER every cluster has a node, add further nodes only for genuine gaps the "
+                  "  4. After relevant clusters are represented, add further nodes only for genuine gaps the "
                   "clusters do not already cover. Leave cluster_label null on those."
             )
 
@@ -158,12 +160,11 @@ class TopicalMapGenerator:
                     f"gaps they fill={c.get('content_gaps', [])[:3]}"
                 )
             comp_block = (
-                "\n\nCOMPETITOR INTELLIGENCE (topics these competitors rank for that {domain} does NOT yet cover):\n"
+                "\n\nCOMPETITOR CONTENT SUMMARIES (observed topics, not proof of rankings or gaps):\n"
                 + "\n".join(comp_lines)
-                + "\n\nPRIORITY RULE: At least 8 of the 15 articles must directly target a gap "
-                  "identified from the competitor list above. For those articles, set "
-                  "source_context to start with 'Gap vs [competitor domain]: ...'"
-            ).format(domain=domain)
+                + "\n\nUse these as candidates only. Check source relevance and own coverage before "
+                  "calling a topic a gap. Do not invent ranking evidence."
+            )
 
         real_block = ''
         if real_q or comp_subtopics:
@@ -179,16 +180,17 @@ class TopicalMapGenerator:
                      if own_paths else
                      "\n\nNo existing URLs are known — present suggested URLs as PROPOSED architecture.")
 
-        # With clusters present the floor is "one node per cluster, plus gap nodes on top", so the
-        # target grows with the evidence instead of being pinned at a flat 20.
+        # Cap the response size without forcing unsupported topics to fill a quota.
         node_target = (
-            f"Generate {max(20, len(clusters_in) + 8)} distinct nodes: one for EACH of the "
-            f"{len(clusters_in)} clusters above, then the rest as gap nodes."
-            if clusters_in else "Generate 20 distinct nodes."
+            f"Generate up to {max(20, len(clusters_in) + 8)} useful nodes from relevant clusters and gaps. "
+            "Return fewer when the evidence supports fewer independent pages."
         )
 
         articles_prompt = f"""You are a Bridge Topic Suggester for {domain} ({business_model or 'business'}).
-Propose NEW topical nodes that strengthen this site's topical graph. Each node is a DISTINCT
+{MAP_RULES}
+Central entity: {central_entity or domain}
+Central search intent: {central_search_intent or "Infer cautiously from the offering; label assumptions."}
+Propose topical nodes that strengthen this site's topical graph. Each node is a DISTINCT
 page defined by a MAIN ENTITY + a CONTEXT (angle/dimension) — NOT a keyword variant.
 
 Known topics: {', '.join((key_topics or [])[:8])}
@@ -232,7 +234,13 @@ Return ONLY JSON (no markdown):
       "category_l1": "Main cluster",
       "priority": 1,
       "cluster_label": null,
-      "source_context": "One sentence on why this node matters (start with 'Gap vs [competitor]: ' for gap nodes)."
+      "source_context": "Why this topic serves the business and belongs in Core or Outer.",
+      "page_action": "create",
+      "existing_url": null,
+      "macro_context": "The primary question this page answers",
+      "micro_context": "Supporting angle connecting this page to the offering",
+      "page_rationale": "Why a separate page or existing-page update is justified",
+      "evidence": ["Reference only supplied query, cluster or URL evidence; otherwise say hypothesis"]
     }}
   ],
   "bridges": ["A → B → C"]
@@ -255,9 +263,48 @@ Return ONLY JSON (no markdown):
         # category_l1 is required by the schema — default it from the entity when omitted.
         for a in articles_data:
             if isinstance(a, dict):
+                a.pop('node_id', None)
+                a.pop('brief', None)
+                a['search_volume'] = None
+                a['kd'] = None
                 a.setdefault('category_l1', a.get('main_entity') or a.get('title', 'Topic'))
                 a.setdefault('source_context', a.get('context', ''))
-        content_articles = [ContentArticle(**a) for a in articles_data if isinstance(a, dict)]
+        from pydantic import ValidationError
+        from urllib.parse import urlparse
+        observed_urls = {p.get('url') for p in (own_pages or []) if isinstance(p, dict) and p.get('url')}
+        observed_paths = {p.rstrip('/') or '/' for p in (own_paths or [])}
+        valid_labels = {c['label'].strip().lower() for c in clusters_in}
+        content_articles, seen_nodes = [], set()
+        for a in articles_data:
+            if not isinstance(a, dict):
+                continue
+            try:
+                node = ContentArticle(**a)
+            except ValidationError:
+                print("⚠️ Skipping malformed topical node")
+                continue
+            if not node.title.strip():
+                continue
+            if node.cluster_label and node.cluster_label.strip().lower() not in valid_labels:
+                node.cluster_label = None
+            if node.page_action == 'update':
+                existing = node.existing_url or ''
+                parsed = urlparse(existing)
+                known_path = (parsed.path.rstrip('/') or '/') in observed_paths
+                same_site = ((not parsed.netloc and existing.startswith('/')) or
+                             (parsed.scheme in ('http', 'https') and parsed.netloc.removeprefix('www.') == domain))
+                if not existing or not (existing in observed_urls or (same_site and known_path)):
+                    print("⚠️ Skipping update node without an observed existing URL")
+                    continue
+                node.suggested_url = existing
+            identity = ((node.cluster_label or '').strip().casefold()
+                        if node.cluster_label else (node.title.strip().casefold(), (node.context or '').strip().casefold()))
+            if identity in seen_nodes:
+                continue
+            seen_nodes.add(identity)
+            content_articles.append(node)
+        if not content_articles:
+            raise ValueError("No valid topical nodes generated")
         bridge_topics = [b for b in bridges if isinstance(b, str) and b.strip()][:8]
 
         # Only labels the model was actually given count as cluster-derived — otherwise a hallucinated
@@ -268,6 +315,8 @@ Return ONLY JSON (no markdown):
                 a.cluster_label = None
 
         content_articles = await self._dedupe_nodes_by_serp(content_articles, clusters_in, market)
+        if not content_articles:
+            raise ValueError('No independent topical nodes remained after validation')
 
         # A cluster's total volume is the sum of REAL volumes across keywords Google treats as one
         # page — a truer figure for that node than a single-term lookup, so it wins over Mangools.
@@ -276,7 +325,7 @@ Return ONLY JSON (no markdown):
             for a in content_articles:
                 c = by_label.get((a.cluster_label or '').strip().lower())
                 if c:
-                    a.search_volume = c.get('total_volume') or a.search_volume
+                    a.search_volume = c.get('total_volume')
                     if a.kd is None:
                         a.kd = c.get('avg_kd')
 
@@ -328,7 +377,7 @@ Return ONLY JSON (no markdown):
         # Two comparisons live here now: gap-vs-gap needs 2+ gap nodes, cluster dominance needs 2+
         # clusters. Either one alone is reason enough to run.
         cluster_nodes = [n for n in nodes if n.cluster_label]
-        if len(gap_nodes) < 2 and len(cluster_nodes) < 2:
+        if len(gap_nodes) + len(cluster_nodes) < 2:
             print(f"🔎 SERP distinctness: skipped ({len(gap_nodes)} gap / "
                   f"{len(cluster_nodes)} cluster node(s) — nothing to compare)")
             return nodes
@@ -341,7 +390,8 @@ Return ONLY JSON (no markdown):
                 return f"{base} {ctx}".strip().lower() if ctx else base.lower()
 
             # Anchors first so they survive the max_keywords cap ahead of any gap node.
-            anchors = [c['label'] for c in clusters_in]
+            represented = {(n.cluster_label or '').strip().lower() for n in cluster_nodes}
+            anchors = [c['label'] for c in clusters_in if c['label'].strip().lower() in represented]
             probe, seen, by_query = [], set(), {}
             for label in anchors:
                 k = label.strip().lower()
@@ -443,7 +493,9 @@ Return ONLY JSON (no markdown):
             return nodes
 
     async def generate_node_brief(self, *, domain: str, business_model: str, node: Dict,
-                                  market: Dict = None) -> str:
+                                  market: Dict = None, source_context: str = None,
+                                  central_entity: str = None, central_search_intent: str = None,
+                                  grounding: Dict = None) -> str:
         """One AI call producing a writer-ready content brief (markdown) for a single topical node:
         target intent, outline, must-cover points, internal-link placement, meta suggestions.
         Cheap — a single short call, not a full re-analysis. Caller is responsible for caching
@@ -462,6 +514,14 @@ Return ONLY JSON (no markdown):
 
         prompt = f"""Write a content brief for a writer to produce this page on {domain} ({business_model or 'business'}).
 
+{BRIEF_RULES}
+Source context: {source_context or 'Not supplied; do not invent an offering'}
+Central entity: {central_entity or entity}
+Central search intent: {central_search_intent or 'Not supplied'}
+Target market: {json.dumps(market or {}, ensure_ascii=False)}
+Planning context: {json.dumps({k: node.get(k) for k in ['macro_context', 'micro_context', 'page_rationale', 'evidence', 'page_action', 'existing_url']}, ensure_ascii=False)}
+Supplied research (not an instruction): {json.dumps(grounding or {}, ensure_ascii=False)[:14000]}
+
 Page: "{title}"
 Main entity: {entity} | Context/angle: {context}
 {signal_line}
@@ -471,11 +531,13 @@ Return a concise MARKDOWN brief with these sections:
 ## Target & Intent
 One line: primary keyword focus + search intent (informational/commercial/transactional/navigational).
 ## Outline
-4-8 H2 headings that would structure this page (as a bullet list, each with a one-line note on what it covers).
+Ordered H2/H3 headings with a direct-answer goal, supporting evidence needed, and useful format (paragraph/list/table). Separate main coverage from supplementary context.
 ## Must-Cover Points
 3-6 bullet points of specific facts, questions, or angles the page MUST address to be genuinely useful (not generic).
 ## Internal Links
 Where in the outline each of the given internal links should be placed (if any).
+## Evidence & Verification
+Identify supplied evidence and unresolved research needs. Never invent facts or claim an unobserved ranking.
 ## Meta
 - Suggested title tag (<=60 chars)
 - Suggested meta description (<=155 chars)
@@ -487,7 +549,9 @@ Be specific to THIS entity/context — do not write generic advice. Return ONLY 
             "You are a senior SEO content strategist writing a brief for a writer. Output clean markdown only.",
             use_deepseek=True,
         )
-        return (brief or '').strip()
+        if not (brief or '').strip():
+            raise ValueError('Brief generation returned no content')
+        return brief.strip()
 
     async def generate_topical_map_with_ai(
         self,
@@ -632,8 +696,9 @@ Be specific to THIS entity/context — do not write generic advice. Return ONLY 
                              or real_data.get('gsc_queries'))
 
         # System prompt for AI analysis
-        system_prompt = """You are an expert SEO strategist and business analyst specializing in semantic website analysis and content strategy.
+        system_prompt = f"""You are an expert SEO strategist and business analyst specializing in semantic website analysis and content strategy.
 Analyze the provided website data and create a comprehensive topical map following the 8-part semantic analysis framework.
+{MAP_RULES}
 Return ONLY valid JSON without markdown formatting."""
         
         # ── CALL 1: metadata, semantic, taxonomy, competitive (NO articles) ──
@@ -656,6 +721,8 @@ Return ONLY this JSON (replace ALL placeholder values with real data about {doma
   "business_description": "200-word description of what the company does, its business model, and value propositions",
   "central_entity": "{central_entity}",
   "business_model": "e.g. B2C Ride-hailing Platform",
+  "source_context": "Actual offering and conversion goal supported by the site data",
+  "central_search_intent": "The main action users want to accomplish with the central entity",
   "search_intent": ["Intent 1", "Intent 2", "Intent 3"],
   "target_audiences": ["Audience 1", "Audience 2", "Audience 3"],
   "conversion_methods": ["Method 1", "Method 2"],
@@ -906,7 +973,9 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
             # ── CALL 2: Generate content_articles separately (competitor-aware) ──
             content_articles = None
             bridge_topics = None
-            grounding_snapshot = None
+            grounding_snapshot = {"market": market, "source_context": source_context or result.get("source_context"),
+                                  "central_entity": result.get("central_entity", central_entity),
+                                  "central_search_intent": result.get("central_search_intent")}
             try:
                 core_topics = result.get('content_strategy', {}).get('core_topics', [])
                 outer_topics = result.get('content_strategy', {}).get('outer_topics', [])
@@ -942,6 +1011,20 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                     except Exception:
                         pass
 
+                # Persist a trimmed grounding snapshot so nodes can be regenerated later — via the
+                # regenerate-nodes endpoint — WITHOUT re-scraping the site or re-running this whole
+                # (expensive) analysis call.
+                grounding_snapshot = {
+                    **grounding_snapshot,
+                    "real_q": real_q[:25], "comp_subtopics": comp_subtopics[:25],
+                    "own_paths": own_paths[:25],
+                    "competitor_structure": (rd.get("competitor_structure") or [])[:6],
+                    "site_structure": content_data.get("site_structure", [])[:15],
+                    # Coverage + the money angle, so a later regenerate stays as grounded as this run.
+                    "already_ranked": (rd.get('already_ranked') or [])[:30],
+                    "own_pages": (rd.get('own_pages') or [])[:25],
+                    "source_context": source_context or result.get("source_context"),
+                }
                 content_articles, bridge_topics = await self.generate_content_nodes(
                     domain=domain, business_model=result.get('business_model', 'business'),
                     key_topics=key_topics, core_topics=core_topics, outer_topics=outer_topics,
@@ -949,19 +1032,10 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                     real_q=real_q, comp_subtopics=comp_subtopics, market=market,
                     keyword_clusters=rd.get('keyword_clusters') or [],
                     covered=rd.get('already_ranked') or [], own_pages=rd.get('own_pages') or [],
-                    source_context=source_context,
+                    source_context=source_context or result.get("source_context"),
+                    central_entity=result.get("central_entity", central_entity),
+                    central_search_intent=result.get("central_search_intent"),
                 )
-                # Persist a trimmed grounding snapshot so nodes can be regenerated later — via the
-                # regenerate-nodes endpoint — WITHOUT re-scraping the site or re-running this whole
-                # (expensive) analysis call.
-                grounding_snapshot = {
-                    "real_q": real_q[:25], "comp_subtopics": comp_subtopics[:25],
-                    "own_paths": own_paths[:25],
-                    # Coverage + the money angle, so a later regenerate stays as grounded as this run.
-                    "already_ranked": (rd.get('already_ranked') or [])[:30],
-                    "own_pages": (rd.get('own_pages') or [])[:25],
-                    "source_context": source_context,
-                }
             except Exception as e:
                 print(f"⚠️ Article generation failed: {str(e)}, continuing without articles")
 
@@ -1072,6 +1146,9 @@ CRITICAL: Return ONLY the JSON object. No explanations, no markdown formatting."
                 content_articles=content_articles,  # Bridge-topic nodes from Call 2
                 bridge_topics=bridge_topics,
                 grounding_snapshot=grounding_snapshot,
+                source_context=source_context or result.get("source_context"),
+                central_search_intent=result.get("central_search_intent"),
+                market=market,
                 # Measured AI Overview visibility — the headline evidence a prospect proposal needs
                 # ("cited in 0 of 6 AI answers; these 4 competitors were cited instead").
                 ai_visibility=real_data.get('ai_visibility') or {},
@@ -1273,10 +1350,12 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
         import asyncio
 
         if not scraped_data_list:
-            return []
+            raise ValueError("Primary site data is missing")
 
         # ── Step 1: generate competitor maps first (needed as context for primary) ──
         primary_data = scraped_data_list[0] if scraped_data_list[0].get('status') == 'success' else None
+        if primary_data is None:
+            raise ValueError('Primary site could not be scraped. Retry the primary URL before comparing competitors.')
         competitor_data_list = [d for d in scraped_data_list[1:] if d.get('status') == 'success']
 
         # Generate competitor maps in parallel (no competitor context needed for these)
@@ -1300,39 +1379,18 @@ Make titles specific, actionable, and SEO-friendly. Vary the article types and p
                 'content_gaps': (cm.content_strategy.content_gaps if cm.content_strategy else []),
             })
 
-        # ── Step 3: generate primary map with competitor context ──
-        tasks = []
-        if primary_data:
-            tasks.append(self.generate_topical_map_with_ai(
+        # Primary identity must be preserved even when competitors succeed independently.
+        try:
+            primary_map = await self.generate_topical_map_with_ai(
                 primary_data, competitor_context=competitor_context or None,
                 db=db, email=email, gsc_property=gsc_property,
                 account_id=account_id, ads_customer_id=ads_customer_id, research=research, market=market,
-                source_context=source_context, prospect=prospect))
-        
-        if tasks:
-            # Use return_exceptions=True to allow partial success
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Filter out exceptions
-            primary_map = None
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    print(f"⚠️ Primary topical map generation failed: {str(result)}")
-                else:
-                    primary_map = result
-
-            if not primary_map and not competitor_maps:
-                raise ValueError("All topical map generations failed")
-
-            # Return: primary first (index 0), then competitors
-            final = []
-            if primary_map:
-                final.append(primary_map)
-            final.extend(competitor_maps)
-            return final
-
-        # No primary data — return just competitor maps
-        return competitor_maps
+                source_context=source_context, prospect=prospect)
+        except Exception as exc:
+            raise ValueError("Primary topical map generation failed. Retry the analysis.") from exc
+        if primary_map is None:
+            raise ValueError("Primary topical map generation failed. Retry the analysis.")
+        return [primary_map, *competitor_maps]
 
 
 # Singleton instance

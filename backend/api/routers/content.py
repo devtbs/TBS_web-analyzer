@@ -32,17 +32,45 @@ async def create_full_article_direct(
     if analysis['user_email'] != current_user.email:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
+    node = primary = None
+    if request.node_id:
+        from utils.topical_nodes import identified_maps, brief_grounding, merge_brief
+        maps = identified_maps(analysis.get('topical_maps'))
+        if request.map_index >= len(maps):
+            raise HTTPException(status_code=409, detail="The map changed. Reload it before writing.")
+        primary = maps[request.map_index]
+        node = next((n for n in primary.get('content_articles') or [] if n['node_id'] == request.node_id), None)
+        if node is None:
+            raise HTTPException(status_code=409, detail="The node changed. Reload the map before writing.")
+    topic = node['title'] if node else request.topic
+    db.rollback()
     try:
         # 1. Generate the brief to give AI context and structure
-        brief = await generate_content_brief(
-            topic=request.topic,
-            category=request.category,
-            article_type=request.article_type
-        )
+        if node:
+            from services.topical_map import topical_generator
+            snapshot = primary.get('grounding_snapshot') or {}
+            node_brief = node.get('brief') or await topical_generator.generate_node_brief(
+                domain=primary.get('url', ''), business_model=primary.get('business_model', ''),
+                node=node, market=primary.get('market') or snapshot.get('market'),
+                source_context=primary.get('source_context') or snapshot.get('source_context'),
+                central_entity=primary.get('central_entity'),
+                central_search_intent=primary.get('central_search_intent'), grounding=brief_grounding(primary, node))
+            if not node.get('brief') and request.map_index == 0:
+                try:
+                    database_store.mutate_topical_maps(db, analysis_id, current_user.email,
+                        lambda latest: merge_brief(latest, node['node_id'], node_brief, None))
+                except ValueError as exc:
+                    raise HTTPException(status_code=409, detail=str(exc)) from exc
+            brief = {"title_ideas": [topic], "node_brief": node_brief,
+                     "node_context": node, "source_context": primary.get('source_context') or snapshot.get('source_context'),
+                     "internal_linking_suggestions": node.get('internal_links') or []}
+        else:
+            brief = await generate_content_brief(
+                topic=topic, category=request.category, article_type=request.article_type)
 
         # 2. Automatically generate the full article based on the brief
         article_markdown = await generate_full_article(
-            topic=request.topic,
+            topic=topic,
             brief_data=brief,
             system_prompt=getattr(request, 'system_prompt', None),
             language=getattr(request, 'language', 'en'),
@@ -60,7 +88,7 @@ async def create_full_article_direct(
             id=doc_id,
             user_email=current_user.email,
             analysis_id=analysis_id,
-            title=request.topic,
+            title=topic,
             content_type="Full Article",
             content=brief
         )
@@ -69,6 +97,8 @@ async def create_full_article_direct(
         db.refresh(new_doc)
 
         return {"status": "success", "article": article_markdown, "document_id": doc_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate article: {str(e)}")
 
