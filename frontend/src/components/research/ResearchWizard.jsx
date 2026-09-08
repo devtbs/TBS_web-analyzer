@@ -29,7 +29,14 @@ const dedupeNear = (list) => {
     }
     return [...by.values()].sort((a, b) => (b.volume || 0) - (a.volume || 0));
 };
-const STEPS = ['Site', 'Queries', 'Competitors', 'Keywords', 'Clusters'];
+const STEPS = ['Website', 'Search topics', 'Competitors', 'Keywords', 'Build map'];
+const STEP_HELP = [
+    'Enter your website and tell us what your business offers. We’ll suggest search topics for you to review.',
+    'Select the searches your customers would make. Next, we’ll find websites ranking for those searches.',
+    'Choose relevant competing websites. Next, we’ll collect their keywords.',
+    'Select keywords that fit your business. Next, we’ll group them into related topics.',
+    'Review your topic groups, then build your topical map. You can create content briefs from the finished map.',
+];
 
 const Stepper = ({ step }) => (
     <div className="grid grid-cols-3 sm:grid-cols-5 gap-3 mb-4">
@@ -52,6 +59,7 @@ export default function ResearchWizard({ clientId = null }) {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [busy, setBusy] = useState(false);
+    const [showSearchConsole, setShowSearchConsole] = useState(false);
 
     // Save / resume
     const [runId, setRunId] = useState(null);
@@ -310,7 +318,7 @@ export default function ResearchWizard({ clientId = null }) {
     const mangoolsEst = selectedQueries.size + 4 + allDomains().length;
 
     const BackBtn = ({ to }) => (
-        <button onClick={() => setStep(to)} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500"><ArrowLeftIcon className="w-4 h-4" /> Back</button>
+        <button disabled={busy} onClick={() => setStep(to)} className="flex items-center gap-1 text-[13px] font-semibold text-slate-500"><ArrowLeftIcon className="w-4 h-4" /> Back</button>
     );
 
     return (
@@ -366,10 +374,16 @@ export default function ResearchWizard({ clientId = null }) {
                 </div>
             )}
 
+            <div className="mb-5 rounded-xl bg-emerald-50 border border-emerald-100 p-4" aria-live="polite">
+                <p className="text-sm font-semibold text-emerald-900">Step {step} of {STEPS.length} · {STEPS[step - 1]}</p>
+                <p className="mt-1 text-sm text-emerald-800">{STEP_HELP[step - 1]}</p>
+                {busy && <p role="status" className="mt-2 text-sm font-semibold text-emerald-900">Working on your research… Please keep this page open.</p>}
+            </div>
+
             {/* Step 1 — Select site */}
             {step === 1 && (
                 <div>
-                    <p className="text-[13px] font-bold text-slate-600 mb-2">Select the site to research <span className="font-normal text-slate-400">— click a property for the whole site, or “Select Pages” to seed the research from specific URLs.</span></p>
+
 
                     {/* Pages picked to seed the research (from "Select Pages") */}
                     {seedPages.length > 0 && (
@@ -388,30 +402,34 @@ export default function ResearchWizard({ clientId = null }) {
                             </div>
                         </div>
                     )}
-                    <GSCPropertySelector onPropertySelect={setSiteProps} selectedProperties={siteProps} selectPagesReturn="wizard" />
-                    <div className="flex items-center gap-2 my-4">
-                        <span className="h-px bg-slate-200 flex-1" /><span className="text-[12px] text-slate-400">or enter a URL</span><span className="h-px bg-slate-200 flex-1" />
-                    </div>
+                    <label htmlFor="research-website" className="block text-sm font-semibold text-slate-700 mb-2">Your website</label>
                     <div className="flex gap-2">
                         <div className="relative flex-1">
                             <GlobeAltIcon className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                            <input value={manualUrl} onChange={e => setManualUrl(e.target.value)}
+                            <input id="research-website" type="url" autoComplete="url" value={manualUrl} onChange={e => setManualUrl(e.target.value)}
                                 placeholder="https://example.com"
                                 className="w-full pl-11 pr-4 py-3 border border-slate-300 rounded-xl text-[15px] outline-none focus:ring-2 focus:ring-emerald-500/30" />
                         </div>
-                        <button onClick={analyzeSite} disabled={busy || !site}
-                            className="px-6 bg-emerald-700 text-white rounded-xl font-bold text-[15px] disabled:opacity-50">
-                            {busy ? 'Analyzing…' : 'Analyze site'}
-                        </button>
+
                     </div>
+                    <button type="button" aria-expanded={showSearchConsole} onClick={() => setShowSearchConsole(v => !v)} className="mt-3 text-sm font-semibold text-emerald-700 hover:underline">
+                        {showSearchConsole ? 'Hide Search Console websites' : 'Or choose a website from Search Console'}
+                    </button>
+                    {showSearchConsole && <div className="mt-3"><GSCPropertySelector onPropertySelect={props => { setSiteProps(props); if (props.length) setManualUrl(''); }} selectedProperties={siteProps} selectPagesReturn="wizard" /></div>}
                     {site && <p className="text-[12px] text-slate-400 mt-2">Target: {site}</p>}
 
                     <div className="mt-5">
-                        <label className="text-[13px] font-bold text-slate-600">How does this site make money? <span className="font-normal text-slate-400">— optional, but it decides which topics count as Core</span></label>
-                        <textarea value={sourceContext} onChange={e => setSourceContext(e.target.value)} rows={2}
+                        <label htmlFor="research-business" className="text-[13px] font-bold text-slate-600">What do you sell, and who is it for? <span className="font-normal text-slate-400">— optional; helps prioritize the right topics</span></label>
+                        <textarea id="research-business" value={sourceContext} onChange={e => setSourceContext(e.target.value)} rows={2}
                             placeholder="e.g. Sells WSET-accredited wine courses in Bangkok to hospitality staff and enthusiasts; revenue is course enrolments."
                             className="mt-1.5 w-full px-4 py-3 border border-slate-300 rounded-xl text-[14px] outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none" />
                         <p className="text-[12px] text-slate-400 mt-1">The same entity needs a different map per business model — a wine school needs certification and schedules, a wine shop needs vintage and shipping.</p>
+                    </div>
+                    <div className="mt-6">
+                        <button onClick={analyzeSite} disabled={busy || !site}
+                            className="w-full sm:w-auto px-6 py-3 bg-emerald-700 text-white rounded-xl font-bold text-[15px] disabled:opacity-50">
+                            {busy ? 'Analyzing…' : 'Continue: find search topics'}
+                        </button>
                     </div>
                 </div>
             )}
@@ -435,7 +453,7 @@ export default function ResearchWizard({ clientId = null }) {
                     </div>
                     <div className="flex items-center justify-between">
                         <BackBtn to={1} />
-                        <button onClick={findCompetitors} disabled={busy}
+                        <button onClick={findCompetitors} disabled={busy || selectedQueries.size === 0}
                             className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                             {busy ? 'Searching…' : <>Find competitors ({selectedQueries.size}) <ArrowRightIcon className="w-4 h-4" /></>}
                         </button>
@@ -475,7 +493,7 @@ export default function ResearchWizard({ clientId = null }) {
                     )}
                     <div className="flex items-center justify-between">
                         <BackBtn to={2} />
-                        <button onClick={() => fetchKeywords(false)} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
+                        <button onClick={() => fetchKeywords(false)} disabled={busy || allDomains().length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                             {busy ? 'Fetching…' : <>Get keywords ({allDomains().length}) <ArrowRightIcon className="w-4 h-4" /></>}
                         </button>
                     </div>
@@ -551,7 +569,7 @@ export default function ResearchWizard({ clientId = null }) {
                                 className="flex items-center gap-2 px-4 py-2.5 border border-emerald-300 text-emerald-700 rounded-lg text-[14px] font-bold hover:bg-emerald-50 disabled:opacity-60">
                                 <SparklesIcon className="w-4 h-4" /> {busy ? 'Finding…' : 'Find more'}
                             </button>
-                            <button onClick={runCluster} disabled={busy} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
+                            <button onClick={runCluster} disabled={busy || selectedKw.size === 0} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-700 text-white rounded-lg font-bold text-[14px] disabled:opacity-60">
                                 {busy ? 'Clustering…' : <>Cluster ({selectedKw.size}) <ArrowRightIcon className="w-4 h-4" /></>}
                             </button>
                         </div>

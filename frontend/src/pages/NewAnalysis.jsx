@@ -179,14 +179,15 @@ const NewAnalysis = () => {
                         <div className="flex flex-wrap gap-2 mb-8 pb-5 border-b border-slate-200">
                             <button aria-pressed={mode === 'research'} onClick={() => setMode('research')}
                                 className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'research' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
-                                Guided research
+                                Step-by-step setup
                             </button>
                             <button aria-pressed={mode === 'quick'} onClick={() => setMode('quick')}
                                 className={`px-4 py-2 rounded-lg text-[14px] font-bold transition-colors ${mode === 'quick' ? 'bg-emerald-700 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-700'}`}>
-                                Quick site map
+                                Quick map
                             </button>
                         </div>
 
+                        <p className="text-sm text-slate-500 mb-5">{mode === 'research' ? 'Recommended: review topics and competitors before building your map.' : 'Start from website URLs with fewer setup steps.'}</p>
                         {mode === 'research' ? <ResearchWizard clientId={researchClientId} /> : (<>
                         {/* ── Mode Toggle ── */}
                         <div className="flex justify-center mb-6">
